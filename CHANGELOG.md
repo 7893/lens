@@ -1,35 +1,35 @@
-# Changelog
+# 更新日志
 
-All notable changes to this project will be documented in this file.
+本项目的所有重要更改都将记录在此文件中。
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
+本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [Unreleased]
+## [未发布]
 
-### Added
-- Initial project setup with Cloudflare Workers architecture
-- Automated photo collection from Unsplash API
-- AI-powered image classification using 2 models
-- Cursor-based sync to prevent duplicates
-- Checkpoint system for fault-tolerant processing
-- Real-time stats dashboard
-- Separate download and classify workflows
+### 新增
+- 使用 Cloudflare Workers 架构的初始项目设置
+- 从 Unsplash API 自动收集照片
+- 使用 2 个模型的 AI 驱动图片分类
+- 基于游标的同步以防止重复
+- 容错处理的检查点系统
+- 实时统计仪表板
+- 独立的下载和分类工作流
 
-### Changed
-- Increased fetch rate to 60 photos per run (2 API requests)
-- Cron schedule set to every 10 minutes
-- Reduced AI models from 4 to 2 for better performance
+### 变更
+- 将获取速率提高到每次运行 60 张照片（2 次 API 请求）
+- Cron 计划设置为每 10 分钟
+- 将 AI 模型从 4 个减少到 2 个以提高性能
 
-### Fixed
-- D1 schema issues with nullable fields
-- Workflow retry logic
-- Processing queue bottlenecks
+### 修复
+- D1 架构中可空字段的问题
+- 工作流重试逻辑
+- 处理队列瓶颈
 
 ## [0.1.0] - 2025-10-10
 
-### Added
-- Initial release
-- Basic photo collection and storage
-- AI classification
-- Web frontend
+### 新增
+- 初始版本
+- 基本照片收集和存储
+- AI 分类
+- Web 前端
