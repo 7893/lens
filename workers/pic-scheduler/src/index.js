@@ -1,7 +1,9 @@
 import { DataPipelineWorkflow } from './workflows/data-pipeline.js';
+import { DownloadWorkflow } from './workflows/download-workflow.js';
+import { ClassifyWorkflow } from './workflows/classify-workflow.js';
 import { EnqueuePhotosTask } from './tasks/enqueue-photos.js';
 
-export { DataPipelineWorkflow };
+export { DataPipelineWorkflow, DownloadWorkflow, ClassifyWorkflow };
 
 export default {
   async fetch(request, env) {
@@ -38,16 +40,20 @@ export default {
           endPage: 3
         });
 
-        const instance = await env.WORKFLOW.create({ payload: {} });
+        const [downloadInstance, classifyInstance] = await Promise.all([
+          env.DOWNLOAD_WORKFLOW.create({ payload: {} }),
+          env.CLASSIFY_WORKFLOW.create({ payload: {} })
+        ]);
 
         return Response.json({
           success: true,
-          workflowId: instance.id,
+          downloadWorkflowId: downloadInstance.id,
+          classifyWorkflowId: classifyInstance.id,
           enqueued: enqueueResult.enqueued,
           skipped: enqueueResult.skipped,
           pages: enqueueResult.pages,
           cursor: enqueueResult.cursor,
-          message: 'Photos enqueued and workflow triggered'
+          message: 'Photos enqueued and workflows triggered'
         });
       } catch (error) {
         return Response.json({
@@ -77,11 +83,14 @@ export default {
         endPage: 3
       });
 
-      const instance = await env.WORKFLOW.create({ payload: {} });
+      const [downloadInstance, classifyInstance] = await Promise.all([
+        env.DOWNLOAD_WORKFLOW.create({ payload: {} }),
+        env.CLASSIFY_WORKFLOW.create({ payload: {} })
+      ]);
 
-      console.log(`Enqueued ${enqueueResult.enqueued} photos (${enqueueResult.pages} pages), cursor: ${enqueueResult.cursor}, workflow ID: ${instance.id}`);
+      console.log(`Enqueued ${enqueueResult.enqueued} photos, download: ${downloadInstance.id}, classify: ${classifyInstance.id}`);
     } catch (error) {
-      console.error('Failed to enqueue and start workflow:', error);
+      console.error('Failed to enqueue and start workflows:', error);
     }
   }
 };
