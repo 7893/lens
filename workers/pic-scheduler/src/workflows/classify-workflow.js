@@ -130,6 +130,13 @@ export class ClassifyWorkflow extends WorkflowEntrypoint {
     const failed = results.filter(r => !r.success).length;
 
     await step.do('update-stats', async () => {
+      // Ensure GlobalStats row exists
+      await this.env.DB.prepare(`
+        INSERT OR IGNORE INTO GlobalStats 
+        (id, total_workflows, successful_workflows, total_downloads, successful_downloads, updated_at) 
+        VALUES (1, 0, 0, 0, 0, datetime('now'))
+      `).run();
+
       await this.env.DB.prepare(`
         UPDATE GlobalStats SET 
           total_workflows = total_workflows + 1,
