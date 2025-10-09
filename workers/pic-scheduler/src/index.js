@@ -2,8 +2,13 @@ import { DataPipelineWorkflow } from './workflows/data-pipeline.js';
 import { DownloadWorkflow } from './workflows/download-workflow.js';
 import { ClassifyWorkflow } from './workflows/classify-workflow.js';
 import { EnqueuePhotosTask } from './tasks/enqueue-photos.js';
+import { Analytics } from './utils/analytics.js';
 
 export { DataPipelineWorkflow, DownloadWorkflow, ClassifyWorkflow };
+
+let statsCache = null;
+let statsCacheTime = 0;
+const CACHE_TTL = 30000;
 
 export default {
   async fetch(request, env) {
@@ -17,23 +22,32 @@ export default {
     }
 
     if (url.pathname === '/api/stats') {
-      const [total, categories, queueStats, cursor] = await Promise.all([
+      const now = Date.now();
+      
+      if (statsCache && (now - statsCacheTime) < CACHE_TTL) {
+        return Response.json(statsCache);
+      }
+
+      const [total, queueStats] = await Promise.all([
         env.DB.prepare('SELECT COUNT(*) as total FROM Photos').first(),
-        env.DB.prepare('SELECT ai_category, COUNT(*) as count FROM Photos GROUP BY ai_category ORDER BY count DESC').all(),
-        env.DB.prepare('SELECT status, COUNT(*) as count FROM ProcessingQueue GROUP BY status').all(),
-        env.DB.prepare('SELECT key, value FROM State WHERE key IN ("last_cursor_time", "last_cursor_id")').all()
+        env.DB.prepare('SELECT status, COUNT(*) as count FROM ProcessingQueue GROUP BY status').all()
       ]);
 
-      return Response.json({
+      statsCache = {
         total: total?.total || 0,
-        categories: categories.results || [],
         queue: queueStats.results || [],
-        cursor: cursor.results || []
-      });
+        cached: true,
+        cacheAge: 0
+      };
+      statsCacheTime = now;
+
+      return Response.json(statsCache);
     }
 
     if (url.pathname === '/api/trigger' && request.method === 'POST') {
       try {
+        const analytics = new Analytics(env.AE);
+        
         const enqueueTask = new EnqueuePhotosTask();
         const enqueueResult = await enqueueTask.run(env, { 
           startPage: 1, 
@@ -44,6 +58,8 @@ export default {
           env.DOWNLOAD_WORKFLOW.create({ payload: {} }),
           env.CLASSIFY_WORKFLOW.create({ payload: {} })
         ]);
+
+        await analytics.logEvent('trigger', { status: 'success' });
 
         return Response.json({
           success: true,
@@ -74,9 +90,11 @@ export default {
   },
 
   async scheduled(event, env, ctx) {
-    console.log('Cron triggered');
+    console.log('Cron triggered (every 10 minutes)');
 
     try {
+      const analytics = new Analytics(env.AE);
+      
       const enqueueTask = new EnqueuePhotosTask();
       const enqueueResult = await enqueueTask.run(env, { 
         startPage: 1, 
@@ -87,6 +105,11 @@ export default {
         env.DOWNLOAD_WORKFLOW.create({ payload: {} }),
         env.CLASSIFY_WORKFLOW.create({ payload: {} })
       ]);
+
+      await analytics.logEvent('cron', { 
+        status: 'success',
+        enqueued: enqueueResult.enqueued 
+      });
 
       console.log(`Enqueued ${enqueueResult.enqueued} photos, download: ${downloadInstance.id}, classify: ${classifyInstance.id}`);
     } catch (error) {

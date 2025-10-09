@@ -18,6 +18,10 @@ database_id = "1a110c7e-1ba4-4389-8a64-f73fd7076443"
 [ai]
 binding = "AI"
 
+[[analytics_engine_datasets]]
+binding = "AE"
+dataset = "pic-ae"
+
 [[workflows]]
 binding = "WORKFLOW"
 name = "pic-wf"
@@ -34,4 +38,4 @@ name = "pic-classify-wf"
 class_name = "ClassifyWorkflow"
 
 [triggers]
-crons = ["*/5 * * * *"]
+crons = ["*/10 * * * *"]
