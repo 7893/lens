@@ -88,7 +88,7 @@ export default {
     });
   },
 
-  async scheduled(event, env, ctx) {
+  async scheduled(event, env, _ctx) {
     console.log('Cron triggered (every 10 minutes)');
 
     try {
