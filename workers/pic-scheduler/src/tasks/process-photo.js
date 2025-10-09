@@ -1,12 +1,10 @@
 import { ClassifyWithModelTask } from './classify-with-model.js';
-import { ExtractExifTask } from './extract-exif.js';
 import { SaveMetadataTask } from './save-metadata.js';
 
 export class ProcessPhotoTask {
-  async run(env, { queueItem, apiKey }) {
+  async run(env, { queueItem }) {
     const photoId = queueItem.unsplash_id;
     const photoDetail = JSON.parse(queueItem.photo_data);
-    const page = queueItem.page;
     
     const existing = await env.DB.prepare(
       'SELECT unsplash_id FROM Photos WHERE unsplash_id = ?'
