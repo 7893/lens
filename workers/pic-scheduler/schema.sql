@@ -7,6 +7,23 @@ CREATE TABLE IF NOT EXISTS State (
 INSERT OR IGNORE INTO State (key, value, updated_at) VALUES ('last_page', '0', datetime('now'));
 INSERT OR IGNORE INTO State (key, value, updated_at) VALUES ('page_offset', '0', datetime('now'));
 
+CREATE TABLE IF NOT EXISTS ProcessingQueue (
+  unsplash_id TEXT PRIMARY KEY,
+  page INTEGER NOT NULL,
+  status TEXT NOT NULL,
+  download_success INTEGER DEFAULT 0,
+  ai_success INTEGER DEFAULT 0,
+  metadata_success INTEGER DEFAULT 0,
+  db_success INTEGER DEFAULT 0,
+  retry_count INTEGER DEFAULT 0,
+  last_error TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_queue_status ON ProcessingQueue(status);
+CREATE INDEX IF NOT EXISTS idx_queue_page ON ProcessingQueue(page);
+
 CREATE TABLE IF NOT EXISTS Photos (
   unsplash_id TEXT PRIMARY KEY,
   slug TEXT,
