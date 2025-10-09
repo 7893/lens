@@ -1,59 +1,103 @@
 # Pic Project
 
-完全基于 Cloudflare Serverless 生态的图片采集、处理和展示系统。
+AI-powered image collection system built entirely on Cloudflare Serverless ecosystem.
 
-## 架构
+## 🚀 Quick Start
 
-- **pic-scheduler**: 后端调度器（Cron + Workflow）
-- **pic-frontend**: 前端（Web界面 + API）
+```bash
+# View live site
+open https://pic.53.workers.dev
 
-## 项目结构
+# Trigger workflow manually
+curl -X POST https://pic-scheduler.53.workers.dev/api/trigger
+
+# Run automated test
+./test.sh
+```
+
+## 📊 Status
+
+- **Frontend**: https://pic.53.workers.dev
+- **Scheduler**: https://pic-scheduler.53.workers.dev
+- **Cron**: Every 5 minutes
+- **Processing**: 2 photos per workflow (testing mode)
+
+See [STATUS.md](STATUS.md) for detailed status.
+
+## 🏗️ Architecture
+
+- **pic-scheduler**: Cron + Workflow orchestration
+- **pic-frontend**: Web UI + API endpoints
+
+**Tech Stack:**
+- Cloudflare Workers (compute)
+- Cloudflare D1 (SQLite database)
+- Cloudflare R2 (object storage)
+- Cloudflare Workflows (orchestration)
+- Cloudflare AI (4 models for classification)
+- Unsplash API (image source)
+
+## 📁 Project Structure
 
 ```
 pic/
 ├── README.md
-├── .gitignore
+├── STATUS.md              # Current deployment status
+├── DEPLOY.md              # Deployment guide
+├── test.sh                # Automated test script
+├── package.json           # Root workspace config
+├── .nvmrc                 # Node version (22.19.0)
 └── workers/
-    ├── pic-frontend/          (Worker名: pic)
+    ├── pic-frontend/      (Worker: pic)
     │   ├── src/index.js
     │   ├── package.json
     │   └── wrangler.toml
-    └── pic-scheduler/         (Worker名: pic-scheduler)
+    └── pic-scheduler/     (Worker: pic-scheduler)
         ├── src/
+        │   ├── index.js
+        │   ├── config.js
+        │   ├── workflows/
+        │   │   └── data-pipeline.js
+        │   ├── tasks/
+        │   │   ├── fetch-photos.js
+        │   │   ├── process-photo.js
+        │   │   ├── classify-with-model.js
+        │   │   ├── extract-exif.js
+        │   │   └── save-metadata.js
+        │   └── services/
+        ├── schema.sql
         ├── package.json
         └── wrangler.toml
 ```
 
-## 开发
+## 🛠️ Development
 
 ```bash
-# 开发前端
-cd workers/pic-frontend
-npm run dev
+# Install dependencies
+npm install
 
-# 开发后端
-cd workers/pic-scheduler
-npm run dev
+# Develop scheduler
+npm run dev:scheduler
+
+# Develop frontend
+npm run dev:frontend
+
+# Deploy
+npm run deploy:all
 ```
 
-## 部署（从项目根目录执行）
+## 📖 Documentation
 
-```bash
-# 部署前端 (https://pic.53.workers.dev)
-npx wrangler deploy --config workers/pic-frontend/wrangler.toml
+- [DEPLOY.md](DEPLOY.md) - Deployment instructions
+- [STATUS.md](STATUS.md) - Current system status
 
-# 部署后端 (https://pic-scheduler.53.workers.dev)
-npx wrangler deploy --config workers/pic-scheduler/wrangler.toml
-```
+## 🔗 Resources
 
-## Workers
+- **pic-r2**: R2 bucket (shared)
+- **pic-d1**: D1 database (shared)
+- **pic-wf**: Workflow engine
+- **AI**: 4 Cloudflare AI models
 
-- **pic**: https://pic.53.workers.dev (前端)
-- **pic-scheduler**: https://pic-scheduler.53.workers.dev (后端)
+## 📝 License
 
-## 资源
-
-- **pic-r2**: R2 存储桶（共享）
-- **pic-d1**: D1 数据库（共享）
-- **pic-wf**: Workflow
-- **AI**: Cloudflare AI（4个模型）
+MIT
