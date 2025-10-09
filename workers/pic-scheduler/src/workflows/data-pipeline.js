@@ -1,12 +1,22 @@
 import { WorkflowEntrypoint } from 'cloudflare:workers';
 import { UnsplashService } from '../services/unsplash.js';
 import { AIClassifier } from '../services/ai-classifier.js';
+import { StatsUpdater } from '../services/stats-updater.js';
 
 export class DataPipelineWorkflow extends WorkflowEntrypoint {
   async run(event, step) {
     const { page } = event.payload;
+    const stats = new StatsUpdater(this.env.DB);
+    const startTime = Date.now();
+    
+    const runId = await step.do('record-start', async () => {
+      return await stats.recordWorkflowStart(event.id, page);
+    });
     
     const photos = await step.do('fetch-photos', async () => {
+      await stats.checkAndResetQuota('unsplash');
+      await stats.updateApiQuota('unsplash', 1);
+      
       const unsplash = new UnsplashService(this.env.UNSPLASH_API_KEY);
       return await unsplash.fetchPhotos(page, 30);
     });
@@ -28,6 +38,7 @@ export class DataPipelineWorkflow extends WorkflowEntrypoint {
         try {
           const unsplash = new UnsplashService(this.env.UNSPLASH_API_KEY);
           
+          await stats.updateApiQuota('unsplash', 1);
           const detailResponse = await fetch(
             `https://api.unsplash.com/photos/${photo.id}?client_id=${this.env.UNSPLASH_API_KEY}`
           );
@@ -36,11 +47,14 @@ export class DataPipelineWorkflow extends WorkflowEntrypoint {
           await unsplash.triggerDownload(photoDetail.links.download_location);
 
           const imageUrl = photoDetail.urls.raw;
+          await stats.updateApiQuota('unsplash', 1);
           const imageResponse = await fetch(imageUrl);
           if (!imageResponse.ok) throw new Error('Image download failed');
           
           const imageBuffer = await imageResponse.arrayBuffer();
+          const fileSize = imageBuffer.byteLength;
 
+          await stats.updateApiQuota('cloudflare-ai', 4);
           const aiResult = await new AIClassifier(this.env.AI).classifyImage(
             photoDetail.alt_description || photoDetail.description || 'No description'
           );
@@ -48,6 +62,7 @@ export class DataPipelineWorkflow extends WorkflowEntrypoint {
           const category = aiResult.category;
           const r2Key = `${category}/${photoDetail.id}.jpg`;
 
+          await stats.updateApiQuota('r2', 1);
           await this.env.R2.put(r2Key, imageBuffer, {
             httpMetadata: { contentType: 'image/jpeg' }
           });
@@ -108,7 +123,9 @@ export class DataPipelineWorkflow extends WorkflowEntrypoint {
             JSON.stringify(aiResult.scores)
           ).run();
 
-          return { success: true, id: photoDetail.id, category };
+          await stats.updateCategoryStats(category, fileSize);
+
+          return { success: true, id: photoDetail.id, category, fileSize };
         } catch (error) {
           return { success: false, id: photo.id, error: error.message };
         }
@@ -121,6 +138,21 @@ export class DataPipelineWorkflow extends WorkflowEntrypoint {
     const skipped = results.filter(r => r.skipped).length;
     const failed = results.filter(r => !r.success).length;
 
+    await step.do('record-complete', async () => {
+      const duration = Date.now() - startTime;
+      await stats.recordWorkflowComplete(runId, {
+        total: photos.length,
+        successful,
+        failed,
+        skipped
+      }, duration);
+      
+      if (successful > 0) {
+        await stats.updateStorageStats();
+      }
+    });
+
     return { page, successful, skipped, failed, total: photos.length };
   }
 }
+
