@@ -26,22 +26,24 @@ export default {
     }
 
     if (url.pathname === '/api/trigger' && request.method === 'POST') {
-      const state = await env.DB.prepare('SELECT value FROM State WHERE key = ?').bind('last_page').first();
-      const currentPage = state?.value ? parseInt(state.value) : 0;
-      const nextPage = currentPage + 1;
+      const [pageState, offsetState] = await Promise.all([
+        env.DB.prepare('SELECT value FROM State WHERE key = ?').bind('last_page').first(),
+        env.DB.prepare('SELECT value FROM State WHERE key = ?').bind('page_offset').first()
+      ]);
+
+      const currentPage = pageState?.value ? parseInt(pageState.value) : 1;
+      const currentOffset = offsetState?.value ? parseInt(offsetState.value) : 0;
 
       try {
-        const instance = await env.WORKFLOW.create({ payload: { page: nextPage } });
-
-        await env.DB.prepare(`
-          INSERT INTO State (key, value, updated_at) VALUES ('last_page', ?, ?)
-          ON CONFLICT(key) DO UPDATE SET value = ?, updated_at = ?
-        `).bind(String(nextPage), new Date().toISOString(), String(nextPage), new Date().toISOString()).run();
+        const instance = await env.WORKFLOW.create({ 
+          payload: { page: currentPage, offset: currentOffset } 
+        });
 
         return Response.json({
           success: true,
           workflowId: instance.id,
-          page: nextPage,
+          page: currentPage,
+          offset: currentOffset,
           message: 'Workflow triggered successfully'
         });
       } catch (error) {
@@ -65,19 +67,20 @@ export default {
   async scheduled(event, env, ctx) {
     console.log('Cron triggered');
 
-    const state = await env.DB.prepare('SELECT value FROM State WHERE key = ?').bind('last_page').first();
-    const currentPage = state?.value ? parseInt(state.value) : 0;
-    const nextPage = currentPage + 1;
+    const [pageState, offsetState] = await Promise.all([
+      env.DB.prepare('SELECT value FROM State WHERE key = ?').bind('last_page').first(),
+      env.DB.prepare('SELECT value FROM State WHERE key = ?').bind('page_offset').first()
+    ]);
+
+    const currentPage = pageState?.value ? parseInt(pageState.value) : 1;
+    const currentOffset = offsetState?.value ? parseInt(offsetState.value) : 0;
 
     try {
-      const instance = await env.WORKFLOW.create({ payload: { page: nextPage } });
+      const instance = await env.WORKFLOW.create({ 
+        payload: { page: currentPage, offset: currentOffset } 
+      });
 
-      await env.DB.prepare(`
-        INSERT INTO State (key, value, updated_at) VALUES ('last_page', ?, ?)
-        ON CONFLICT(key) DO UPDATE SET value = ?, updated_at = ?
-      `).bind(String(nextPage), new Date().toISOString(), String(nextPage), new Date().toISOString()).run();
-
-      console.log(`Workflow started: page ${nextPage}, ID: ${instance.id}`);
+      console.log(`Workflow started: page ${currentPage}, offset ${currentOffset}, ID: ${instance.id}`);
     } catch (error) {
       console.error('Failed to start workflow:', error);
     }

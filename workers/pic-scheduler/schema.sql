@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS State (
 );
 
 INSERT OR IGNORE INTO State (key, value, updated_at) VALUES ('last_page', '0', datetime('now'));
+INSERT OR IGNORE INTO State (key, value, updated_at) VALUES ('page_offset', '0', datetime('now'));
 
 CREATE TABLE IF NOT EXISTS Photos (
   unsplash_id TEXT PRIMARY KEY,
