@@ -1,5 +1,5 @@
 export class EnqueuePhotosTask {
-  async run(env, { startPage = 1, endPage = 3 }) {
+  async run(env, { startPage = 1, endPage = 2 }) {
     const [cursorTime, cursorId] = await Promise.all([
       env.DB.prepare('SELECT value FROM State WHERE key = ?').bind('last_cursor_time').first(),
       env.DB.prepare('SELECT value FROM State WHERE key = ?').bind('last_cursor_id').first()

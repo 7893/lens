@@ -8,9 +8,15 @@ export class DownloadWorkflow extends WorkflowEntrypoint {
     const tasks = await step.do('dequeue-download-tasks', async () => {
       const pending = await this.env.DB.prepare(`
         SELECT * FROM ProcessingQueue 
-        WHERE status = 'pending' 
+        WHERE (status = 'pending' OR (status = 'failed' AND download_success = 0))
         AND download_success = 0
-        ORDER BY created_at ASC
+        AND retry_count < 3
+        ORDER BY 
+          CASE status 
+            WHEN 'failed' THEN 0 
+            WHEN 'pending' THEN 1 
+          END,
+          created_at ASC
         LIMIT ?
       `).bind(batchSize).all();
 
