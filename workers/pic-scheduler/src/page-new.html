@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>图片管理器</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", sans-serif;
+      background: #f5f5f5;
+      height: 100vh;
+      overflow: hidden;
+    }
+    .header {
+      background: white;
+      padding: 1rem 2rem;
+      border-bottom: 1px solid #e0e0e0;
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+    .header h1 {
+      font-size: 1.5rem;
+      color: #333;
+      margin: 0;
+    }
+    .main-container {
+      display: flex;
+      height: calc(100vh - 80px);
+    }
+    .sidebar {
+      width: 300px;
+      background: white;
+      border-right: 1px solid #e0e0e0;
+      overflow-y: auto;
+      transition: width 0.3s ease;
+    }
+    .sidebar.collapsed {
+      width: 50px;
+    }
+    .sidebar-header {
+      padding: 1rem;
+      border-bottom: 1px solid #e0e0e0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .collapse-btn {
+      background: none;
+      border: none;
+      font-size: 1.2rem;
+      cursor: pointer;
+      padding: 0.5rem;
+      border-radius: 4px;
+    }
+    .collapse-btn:hover {
+      background: #f0f0f0;
+    }
+    .folder-list {
+      padding: 0.5rem 0;
+    }
+    .folder-item {
+      margin: 0.25rem 0;
+    }
+    .folder-header {
+      display: flex;
+      align-items: center;
+      padding: 0.75rem 1rem;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .folder-header:hover {
+      background: #f8f9fa;
+    }
+    .folder-icon {
+      margin-right: 0.5rem;
+      font-size: 1rem;
+      transition: transform 0.2s;
+    }
+    .folder-item.expanded .folder-icon {
+      transform: rotate(90deg);
+    }
+    .folder-name {
+      flex: 1;
+      font-weight: 500;
+      color: #333;
+    }
+    .folder-count {
+      font-size: 0.875rem;
+      color: #666;
+      background: #e9ecef;
+      padding: 0.25rem 0.5rem;
+      border-radius: 12px;
+    }
+    .image-list {
+      display: none;
+      padding-left: 2rem;
+    }
+    .folder-item.expanded .image-list {
+      display: block;
+    }
+    .image-item {
+      padding: 0.5rem 1rem;
+      cursor: pointer;
+      transition: background 0.2s;
+      border-left: 3px solid transparent;
+    }
+    .image-item:hover {
+      background: #f8f9fa;
+    }
+    .image-item.selected {
+      background: #e3f2fd;
+      border-left-color: #2196f3;
+    }
+    .image-name {
+      font-size: 0.875rem;
+      color: #555;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .content-area {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      background: white;
+    }
+    .content-header {
+      padding: 1rem 2rem;
+      border-bottom: 1px solid #e0e0e0;
+      background: #fafafa;
+    }
+    .content-body {
+      flex: 1;
+      padding: 2rem;
+      overflow-y: auto;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .preview-container {
+      max-width: 100%;
+      max-height: 100%;
+      text-align: center;
+    }
+    .preview-image {
+      max-width: 100%;
+      max-height: calc(100vh - 200px);
+      object-fit: contain;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+    .image-info {
+      margin-top: 1rem;
+      padding: 1rem;
+      background: #f8f9fa;
+      border-radius: 8px;
+      text-align: left;
+      max-width: 600px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    .info-row {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 0.5rem;
+    }
+    .info-label {
+      font-weight: 500;
+      color: #666;
+    }
+    .info-value {
+      color: #333;
+    }
+    .empty-state {
+      text-align: center;
+      color: #999;
+      font-size: 1.1rem;
+    }
+    .loading {
+      text-align: center;
+      color: #666;
+      font-size: 1rem;
+    }
+    .sidebar.collapsed .folder-name,
+    .sidebar.collapsed .folder-count,
+    .sidebar.collapsed .image-list {
+      display: none;
+    }
+    .sidebar.collapsed .sidebar-header {
+      justify-content: center;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>📷 图片管理器</h1>
+    <div style="flex: 1;"></div>
+    <div id="stats" style="font-size: 0.875rem; color: #666;"></div>
+  </div>
+  
+  <div class="main-container">
+    <div class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <span style="font-weight: 500;">分类</span>
+        <button class="collapse-btn" onclick="toggleSidebar()">◀</button>
+      </div>
+      <div class="folder-list" id="folderList">
+        <div class="loading">加载中...</div>
+      </div>
+    </div>
+    
+    <div class="content-area">
+      <div class="content-header">
+        <div id="contentTitle">选择图片进行预览</div>
+      </div>
+      <div class="content-body" id="contentBody">
+        <div class="empty-state">
+          <div style="font-size: 3rem; margin-bottom: 1rem;">🖼️</div>
+          <div>点击左侧图片名称查看预览</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <script>
+    let categories = {};
+    let selectedImage = null;
+    
+    async function loadCategories() {
+      try {
+        const response = await fetch('/images?limit=1000');
+        const data = await response.json();
+        
+        categories = {};
+        data.images.forEach(img => {
+          if (!categories[img.category]) {
+            categories[img.category] = [];
+          }
+          categories[img.category].push(img);
+        });
+        
+        renderFolders();
+        updateStats(data.images.length);
+      } catch (e) {
+        console.error('Failed to load categories:', e);
+        document.getElementById('folderList').innerHTML = '<div style="padding: 1rem; color: #dc3545;">加载失败</div>';
+      }
+    }
+    
+    function renderFolders() {
+      const folderList = document.getElementById('folderList');
+      const html = Object.keys(categories).map(category => {
+        const images = categories[category];
+        return `
+          <div class="folder-item" data-category="${category}">
+            <div class="folder-header" onclick="toggleFolder('${category}')">
+              <span class="folder-icon">▶</span>
+              <span class="folder-name">${category}</span>
+              <span class="folder-count">${images.length}</span>
+            </div>
+            <div class="image-list">
+              ${images.map(img => `
+                <div class="image-item" onclick="selectImage('${img.image_id}', '${category}')">
+                  <div class="image-name">${img.image_id}.jpg</div>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        `;
+      }).join('');
+      
+      folderList.innerHTML = html || '<div style="padding: 1rem; color: #999;">暂无图片</div>';
+    }
+    
+    function toggleFolder(category) {
+      const folderItem = document.querySelector(`[data-category="${category}"]`);
+      folderItem.classList.toggle('expanded');
+    }
+    
+    async function selectImage(imageId, category) {
+      // 更新选中状态
+      document.querySelectorAll('.image-item').forEach(item => {
+        item.classList.remove('selected');
+      });
+      event.target.closest('.image-item').classList.add('selected');
+      
+      // 更新标题
+      document.getElementById('contentTitle').textContent = `${imageId}.jpg - ${category}`;
+      
+      // 显示加载状态
+      document.getElementById('contentBody').innerHTML = '<div class="loading">加载中...</div>';
+      
+      try {
+        // 获取图片详情
+        const response = await fetch(`/image?id=${imageId}`);
+        const imageData = await response.json();
+        
+        if (imageData.success) {
+          const img = imageData.image;
+          const imageUrl = `/image?id=${imageId}&view=true`;
+          
+          document.getElementById('contentBody').innerHTML = `
+            <div class="preview-container">
+              <img src="${imageUrl}" alt="${img.description}" class="preview-image" />
+              <div class="image-info">
+                <div class="info-row">
+                  <span class="info-label">文件名:</span>
+                  <span class="info-value">${imageId}.jpg</span>
+                </div>
+                <div class="info-row">
+                  <span class="info-label">分类:</span>
+                  <span class="info-value">${img.category}</span>
+                </div>
+                <div class="info-row">
+                  <span class="info-label">作者:</span>
+                  <span class="info-value">${img.author}</span>
+                </div>
+                <div class="info-row">
+                  <span class="info-label">描述:</span>
+                  <span class="info-value">${img.description || '无描述'}</span>
+                </div>
+                <div class="info-row">
+                  <span class="info-label">尺寸:</span>
+                  <span class="info-value">${img.width} × ${img.height}</span>
+                </div>
+                <div class="info-row">
+                  <span class="info-label">文件大小:</span>
+                  <span class="info-value">${(img.file_size / 1024 / 1024).toFixed(2)} MB</span>
+                </div>
+                <div class="info-row">
+                  <span class="info-label">下载时间:</span>
+                  <span class="info-value">${new Date(img.downloaded_at).toLocaleString('zh-CN')}</span>
+                </div>
+              </div>
+            </div>
+          `;
+        } else {
+          throw new Error(imageData.error || '获取图片失败');
+        }
+      } catch (e) {
+        console.error('Failed to load image:', e);
+        document.getElementById('contentBody').innerHTML = `
+          <div class="empty-state">
+            <div style="font-size: 3rem; margin-bottom: 1rem;">❌</div>
+            <div>加载图片失败: ${e.message}</div>
+          </div>
+        `;
+      }
+    }
+    
+    function toggleSidebar() {
+      const sidebar = document.getElementById('sidebar');
+      const btn = document.querySelector('.collapse-btn');
+      sidebar.classList.toggle('collapsed');
+      btn.textContent = sidebar.classList.contains('collapsed') ? '▶' : '◀';
+    }
+    
+    function updateStats(totalImages) {
+      document.getElementById('stats').textContent = `总计 ${totalImages} 张图片，${Object.keys(categories).length} 个分类`;
+    }
+    
+    // 初始化
+    loadCategories();
+  </script>
+</body>
+</html>

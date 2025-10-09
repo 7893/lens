@@ -1,0 +1,29 @@
+{
+  "name": "pic",
+  "version": "2.0.0",
+  "description": "AI-powered image classification system on Cloudflare Workers",
+  "main": "src/index.js",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "tail": "wrangler tail",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "keywords": [
+    "cloudflare",
+    "workers",
+    "ai",
+    "image",
+    "classification"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "vitest": "^2.1.4",
+    "wrangler": "^3.94.0"
+  },
+  "dependencies": {
+    "exifr": "^7.1.3"
+  }
+}
