@@ -12,10 +12,10 @@ export class DataPipelineWorkflow extends WorkflowEntrypoint {
       return await task.run(this.env, { page: inputPage, perPage: 30 });
     });
 
-    console.log(`Fetched ${photos.length} photos`);
+    console.log(`Fetched ${photos.length} photos, processing first 10`);
 
     const results = [];
-    for (let i = 0; i < photos.length; i++) {
+    for (let i = 0; i < Math.min(photos.length, 10); i++) {
       const photo = photos[i];
       
       const result = await step.do(`process-photo-${photo.id}`, async () => {
@@ -77,7 +77,7 @@ export class DataPipelineWorkflow extends WorkflowEntrypoint {
       successful, 
       skipped, 
       failed, 
-      total: photos.length
+      total: results.length
     };
   }
 }
