@@ -56,6 +56,9 @@ export class ClassifyWorkflow extends WorkflowEntrypoint {
             models.map(modelName => classifyTask.run(this.env, { description, modelName }))
           );
 
+          let bestCategory;
+          let confidence;
+
           const validResults = classifyResults.filter(r => r !== null);
           if (validResults.length === 0) {
             bestCategory = 'uncategorized';
