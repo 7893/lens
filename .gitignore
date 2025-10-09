@@ -2,13 +2,19 @@
 node_modules/
 package-lock.json
 
-# Wrangler
-.wrangler/
-.dev.vars
-
-# Environment
+# Environment variables
 .env
 .env.local
+.dev.vars
+
+# Wrangler
+.wrangler/
+wrangler.toml.backup
+
+# Logs
+*.log
+npm-debug.log*
+logs/
 
 # OS
 .DS_Store
@@ -19,3 +25,18 @@ Thumbs.db
 .idea/
 *.swp
 *.swo
+*~
+
+# Build
+dist/
+build/
+.cache/
+
+# Testing
+coverage/
+.nyc_output/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
