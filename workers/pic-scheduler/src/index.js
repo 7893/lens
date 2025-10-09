@@ -92,12 +92,18 @@ export default {
     console.log('Cron triggered (every 10 minutes)');
 
     try {
+      // Check if UNSPLASH_API_KEY is set
+      if (!env.UNSPLASH_API_KEY) {
+        console.error('UNSPLASH_API_KEY not set');
+        return;
+      }
+
       const analytics = new Analytics(env.AE);
       
       const enqueueTask = new EnqueuePhotosTask();
       const enqueueResult = await enqueueTask.run(env, { 
         startPage: 1, 
-        endPage: 3
+        endPage: 2
       });
 
       const [downloadInstance, classifyInstance] = await Promise.all([
