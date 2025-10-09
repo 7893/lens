@@ -88,7 +88,7 @@ export default {
     });
   },
 
-  async scheduled(event, env, _ctx) {
+  async scheduled(event, env, ctx) {
     console.log('Cron triggered (every 10 minutes)');
 
     try {
@@ -106,17 +106,20 @@ export default {
         endPage: 2
       });
 
-      const [downloadInstance, classifyInstance] = await Promise.all([
-        env.DOWNLOAD_WORKFLOW.create({ payload: {} }),
-        env.CLASSIFY_WORKFLOW.create({ payload: {} })
-      ]);
+      const downloadInstance = await env.DOWNLOAD_WORKFLOW.create({ payload: {} });
+      
+      ctx.waitUntil((async () => {
+        await new Promise(resolve => setTimeout(resolve, 30000));
+        const classifyInstance = await env.CLASSIFY_WORKFLOW.create({ payload: {} });
+        console.log(`Classify workflow started (delayed): ${classifyInstance.id}`);
+      })());
 
       await analytics.logEvent('cron', { 
         status: 'success',
         enqueued: enqueueResult.enqueued 
       });
 
-      console.log(`Enqueued ${enqueueResult.enqueued} photos, download: ${downloadInstance.id}, classify: ${classifyInstance.id}`);
+      console.log(`Enqueued ${enqueueResult.enqueued} photos, download: ${downloadInstance.id}`);
     } catch (error) {
       console.error('Failed to enqueue and start workflows:', error);
     }
