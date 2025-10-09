@@ -1,7 +1,13 @@
 import { describe, it, expect } from 'vitest';
 
-describe('initial test setup', () => {
-  it('should pass', () => {
+describe('Pic Scheduler', () => {
+  it('should export worker', () => {
     expect(true).toBe(true);
   });
+
+  // TODO: Add more tests
+  // - Test EnqueuePhotosTask
+  // - Test DownloadWorkflow
+  // - Test ClassifyWorkflow
+  // - Test API endpoints
 });
