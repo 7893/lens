@@ -1,50 +1,41 @@
--- 任务状态表
 CREATE TABLE IF NOT EXISTS JobState (
   key TEXT PRIMARY KEY,
   value INTEGER NOT NULL
 );
 
--- 初始化页码
 INSERT OR IGNORE INTO JobState (key, value) VALUES ('last_processed_page', 0);
 
--- 图片元数据表
 CREATE TABLE IF NOT EXISTS Photos (
-  -- 核心标识符
   unsplash_id TEXT PRIMARY KEY,
   r2_key TEXT NOT NULL,
   downloaded_at TEXT NOT NULL,
-
-  -- 1. Unsplash API 元数据
+  
   description TEXT,
   alt_description TEXT,
-  width INTEGER,
-  height INTEGER,
+  width INTEGER NOT NULL,
+  height INTEGER NOT NULL,
   color TEXT,
   likes INTEGER,
   photographer_name TEXT NOT NULL,
+  photographer_username TEXT NOT NULL,
   photographer_url TEXT NOT NULL,
-  unsplash_created_at TEXT,
-  tags TEXT,
-
-  -- 2. AI 分类元数据（置信度加权）
-  primary_category TEXT NOT NULL,
-  category_confidence REAL,
-  model_scores TEXT,
-
-  -- 3. EXIF 元数据
-  camera_make TEXT,
-  camera_model TEXT,
-  exposure_time TEXT,
-  f_number REAL,
-  focal_length REAL,
-  iso INTEGER,
-  taken_at TEXT,
-  gps_latitude REAL,
-  gps_longitude REAL,
-  exif_all_data TEXT
+  unsplash_created_at TEXT NOT NULL,
+  
+  ai_category TEXT NOT NULL,
+  ai_confidence REAL NOT NULL,
+  ai_model_scores TEXT NOT NULL,
+  
+  exif_make TEXT,
+  exif_model TEXT,
+  exif_exposure_time TEXT,
+  exif_f_number REAL,
+  exif_focal_length REAL,
+  exif_iso INTEGER,
+  exif_datetime TEXT,
+  exif_gps_lat REAL,
+  exif_gps_lon REAL
 );
 
--- 索引
-CREATE INDEX IF NOT EXISTS idx_category ON Photos(primary_category);
+CREATE INDEX IF NOT EXISTS idx_ai_category ON Photos(ai_category);
 CREATE INDEX IF NOT EXISTS idx_downloaded_at ON Photos(downloaded_at);
-CREATE INDEX IF NOT EXISTS idx_photographer ON Photos(photographer_name);
+CREATE INDEX IF NOT EXISTS idx_photographer ON Photos(photographer_username);
