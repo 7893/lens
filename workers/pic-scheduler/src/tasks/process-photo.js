@@ -3,50 +3,39 @@ import { ExtractExifTask } from './extract-exif.js';
 import { SaveMetadataTask } from './save-metadata.js';
 
 export class ProcessPhotoTask {
-  async run(env, { photoId, apiKey, page }) {
+  async run(env, { queueItem, apiKey }) {
+    const photoId = queueItem.unsplash_id;
+    const photoDetail = JSON.parse(queueItem.photo_data);
+    const page = queueItem.page;
+    
     const existing = await env.DB.prepare(
       'SELECT unsplash_id FROM Photos WHERE unsplash_id = ?'
     ).bind(photoId).first();
     
     if (existing) {
+      await env.DB.prepare('DELETE FROM ProcessingQueue WHERE unsplash_id=?').bind(photoId).run();
       return { success: true, skipped: true, photoId };
     }
 
-    const queue = await env.DB.prepare(
-      'SELECT * FROM ProcessingQueue WHERE unsplash_id = ?'
-    ).bind(photoId).first();
-
     const maxRetries = 3;
-    const retryCount = queue?.retry_count || 0;
+    const retryCount = queueItem.retry_count || 0;
 
     if (retryCount >= maxRetries) {
-      return { success: false, photoId, error: 'Max retries exceeded', giveUp: true };
+      await env.DB.prepare(`
+        UPDATE ProcessingQueue SET status='abandoned', updated_at=datetime('now')
+        WHERE unsplash_id=?
+      `).bind(photoId).run();
+      return { success: false, photoId, error: 'Max retries exceeded', abandoned: true };
     }
 
     const timeout = 60000;
-    let downloadSuccess = queue?.download_success || 0;
-    let aiSuccess = queue?.ai_success || 0;
-    let metadataSuccess = queue?.metadata_success || 0;
-    let photoDetail, imageBuffer, bestCategory, confidence, r2Key;
+    let downloadSuccess = queueItem.download_success || 0;
+    let aiSuccess = queueItem.ai_success || 0;
+    let metadataSuccess = queueItem.metadata_success || 0;
+    let imageBuffer, bestCategory, confidence, r2Key;
 
     try {
       if (!downloadSuccess) {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), timeout);
-
-        const detailRes = await fetch(
-          `https://api.unsplash.com/photos/${photoId}?client_id=${apiKey}`,
-          { signal: controller.signal }
-        );
-        
-        clearTimeout(timeoutId);
-
-        if (!detailRes.ok) {
-          throw new Error(`Unsplash API failed: ${detailRes.status}`);
-        }
-
-        photoDetail = await detailRes.json();
-        
         const imgController = new AbortController();
         const imgTimeoutId = setTimeout(() => imgController.abort(), timeout);
 
@@ -60,13 +49,10 @@ export class ProcessPhotoTask {
         downloadSuccess = 1;
         
         await env.DB.prepare(`
-          INSERT INTO ProcessingQueue (unsplash_id, page, status, download_success, retry_count, created_at, updated_at)
-          VALUES (?, ?, 'downloading', 1, ?, datetime('now'), datetime('now'))
-          ON CONFLICT(unsplash_id) DO UPDATE SET download_success=1, updated_at=datetime('now')
-        `).bind(photoId, page, retryCount).run();
+          UPDATE ProcessingQueue SET download_success=1, updated_at=datetime('now')
+          WHERE unsplash_id=?
+        `).bind(photoId).run();
       } else {
-        const detailRes = await fetch(`https://api.unsplash.com/photos/${photoId}?client_id=${apiKey}`);
-        photoDetail = await detailRes.json();
         const imgRes = await fetch(photoDetail.urls.raw);
         imageBuffer = await imgRes.arrayBuffer();
       }
@@ -98,6 +84,7 @@ export class ProcessPhotoTask {
           scoreMap[label] = (scoreMap[label] || 0) + score;
         });
 
+        bestCategory = 'uncategorized';
         let bestScore = 0;
         for (const [label, totalScore] of Object.entries(scoreMap)) {
           if (totalScore > bestScore) {
@@ -112,13 +99,9 @@ export class ProcessPhotoTask {
         aiSuccess = 1;
         
         await env.DB.prepare(`
-          UPDATE ProcessingQueue SET ai_success=1, status='classifying', updated_at=datetime('now')
+          UPDATE ProcessingQueue SET ai_success=1, updated_at=datetime('now')
           WHERE unsplash_id=?
         `).bind(photoId).run();
-      } else {
-        bestCategory = queue.category;
-        confidence = queue.confidence;
-        r2Key = queue.r2_key;
       }
 
       if (!metadataSuccess) {
@@ -135,11 +118,6 @@ export class ProcessPhotoTask {
         });
 
         metadataSuccess = 1;
-        
-        await env.DB.prepare(`
-          UPDATE ProcessingQueue SET metadata_success=1, db_success=1, status='completed', updated_at=datetime('now')
-          WHERE unsplash_id=?
-        `).bind(photoId).run();
       }
 
       await env.DB.prepare('DELETE FROM ProcessingQueue WHERE unsplash_id=?').bind(photoId).run();
@@ -153,14 +131,17 @@ export class ProcessPhotoTask {
 
     } catch (error) {
       await env.DB.prepare(`
-        INSERT INTO ProcessingQueue (unsplash_id, page, status, download_success, ai_success, metadata_success, retry_count, last_error, created_at, updated_at)
-        VALUES (?, ?, 'failed', ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
-        ON CONFLICT(unsplash_id) DO UPDATE SET 
-          download_success=?, ai_success=?, metadata_success=?, 
-          retry_count=retry_count+1, last_error=?, status='failed', updated_at=datetime('now')
+        UPDATE ProcessingQueue SET 
+          download_success=?, 
+          ai_success=?, 
+          metadata_success=?, 
+          retry_count=retry_count+1, 
+          last_error=?, 
+          status='failed', 
+          updated_at=datetime('now')
+        WHERE unsplash_id=?
       `).bind(
-        photoId, page, downloadSuccess, aiSuccess, metadataSuccess, retryCount + 1, error.message,
-        downloadSuccess, aiSuccess, metadataSuccess, error.message
+        downloadSuccess, aiSuccess, metadataSuccess, error.message, photoId
       ).run();
 
       console.error(`Failed to process photo ${photoId} (attempt ${retryCount + 1}):`, error.message);
