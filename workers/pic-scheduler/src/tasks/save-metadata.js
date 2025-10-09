@@ -1,11 +1,11 @@
 export class SaveMetadataTask {
   async run(env, { photoDetail, category, confidence, r2Key }) {
-    const imageSize = photoDetail.width * photoDetail.height * 3;
+    const imageSize = (photoDetail.width || 0) * (photoDetail.height || 0) * 3;
     
     await env.DB.prepare(`
       INSERT INTO Photos (
         unsplash_id, slug, r2_key, downloaded_at,
-        description, alt_description, blur_hash, width, height, color, likes,
+        description, alt_description, blur_hash, width, height, color, likes, views, downloads,
         created_at, updated_at, promoted_at,
         photographer_id, photographer_username, photographer_name, 
         photographer_bio, photographer_location, photographer_portfolio_url,
@@ -14,26 +14,28 @@ export class SaveMetadataTask {
         photo_location_latitude, photo_location_longitude,
         exif_make, exif_model, exif_name, exif_exposure_time,
         exif_aperture, exif_focal_length, exif_iso,
-        tags, ai_category, ai_confidence, ai_model_scores
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        tags, topics, ai_category, ai_confidence, ai_model_scores
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       photoDetail.id,
-      photoDetail.slug || '',
+      photoDetail.slug || null,
       r2Key,
       new Date().toISOString(),
       photoDetail.description || null,
       photoDetail.alt_description || null,
       photoDetail.blur_hash || null,
-      photoDetail.width,
-      photoDetail.height,
+      photoDetail.width || null,
+      photoDetail.height || null,
       photoDetail.color || null,
-      photoDetail.likes || 0,
-      photoDetail.created_at,
+      photoDetail.likes || null,
+      photoDetail.views || null,
+      photoDetail.downloads || null,
+      photoDetail.created_at || null,
       photoDetail.updated_at || null,
       photoDetail.promoted_at || null,
-      photoDetail.user?.id || '',
-      photoDetail.user?.username || '',
-      photoDetail.user?.name || '',
+      photoDetail.user?.id || null,
+      photoDetail.user?.username || null,
+      photoDetail.user?.name || null,
       photoDetail.user?.bio || null,
       photoDetail.user?.location || null,
       photoDetail.user?.portfolio_url || null,
@@ -52,6 +54,7 @@ export class SaveMetadataTask {
       photoDetail.exif?.focal_length || null,
       photoDetail.exif?.iso || null,
       JSON.stringify(photoDetail.tags?.map(t => t.title) || []),
+      JSON.stringify(photoDetail.topics?.map(t => t.title) || []),
       category,
       confidence,
       JSON.stringify({ [category]: confidence })
@@ -74,7 +77,7 @@ export class SaveMetadataTask {
     `).bind(category, new Date().toISOString(), new Date().toISOString()).run();
 
     const categories = await env.DB.prepare('SELECT COUNT(DISTINCT ai_category) as count FROM Photos').first();
-    await env.DB.prepare('UPDATE GlobalStats SET total_categories = ? WHERE id = 1').bind(categories.count).run();
+    await env.DB.prepare('UPDATE GlobalStats SET total_categories = ? WHERE id = 1').bind(categories.count || 0).run();
 
     return { success: true };
   }

@@ -29,6 +29,63 @@ CREATE INDEX IF NOT EXISTS idx_queue_retry ON ProcessingQueue(retry_count);
 CREATE TABLE IF NOT EXISTS Photos (
   unsplash_id TEXT PRIMARY KEY,
   slug TEXT,
+  r2_key TEXT,
+  downloaded_at TEXT,
+  
+  description TEXT,
+  alt_description TEXT,
+  blur_hash TEXT,
+  width INTEGER,
+  height INTEGER,
+  color TEXT,
+  likes INTEGER,
+  views INTEGER,
+  downloads INTEGER,
+  
+  created_at TEXT,
+  updated_at TEXT,
+  promoted_at TEXT,
+  
+  photographer_id TEXT,
+  photographer_username TEXT,
+  photographer_name TEXT,
+  photographer_bio TEXT,
+  photographer_location TEXT,
+  photographer_portfolio_url TEXT,
+  photographer_instagram TEXT,
+  photographer_twitter TEXT,
+  
+  photo_location_name TEXT,
+  photo_location_city TEXT,
+  photo_location_country TEXT,
+  photo_location_latitude REAL,
+  photo_location_longitude REAL,
+  
+  exif_make TEXT,
+  exif_model TEXT,
+  exif_name TEXT,
+  exif_exposure_time TEXT,
+  exif_aperture TEXT,
+  exif_focal_length TEXT,
+  exif_iso INTEGER,
+  
+  tags TEXT,
+  topics TEXT,
+  
+  ai_category TEXT,
+  ai_confidence REAL,
+  ai_model_scores TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_category ON Photos(ai_category);
+CREATE INDEX IF NOT EXISTS idx_downloaded_at ON Photos(downloaded_at);
+CREATE INDEX IF NOT EXISTS idx_photographer_username ON Photos(photographer_username);
+CREATE INDEX IF NOT EXISTS idx_location_country ON Photos(photo_location_country);
+CREATE INDEX IF NOT EXISTS idx_exif_make ON Photos(exif_make);
+
+CREATE TABLE IF NOT EXISTS Photos (
+  unsplash_id TEXT PRIMARY KEY,
+  slug TEXT,
   r2_key TEXT NOT NULL,
   downloaded_at TEXT NOT NULL,
   
