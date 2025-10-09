@@ -58,24 +58,25 @@ export class ClassifyWorkflow extends WorkflowEntrypoint {
 
           const validResults = classifyResults.filter(r => r !== null);
           if (validResults.length === 0) {
-            throw new Error('All AI models failed');
-          }
+            bestCategory = 'uncategorized';
+            confidence = 0.5;
+          } else {
+            const scoreMap = {};
+            validResults.forEach(({ label, score }) => {
+              scoreMap[label] = (scoreMap[label] || 0) + score;
+            });
 
-          const scoreMap = {};
-          validResults.forEach(({ label, score }) => {
-            scoreMap[label] = (scoreMap[label] || 0) + score;
-          });
-
-          let bestCategory = 'uncategorized';
-          let bestScore = 0;
-          for (const [label, totalScore] of Object.entries(scoreMap)) {
-            if (totalScore > bestScore) {
-              bestScore = totalScore;
-              bestCategory = label;
+            bestCategory = 'uncategorized';
+            let bestScore = 0;
+            for (const [label, totalScore] of Object.entries(scoreMap)) {
+              if (totalScore > bestScore) {
+                bestScore = totalScore;
+                bestCategory = label;
+              }
             }
-          }
 
-          const confidence = bestScore / models.length;
+            confidence = bestScore / models.length;
+          }
           const tempKey = `temp/${task.unsplash_id}.jpg`;
           const finalKey = `${bestCategory}/${task.unsplash_id}.jpg`;
 
