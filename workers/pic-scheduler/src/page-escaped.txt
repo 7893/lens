@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>图片下载器</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 1rem;
+    }
+    .container { 
+      max-width: 1200px; 
+      margin: 0 auto;
+    }
+    h1 { 
+      font-size: clamp(1.5rem, 5vw, 2.5rem);
+      font-weight: 600;
+      margin-bottom: 2rem;
+      color: white;
+      text-align: center;
+      text-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .card { 
+      background: white;
+      border-radius: 12px;
+      padding: clamp(1rem, 3vw, 2rem);
+      margin-bottom: 1.5rem;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+    .limit-info { 
+      font-size: clamp(0.75rem, 2vw, 0.875rem);
+      color: #666;
+      margin-bottom: 1rem;
+      padding: 0.75rem;
+      background: #f8f9fa;
+      border-radius: 8px;
+      border-left: 4px solid #667eea;
+    }
+    .limit-warning { color: #dc3545; font-weight: 600; }
+    .limit-ok { color: #28a745; font-weight: 600; }
+    .controls { 
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      margin-bottom: 1rem;
+    }
+    input { 
+      flex: 1;
+      min-width: 120px;
+      padding: 0.75rem;
+      font-size: 1rem;
+      border: 2px solid #e0e0e0;
+      border-radius: 8px;
+      transition: border-color 0.3s;
+    }
+    input:focus { 
+      outline: none;
+      border-color: #667eea;
+    }
+    button { 
+      padding: 0.75rem 1.5rem;
+      font-size: 1rem;
+      font-weight: 600;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.3s;
+      white-space: nowrap;
+    }
+    button:hover:not(:disabled) { 
+      transform: translateY(-2px);
+      box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+    }
+    button:disabled { 
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+    }
+    .btn-primary { background: #667eea; color: white; }
+    .btn-danger { background: #dc3545; color: white; }
+    .btn-warning { background: #fd7e14; color: white; }
+    .progress-section { margin-top: 1rem; }
+    .progress-item { margin-bottom: 0.75rem; }
+    .progress-label { 
+      font-size: 0.875rem;
+      color: #666;
+      margin-bottom: 0.5rem;
+      display: flex;
+      justify-content: space-between;
+    }
+    .progress-bar { 
+      height: 8px;
+      background: #e9ecef;
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    .progress-fill { 
+      height: 100%;
+      background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+      transition: width 0.3s;
+      border-radius: 4px;
+    }
+    .stats-grid { 
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+    .stat-card { 
+      background: white;
+      padding: 1.5rem;
+      border-radius: 12px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      text-align: center;
+    }
+    .stat-title { 
+      font-size: 0.75rem;
+      color: #999;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 0.5rem;
+    }
+    .stat-value { 
+      font-size: clamp(1.5rem, 4vw, 2.5rem);
+      font-weight: 700;
+      color: #667eea;
+      margin-bottom: 0.25rem;
+    }
+    .stat-sub { 
+      font-size: 0.875rem;
+      color: #666;
+    }
+    .category-item { 
+      display: flex;
+      justify-content: space-between;
+      padding: 0.75rem 0;
+      border-bottom: 1px solid #f0f0f0;
+    }
+    .category-item:last-child { border-bottom: none; }
+    .category-name { 
+      font-size: 0.875rem;
+      color: #333;
+      font-weight: 500;
+    }
+    .category-count { 
+      font-size: 0.875rem;
+      color: #667eea;
+      font-weight: 600;
+    }
+    @media (max-width: 768px) {
+      .controls { flex-direction: column; }
+      button { width: 100%; }
+      .stats-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+    @media (max-width: 480px) {
+      .stats-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>📷 图片下载器</h1>
+    
+    <div class="card">
+      <div class="limit-info">
+        <div style="margin-bottom: 0.5rem;">📊 API 限制：每小时 50 次请求 | 每页 30 张 | 最多 10 页 (300 张)</div>
+        <div id="limitStatus">检查中...</div>
+      </div>
+      
+      <div class="controls">
+        <input type="number" id="count" value="30" min="1" max="300" placeholder="下载数量">
+        <button onclick="startDownload()" id="downloadBtn" class="btn-primary">开始下载</button>
+        <button onclick="stopDownload()" id="stopBtn" class="btn-danger" style="display:none;">停止下载</button>
+        <button onclick="clearImages()" id="clearBtn" class="btn-warning">清除图片</button>
+      </div>
+      
+      <div class="progress-section" id="progressSection" style="display:none;">
+        <div class="progress-item">
+          <div class="progress-label">
+            <span>当前图片</span>
+            <span id="currentProgress">0/0</span>
+          </div>
+          <div class="progress-bar">
+            <div class="progress-fill" id="currentFill"></div>
+          </div>
+        </div>
+        <div class="progress-item">
+          <div class="progress-label">
+            <span>本批进度</span>
+            <span id="batchProgress">0/0</span>
+          </div>
+          <div class="progress-bar">
+            <div class="progress-fill" id="batchFill"></div>
+          </div>
+        </div>
+        <div class="progress-item">
+          <div class="progress-label">
+            <span>总计进度</span>
+            <span id="totalProgress">0</span>
+          </div>
+          <div class="progress-bar">
+            <div class="progress-fill" id="totalFill"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-title">总下载量</div>
+        <div class="stat-value" id="totalImages">0</div>
+        <div class="stat-sub">张图片</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-title">存储容量</div>
+        <div class="stat-value" id="totalSize">0</div>
+        <div class="stat-sub">MB</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-title">API 调用</div>
+        <div class="stat-value" id="apiCalls">0</div>
+        <div class="stat-sub" id="apiRate">成功率 0%</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-title">平均尺寸</div>
+        <div class="stat-value" id="avgResolution">0</div>
+        <div class="stat-sub">MB/张</div>
+      </div>
+    </div>
+    
+    <div class="card">
+      <div class="stat-title" style="margin-bottom: 1rem;">分类统计</div>
+      <div id="categoryList"></div>
+    </div>
+  </div>
+  
+  <script>
+    let downloading = false;
+    let progressInterval;
+    let currentApiUsage = 0;
+    let maxApiLimit = 50;
+    let currentTaskId = null;
+    
+    async function checkApiLimit() {
+      try {
+        const response = await fetch('/api-limit');
+        const data = await response.json();
+        currentApiUsage = data.used;
+        const remaining = maxApiLimit - currentApiUsage;
+        const resetTime = new Date(data.resetAt).toLocaleTimeString('zh-CN', { timeZone: 'Asia/Hong_Kong' });
+        
+        const limitStatus = document.getElementById('limitStatus');
+        const downloadBtn = document.getElementById('downloadBtn');
+        const countInput = document.getElementById('count');
+        
+        if (remaining <= 0) {
+          limitStatus.innerHTML = '<span class="limit-warning">⚠️ 已达到限制 (50/50)，重置时间: ' + resetTime + '</span>';
+          if (!downloading) downloadBtn.disabled = true;
+          countInput.disabled = true;
+        } else if (remaining <= 10) {
+          limitStatus.innerHTML = '<span class="limit-warning">⚠️ 剩余请求: ' + remaining + '/50，重置时间: ' + resetTime + '</span>';
+          countInput.max = Math.min(300, remaining * 30);
+          if (!downloading) downloadBtn.disabled = false;
+          countInput.disabled = false;
+        } else {
+          limitStatus.innerHTML = '<span class="limit-ok">✓ 剩余请求: ' + remaining + '/50，重置时间: ' + resetTime + '</span>';
+          countInput.max = 300;
+          if (!downloading) downloadBtn.disabled = false;
+          countInput.disabled = false;
+        }
+      } catch (e) {
+        console.error('Failed to check API limit:', e);
+      }
+    }
+    
+    async function startDownload() {
+      if (downloading) return;
+      const count = parseInt(document.getElementById('count').value);
+      
+      if (count < 1 || count > 300) {
+        alert('请输入 1-300 之间的数量');
+        return;
+      }
+      
+      const pagesNeeded = Math.ceil(count / 30);
+      const remaining = maxApiLimit - currentApiUsage;
+      if (pagesNeeded > remaining) {
+        alert('需要 ' + pagesNeeded + ' 次请求，但只剩余 ' + remaining + ' 次');
+        return;
+      }
+      
+      downloading = true;
+      document.getElementById('downloadBtn').disabled = true;
+      document.getElementById('stopBtn').style.display = 'inline-block';
+      document.getElementById('clearBtn').disabled = true;
+      document.getElementById('count').disabled = true;
+      document.getElementById('progressSection').style.display = 'block';
+      
+      try {
+        const response = await fetch('/download', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ count })
+        });
+        
+        const result = await response.json();
+        if (result.success) {
+          currentTaskId = result.taskId;
+          progressInterval = setInterval(updateProgress, 500);
+        } else {
+          alert('错误: ' + result.error);
+          resetUI();
+        }
+      } catch (e) {
+        alert('错误: ' + e.message);
+        resetUI();
+      }
+    }
+    
+    async function stopDownload() {
+      if (!currentTaskId) return;
+      
+      if (!confirm('确定要停止下载吗？')) {
+        return;
+      }
+      
+      document.getElementById('stopBtn').disabled = true;
+      document.getElementById('stopBtn').textContent = '停止中...';
+      
+      try {
+        await fetch('/stop?taskId=' + currentTaskId, { method: 'POST' });
+        clearInterval(progressInterval);
+        resetUI();
+        checkApiLimit();
+        loadStats();
+      } catch (e) {
+        console.error('Failed to stop:', e);
+        alert('停止失败: ' + e.message);
+        document.getElementById('stopBtn').disabled = false;
+        document.getElementById('stopBtn').textContent = '停止下载';
+      }
+    }
+    
+    async function clearImages() {
+      if (downloading) {
+        alert('请先停止下载');
+        return;
+      }
+      
+      if (!confirm('确定要清除所有图片吗？此操作不可恢复！')) {
+        return;
+      }
+      
+      document.getElementById('clearBtn').disabled = true;
+      document.getElementById('clearBtn').textContent = '清除中...';
+      
+      try {
+        const response = await fetch('/clear', { method: 'POST' });
+        const result = await response.json();
+        
+        if (result.success) {
+          alert('已清除 ' + result.deleted + ' 张图片');
+          loadStats();
+        } else {
+          alert('清除失败: ' + result.error);
+        }
+      } catch (e) {
+        alert('清除失败: ' + e.message);
+      } finally {
+        document.getElementById('clearBtn').disabled = false;
+        document.getElementById('clearBtn').textContent = '清除图片';
+      }
+    }
+    
+    function resetUI() {
+      downloading = false;
+      currentTaskId = null;
+      document.getElementById('downloadBtn').disabled = false;
+      document.getElementById('stopBtn').style.display = 'none';
+      document.getElementById('stopBtn').disabled = false;
+      document.getElementById('stopBtn').textContent = '停止下载';
+      document.getElementById('clearBtn').disabled = false;
+      document.getElementById('count').disabled = false;
+      document.getElementById('progressSection').style.display = 'none';
+    }
+    
+    async function updateProgress() {
+      if (!currentTaskId) return;
+      
+      try {
+        const response = await fetch('/progress?taskId=' + currentTaskId);
+        const data = await response.json();
+        
+        const currentPct = data.total > 0 ? (data.current / data.total * 100) : 0;
+        const batchPct = data.batchTotal > 0 ? (data.batchCurrent / data.batchTotal * 100) : 0;
+        
+        document.getElementById('currentProgress').textContent = data.current + '/' + data.total;
+        document.getElementById('currentFill').style.width = currentPct + '%';
+        
+        document.getElementById('batchProgress').textContent = data.batchCurrent + '/' + data.batchTotal;
+        document.getElementById('batchFill').style.width = batchPct + '%';
+        
+        document.getElementById('totalProgress').textContent = data.totalDownloaded + ' 张';
+        document.getElementById('totalFill').style.width = Math.min(100, (data.totalDownloaded / 100) * 100) + '%';
+        
+        if (data.current >= data.total && data.total > 0) {
+          clearInterval(progressInterval);
+          resetUI();
+          checkApiLimit();
+          loadStats();
+        }
+      } catch (e) {
+        console.error('Failed to update progress:', e);
+      }
+    }
+    
+    async function loadStats() {
+      try {
+        const response = await fetch('/stats');
+        const data = await response.json();
+        
+        document.getElementById('totalImages').textContent = data.totalImages || 0;
+        document.getElementById('totalSize').textContent = data.totalSize || '0';
+        document.getElementById('apiCalls').textContent = data.apiCalls || 0;
+        document.getElementById('apiRate').textContent = '成功率 ' + (data.successRate || '0%');
+        document.getElementById('avgResolution').textContent = data.avgResolution || '0';
+        
+        const categoryList = document.getElementById('categoryList');
+        if (data.categories && data.categories.length > 0) {
+          categoryList.innerHTML = data.categories.map(c => 
+            '<div class="category-item"><span class="category-name">' + c.category + '</span><span class="category-count">' + c.count + ' 张</span></div>'
+          ).join('');
+        } else {
+          categoryList.innerHTML = '<div class="category-item"><span class="category-name">暂无数据</span></div>';
+        }
+      } catch (e) {
+        console.error('Failed to load stats:', e);
+      }
+    }
+    
+    checkApiLimit();
+    loadStats();
+    setInterval(checkApiLimit, 5000);
+    setInterval(loadStats, 10000);
+  </script>
+</body>
+</html>

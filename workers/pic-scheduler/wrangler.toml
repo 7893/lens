@@ -1,0 +1,24 @@
+name = "pic-scheduler"
+main = "src/index.js"
+compatibility_date = "2024-10-01"
+compatibility_flags = ["nodejs_compat"]
+
+[[r2_buckets]]
+binding = "R2"
+bucket_name = "pic-r2"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "pic-d1"
+database_id = "1a110c7e-1ba4-4389-8a64-f73fd7076443"
+
+[ai]
+binding = "AI"
+
+[[workflows]]
+binding = "WORKFLOW"
+name = "pic-wf"
+class_name = "DataPipelineWorkflow"
+
+[triggers]
+crons = ["*/5 * * * *"]
