@@ -1,79 +1,79 @@
 import { WorkflowEntrypoint } from 'cloudflare:workers';
-import { FetchPhotosTask } from '../tasks/fetch-photos.js';
 import { ProcessPhotoTask } from '../tasks/process-photo.js';
 
 export class DataPipelineWorkflow extends WorkflowEntrypoint {
   async run(event, step) {
-    const inputPage = event.payload?.page || 1;
-    const inputOffset = event.payload?.offset || 0;
     const workflowId = `wf-${Date.now()}`;
     const batchSize = 10;
+    const maxRetries = 3;
     
-    const failedPhotos = await step.do('check-failed-queue', async () => {
-      const failed = await this.env.DB.prepare(
-        'SELECT unsplash_id FROM ProcessingQueue WHERE status="failed" AND retry_count < 3 ORDER BY created_at LIMIT ?'
-      ).bind(batchSize).all();
-      return failed.results || [];
+    const tasks = await step.do('dequeue-tasks', async () => {
+      const pending = await this.env.DB.prepare(`
+        SELECT * FROM ProcessingQueue 
+        WHERE status IN ('pending', 'failed') 
+        AND retry_count < ?
+        ORDER BY 
+          CASE status 
+            WHEN 'failed' THEN 0 
+            WHEN 'pending' THEN 1 
+          END,
+          created_at ASC
+        LIMIT ?
+      `).bind(maxRetries, batchSize).all();
+
+      if (pending.results.length === 0) {
+        console.log('No tasks in queue');
+        return [];
+      }
+
+      const taskIds = pending.results.map(t => t.unsplash_id);
+      
+      await this.env.DB.prepare(`
+        UPDATE ProcessingQueue 
+        SET status = 'processing', 
+            last_attempted_at = datetime('now'),
+            updated_at = datetime('now')
+        WHERE unsplash_id IN (${taskIds.map(() => '?').join(',')})
+      `).bind(...taskIds).run();
+
+      console.log(`Dequeued ${pending.results.length} tasks`);
+      return pending.results;
     });
 
-    let photosToProcess = [];
-    
-    if (failedPhotos.length > 0) {
-      console.log(`Retrying ${failedPhotos.length} failed photos`);
-      photosToProcess = failedPhotos.map(p => ({ id: p.unsplash_id }));
-    } else {
-      const photos = await step.do('fetch-photo-list', async () => {
-        const task = new FetchPhotosTask();
-        return await task.run(this.env, { page: inputPage, perPage: 30 });
-      });
-
-      console.log(`Fetched ${photos.length} photos, processing from offset ${inputOffset}`);
-      photosToProcess = photos.slice(inputOffset, inputOffset + batchSize);
+    if (tasks.length === 0) {
+      return { message: 'No tasks to process', total: 0 };
     }
 
     const results = [];
 
-    for (let i = 0; i < photosToProcess.length; i++) {
-      const photo = photosToProcess[i];
+    for (let i = 0; i < tasks.length; i++) {
+      const task = tasks[i];
       
-      const result = await step.do(`process-photo-${photo.id}`, async () => {
-        const task = new ProcessPhotoTask();
-        return await task.run(this.env, { 
-          photoId: photo.id, 
-          apiKey: this.env.UNSPLASH_API_KEY,
-          page: inputPage
+      const result = await step.do(`process-photo-${task.unsplash_id}`, async () => {
+        const processTask = new ProcessPhotoTask();
+        return await processTask.run(this.env, { 
+          queueItem: task,
+          apiKey: this.env.UNSPLASH_API_KEY
         });
       });
       
       results.push(result);
     }
 
-    await step.do('update-progress', async () => {
+    await step.do('update-stats', async () => {
       const successful = results.filter(r => r.success && !r.skipped).length;
       const skipped = results.filter(r => r.skipped).length;
-      const failed = results.filter(r => !r.success && !r.giveUp).length;
-      const gaveUp = results.filter(r => r.giveUp).length;
+      const failed = results.filter(r => !r.success).length;
       
-      let nextPage = inputPage;
-      let nextOffset = inputOffset;
-
-      if (failedPhotos.length === 0) {
-        nextOffset = inputOffset + batchSize;
-        if (nextOffset >= 30) {
-          nextPage = inputPage + 1;
-          nextOffset = 0;
-        }
-      }
-
       await this.env.DB.prepare(`
         INSERT INTO WorkflowRuns (id, page, status, photos_success, photos_failed, photos_skipped, started_at, completed_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       `).bind(
         workflowId,
-        inputPage,
+        tasks[0]?.page || 0,
         failed > 0 ? 'failed' : 'success',
         successful,
-        failed + gaveUp,
+        failed,
         skipped,
         new Date().toISOString(),
         new Date().toISOString()
@@ -98,17 +98,7 @@ export class DataPipelineWorkflow extends WorkflowEntrypoint {
         new Date().toISOString()
       ).run();
 
-      await this.env.DB.prepare(`
-        INSERT INTO State (key, value, updated_at) VALUES ('last_page', ?, ?)
-        ON CONFLICT(key) DO UPDATE SET value = ?, updated_at = ?
-      `).bind(String(nextPage), new Date().toISOString(), String(nextPage), new Date().toISOString()).run();
-
-      await this.env.DB.prepare(`
-        INSERT INTO State (key, value, updated_at) VALUES ('page_offset', ?, ?)
-        ON CONFLICT(key) DO UPDATE SET value = ?, updated_at = ?
-      `).bind(String(nextOffset), new Date().toISOString(), String(nextOffset), new Date().toISOString()).run();
-
-      console.log(`Progress: page ${inputPage} offset ${inputOffset} -> next page ${nextPage} offset ${nextOffset}`);
+      console.log(`Workflow completed: ${successful} success, ${failed} failed, ${skipped} skipped`);
     });
 
     const successful = results.filter(r => r.success && !r.skipped).length;
@@ -116,8 +106,6 @@ export class DataPipelineWorkflow extends WorkflowEntrypoint {
     const failed = results.filter(r => !r.success).length;
 
     return { 
-      page: inputPage,
-      offset: inputOffset,
       successful, 
       skipped, 
       failed, 
