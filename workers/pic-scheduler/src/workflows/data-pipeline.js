@@ -5,18 +5,22 @@ import { ProcessPhotoTask } from '../tasks/process-photo.js';
 export class DataPipelineWorkflow extends WorkflowEntrypoint {
   async run(event, step) {
     const inputPage = event.payload?.page || 1;
+    const inputOffset = event.payload?.offset || 0;
     const workflowId = `wf-${Date.now()}`;
+    const batchSize = 10;
     
     const photos = await step.do('fetch-photo-list', async () => {
       const task = new FetchPhotosTask();
       return await task.run(this.env, { page: inputPage, perPage: 30 });
     });
 
-    console.log(`Fetched ${photos.length} photos, processing first 10`);
+    console.log(`Fetched ${photos.length} photos, processing from offset ${inputOffset}`);
 
+    const photosToProcess = photos.slice(inputOffset, inputOffset + batchSize);
     const results = [];
-    for (let i = 0; i < Math.min(photos.length, 10); i++) {
-      const photo = photos[i];
+
+    for (let i = 0; i < photosToProcess.length; i++) {
+      const photo = photosToProcess[i];
       
       const result = await step.do(`process-photo-${photo.id}`, async () => {
         const task = new ProcessPhotoTask();
@@ -29,11 +33,15 @@ export class DataPipelineWorkflow extends WorkflowEntrypoint {
       results.push(result);
     }
 
-    await step.do('update-stats', async () => {
+    await step.do('update-progress', async () => {
       const successful = results.filter(r => r.success && !r.skipped).length;
       const skipped = results.filter(r => r.skipped).length;
       const failed = results.filter(r => !r.success).length;
       
+      const newOffset = inputOffset + batchSize;
+      const nextPage = newOffset >= photos.length ? inputPage + 1 : inputPage;
+      const nextOffset = newOffset >= photos.length ? 0 : newOffset;
+
       await this.env.DB.prepare(`
         INSERT INTO WorkflowRuns (id, page, status, photos_success, photos_failed, photos_skipped, started_at, completed_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -66,6 +74,18 @@ export class DataPipelineWorkflow extends WorkflowEntrypoint {
         skipped,
         new Date().toISOString()
       ).run();
+
+      await this.env.DB.prepare(`
+        INSERT INTO State (key, value, updated_at) VALUES ('last_page', ?, ?)
+        ON CONFLICT(key) DO UPDATE SET value = ?, updated_at = ?
+      `).bind(String(nextPage), new Date().toISOString(), String(nextPage), new Date().toISOString()).run();
+
+      await this.env.DB.prepare(`
+        INSERT INTO State (key, value, updated_at) VALUES ('page_offset', ?, ?)
+        ON CONFLICT(key) DO UPDATE SET value = ?, updated_at = ?
+      `).bind(String(nextOffset), new Date().toISOString(), String(nextOffset), new Date().toISOString()).run();
+
+      console.log(`Progress: page ${inputPage} offset ${inputOffset} -> next page ${nextPage} offset ${nextOffset}`);
     });
 
     const successful = results.filter(r => r.success && !r.skipped).length;
@@ -73,7 +93,8 @@ export class DataPipelineWorkflow extends WorkflowEntrypoint {
     const failed = results.filter(r => !r.success).length;
 
     return { 
-      page: inputPage, 
+      page: inputPage,
+      offset: inputOffset,
       successful, 
       skipped, 
       failed, 
