@@ -15,7 +15,7 @@ export class DataPipelineWorkflow extends WorkflowEntrypoint {
     console.log(`Fetched ${photos.length} photos`);
 
     const results = [];
-    for (let i = 0; i < Math.min(photos.length, 2); i++) {
+    for (let i = 0; i < photos.length; i++) {
       const photo = photos[i];
       
       const result = await step.do(`process-photo-${photo.id}`, async () => {
