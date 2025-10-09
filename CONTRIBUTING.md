@@ -1,62 +1,64 @@
-# Contributing to Pic
+# 贡献指南
 
-Thank you for your interest in contributing to Pic! This document provides guidelines for contributing to the project.
+感谢你对 Pic 项目的关注！本文档提供了贡献项目的指南。
 
-## Getting Started
+## 开始
 
-1. Fork the repository
-2. Clone your fork: `git clone <your-fork-url>`
-3. Create a feature branch: `git checkout -b feature/your-feature-name`
-4. Make your changes
-5. Test your changes: `npm test`
-6. Commit your changes: `git commit -m "Add your feature"`
-7. Push to your fork: `git push origin feature/your-feature-name`
-8. Open a Pull Request
+1. Fork 本仓库
+2. 克隆你的 fork：`git clone <your-fork-url>`
+3. 创建功能分支：`git checkout -b feature/your-feature-name`
+4. 进行修改
+5. 测试你的修改：`npm test`
+6. 提交修改：`git commit -m "Add your feature"`
+7. 推送到你的 fork：`git push origin feature/your-feature-name`
+8. 打开 Pull Request
 
-## Development Setup
+## 开发环境设置
 
 ```bash
-# Install dependencies
+# 安装依赖
 npm install
 
-# Set up environment variables
+# 设置环境变量
 cp workers/pic-scheduler/.env.example workers/pic-scheduler/.env
 
-# Start development server
+# 启动开发服务器
 npm run dev:scheduler
 ```
 
-## Code Style
+## 代码规范
 
-- Use ES6+ syntax
-- Follow existing code formatting
-- Add comments for complex logic
-- Keep functions small and focused
+- 使用 ES6+ 语法
+- 遵循现有代码格式
+- 为复杂逻辑添加注释（英文）
+- 保持函数简洁专注
+- 代码和注释使用英文
 
-## Testing
+## 测试
 
-Before submitting a PR, ensure:
+提交 PR 前，请确保：
 
-- All tests pass: `npm test`
-- System test passes: `./scripts/test.sh`
-- No console errors in development
+- 所有测试通过：`npm test`
+- 系统测试通过：`./scripts/test.sh`
+- 开发环境无控制台错误
 
-## Pull Request Guidelines
+## Pull Request 指南
 
-- Keep PRs focused on a single feature or fix
-- Update documentation if needed
-- Add tests for new features
-- Ensure CI passes
+- 保持 PR 专注于单一功能或修复
+- 如需要，更新文档
+- 为新功能添加测试
+- 确保 CI 通过
+- 提交信息使用英文
 
-## Reporting Issues
+## 报告问题
 
-When reporting issues, please include:
+报告问题时，请包含：
 
-- Clear description of the problem
-- Steps to reproduce
-- Expected vs actual behavior
-- Environment details (Node version, OS, etc.)
+- 问题的清晰描述
+- 重现步骤
+- 预期行为 vs 实际行为
+- 环境详情（Node 版本、操作系统等）
 
-## Questions?
+## 有疑问？
 
-Feel free to open an issue for any questions or discussions.
+欢迎随时开 issue 进行讨论。
