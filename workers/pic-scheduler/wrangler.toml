@@ -3,6 +3,9 @@ main = "src/index.js"
 compatibility_date = "2024-10-01"
 compatibility_flags = ["nodejs_compat"]
 
+[vars]
+UNSPLASH_API_KEY = "cOFy_Ns2w3NvuU-O5PfVHIcfg0T7UhYDguppnv7qW_I"
+
 [[r2_buckets]]
 binding = "R2"
 bucket_name = "pic-r2"
