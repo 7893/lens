@@ -1,0 +1,35 @@
+{
+  "name": "pic",
+  "version": "1.0.0",
+  "description": "完全基于 Cloudflare Serverless 生态的图片采集、处理和展示系统",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.19.0",
+    "npm": ">=11.6.1"
+  },
+  "workspaces": [
+    "workers/pic-scheduler",
+    "workers/pic-frontend"
+  ],
+  "scripts": {
+    "dev:scheduler": "npm run dev --workspace=pic-scheduler",
+    "dev:frontend": "npm run dev --workspace=pic-frontend",
+    "deploy:scheduler": "npx wrangler deploy --config workers/pic-scheduler/wrangler.toml",
+    "deploy:frontend": "npx wrangler deploy --config workers/pic-frontend/wrangler.toml",
+    "deploy:all": "npm run deploy:scheduler && npm run deploy:frontend"
+  },
+  "keywords": [
+    "cloudflare",
+    "workers",
+    "serverless",
+    "ai",
+    "image",
+    "unsplash"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "wrangler": "4.42.1"
+  }
+}
