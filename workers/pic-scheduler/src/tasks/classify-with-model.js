@@ -7,7 +7,7 @@ Description: "${description}"
 Return a single-word or hyphenated category (lowercase) with confidence score 0-1.`;
 
     const maxRetries = 2;
-    const timeout = 15000;
+    const timeout = 60000;
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
