@@ -45,10 +45,8 @@ export class ClassifyWorkflow extends WorkflowEntrypoint {
       const result = await step.do(`classify-${task.unsplash_id}`, async () => {
         try {
           const models = [
-            '@cf/meta/llama-3-8b-instruct',
-            '@cf/meta/llama-3.1-8b-instruct-fp8',
-            '@cf/mistral/mistral-7b-instruct-v0.1',
-            '@cf/meta/llama-3.2-3b-instruct'
+            '@cf/meta/llama-3.2-3b-instruct',
+            '@cf/mistral/mistral-7b-instruct-v0.1'
           ];
 
           const classifyTask = new ClassifyWithModelTask();
