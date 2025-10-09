@@ -6,11 +6,12 @@ import { StatsUpdater } from '../services/stats-updater.js';
 export class DataPipelineWorkflow extends WorkflowEntrypoint {
   async run(event, step) {
     const { page } = event.payload;
+    const workflowId = event.id;
     const stats = new StatsUpdater(this.env.DB);
     const startTime = Date.now();
     
-    const runId = await step.do('record-start', async () => {
-      return await stats.recordWorkflowStart(event.id, page);
+    await step.do('record-start', async () => {
+      await stats.recordWorkflowStart(workflowId, page);
     });
     
     const photos = await step.do('fetch-photos', async () => {
@@ -140,7 +141,7 @@ export class DataPipelineWorkflow extends WorkflowEntrypoint {
 
     await step.do('record-complete', async () => {
       const duration = Date.now() - startTime;
-      await stats.recordWorkflowComplete(runId, {
+      await stats.recordWorkflowComplete(workflowId, {
         total: photos.length,
         successful,
         failed,

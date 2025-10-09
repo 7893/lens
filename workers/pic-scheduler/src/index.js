@@ -44,10 +44,10 @@ export default {
     console.log('Cron triggered at:', new Date().toISOString());
 
     const state = await env.DB.prepare(
-      'SELECT value FROM JobState WHERE key = ?'
+      'SELECT value FROM RuntimeState WHERE key = ?'
     ).bind('last_processed_page').first();
 
-    const currentPage = state?.value || 0;
+    const currentPage = state?.value ? parseInt(state.value) : 0;
     const nextPage = currentPage + 1;
 
     try {
@@ -55,9 +55,11 @@ export default {
         params: { page: nextPage }
       });
 
-      await env.DB.prepare(
-        'UPDATE JobState SET value = ? WHERE key = ?'
-      ).bind(nextPage, 'last_processed_page').run();
+      await env.DB.prepare(`
+        INSERT INTO RuntimeState (key, value, value_type, updated_at)
+        VALUES ('last_processed_page', ?, 'integer', ?)
+        ON CONFLICT(key) DO UPDATE SET value = ?, updated_at = ?
+      `).bind(String(nextPage), new Date().toISOString(), String(nextPage), new Date().toISOString()).run();
 
       console.log(`Workflow started for page ${nextPage}, ID: ${instance.id}`);
     } catch (error) {
