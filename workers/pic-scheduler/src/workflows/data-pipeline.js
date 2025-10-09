@@ -1,7 +1,6 @@
 import { WorkflowEntrypoint } from 'cloudflare:workers';
 import { UnsplashService } from '../services/unsplash.js';
 import { AIClassifier } from '../services/ai-classifier.js';
-import { ExifParser } from '../services/exif-parser.js';
 
 export class DataPipelineWorkflow extends WorkflowEntrypoint {
   async run(event, step) {
@@ -28,23 +27,26 @@ export class DataPipelineWorkflow extends WorkflowEntrypoint {
 
         try {
           const unsplash = new UnsplashService(this.env.UNSPLASH_API_KEY);
-          await unsplash.triggerDownload(photo.links.download_location);
+          
+          const detailResponse = await fetch(
+            `https://api.unsplash.com/photos/${photo.id}?client_id=${this.env.UNSPLASH_API_KEY}`
+          );
+          const photoDetail = await detailResponse.json();
+          
+          await unsplash.triggerDownload(photoDetail.links.download_location);
 
-          const imageUrl = unsplash.getRawImageUrl(photo);
+          const imageUrl = photoDetail.urls.raw;
           const imageResponse = await fetch(imageUrl);
           if (!imageResponse.ok) throw new Error('Image download failed');
           
           const imageBuffer = await imageResponse.arrayBuffer();
 
-          const [aiResult, exifResult] = await Promise.all([
-            new AIClassifier(this.env.AI).classifyImage(
-              photo.alt_description || photo.description || 'No description'
-            ),
-            new ExifParser().parse(imageBuffer)
-          ]);
+          const aiResult = await new AIClassifier(this.env.AI).classifyImage(
+            photoDetail.alt_description || photoDetail.description || 'No description'
+          );
 
           const category = aiResult.category;
-          const r2Key = `${category}/${photo.id}.jpg`;
+          const r2Key = `${category}/${photoDetail.id}.jpg`;
 
           await this.env.R2.put(r2Key, imageBuffer, {
             httpMetadata: { contentType: 'image/jpeg' }
@@ -52,25 +54,61 @@ export class DataPipelineWorkflow extends WorkflowEntrypoint {
 
           await this.env.DB.prepare(`
             INSERT INTO Photos (
-              unsplash_id, r2_key, downloaded_at,
-              description, alt_description, width, height, color, likes,
-              photographer_name, photographer_username, photographer_url, unsplash_created_at,
-              ai_category, ai_confidence, ai_model_scores,
-              exif_make, exif_model, exif_exposure_time, exif_f_number, 
-              exif_focal_length, exif_iso, exif_datetime, exif_gps_lat, exif_gps_lon
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              unsplash_id, slug, r2_key, downloaded_at,
+              description, alt_description, blur_hash, width, height, color, likes,
+              created_at, updated_at, promoted_at,
+              photographer_id, photographer_username, photographer_name, 
+              photographer_bio, photographer_location, photographer_portfolio_url,
+              photographer_instagram, photographer_twitter,
+              photo_location_name, photo_location_city, photo_location_country,
+              photo_location_latitude, photo_location_longitude,
+              exif_make, exif_model, exif_name, exif_exposure_time,
+              exif_aperture, exif_focal_length, exif_iso,
+              tags,
+              ai_category, ai_confidence, ai_model_scores
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `).bind(
-            photo.id, r2Key, new Date().toISOString(),
-            photo.description, photo.alt_description, photo.width, photo.height,
-            photo.color, photo.likes, photo.user.name, photo.user.username,
-            photo.user.links.html, photo.created_at,
-            category, aiResult.confidence, JSON.stringify(aiResult.scores),
-            exifResult.camera_make, exifResult.camera_model, exifResult.exposure_time,
-            exifResult.f_number, exifResult.focal_length, exifResult.iso,
-            exifResult.taken_at, exifResult.gps_latitude, exifResult.gps_longitude
+            photoDetail.id,
+            photoDetail.slug,
+            r2Key,
+            new Date().toISOString(),
+            photoDetail.description,
+            photoDetail.alt_description,
+            photoDetail.blur_hash,
+            photoDetail.width,
+            photoDetail.height,
+            photoDetail.color,
+            photoDetail.likes,
+            photoDetail.created_at,
+            photoDetail.updated_at,
+            photoDetail.promoted_at,
+            photoDetail.user.id,
+            photoDetail.user.username,
+            photoDetail.user.name,
+            photoDetail.user.bio,
+            photoDetail.user.location,
+            photoDetail.user.portfolio_url,
+            photoDetail.user.instagram_username,
+            photoDetail.user.twitter_username,
+            photoDetail.location?.name,
+            photoDetail.location?.city,
+            photoDetail.location?.country,
+            photoDetail.location?.position?.latitude,
+            photoDetail.location?.position?.longitude,
+            photoDetail.exif?.make,
+            photoDetail.exif?.model,
+            photoDetail.exif?.name,
+            photoDetail.exif?.exposure_time,
+            photoDetail.exif?.aperture,
+            photoDetail.exif?.focal_length,
+            photoDetail.exif?.iso,
+            JSON.stringify(photoDetail.tags?.map(t => t.title) || []),
+            category,
+            aiResult.confidence,
+            JSON.stringify(aiResult.scores)
           ).run();
 
-          return { success: true, id: photo.id, category };
+          return { success: true, id: photoDetail.id, category };
         } catch (error) {
           return { success: false, id: photo.id, error: error.message };
         }

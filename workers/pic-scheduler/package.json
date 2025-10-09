@@ -22,8 +22,5 @@
   "devDependencies": {
     "vitest": "^2.1.4",
     "wrangler": "^3.94.0"
-  },
-  "dependencies": {
-    "exifr": "^7.1.3"
   }
 }
