@@ -15,42 +15,38 @@ export default {
     }
 
     if (url.pathname === '/api/stats') {
-      const [total, categories, queueStats] = await Promise.all([
+      const [total, categories, queueStats, cursor] = await Promise.all([
         env.DB.prepare('SELECT COUNT(*) as total FROM Photos').first(),
         env.DB.prepare('SELECT ai_category, COUNT(*) as count FROM Photos GROUP BY ai_category ORDER BY count DESC').all(),
-        env.DB.prepare('SELECT status, COUNT(*) as count FROM ProcessingQueue GROUP BY status').all()
+        env.DB.prepare('SELECT status, COUNT(*) as count FROM ProcessingQueue GROUP BY status').all(),
+        env.DB.prepare('SELECT key, value FROM State WHERE key IN ("last_cursor_time", "last_cursor_id")').all()
       ]);
 
       return Response.json({
         total: total?.total || 0,
         categories: categories.results || [],
-        queue: queueStats.results || []
+        queue: queueStats.results || [],
+        cursor: cursor.results || []
       });
     }
 
     if (url.pathname === '/api/trigger' && request.method === 'POST') {
-      const pageState = await env.DB.prepare('SELECT value FROM State WHERE key = ?').bind('last_page').first();
-      const currentPage = pageState?.value ? parseInt(pageState.value) : 1;
-
       try {
         const enqueueTask = new EnqueuePhotosTask();
-        const enqueueResult = await enqueueTask.run(env, { page: currentPage });
-
-        if (enqueueResult.enqueued > 0) {
-          await env.DB.prepare(`
-            INSERT INTO State (key, value, updated_at) VALUES ('last_page', ?, ?)
-            ON CONFLICT(key) DO UPDATE SET value = ?, updated_at = ?
-          `).bind(String(currentPage + 1), new Date().toISOString(), String(currentPage + 1), new Date().toISOString()).run();
-        }
+        const enqueueResult = await enqueueTask.run(env, { 
+          startPage: 1, 
+          endPage: 3
+        });
 
         const instance = await env.WORKFLOW.create({ payload: {} });
 
         return Response.json({
           success: true,
           workflowId: instance.id,
-          page: currentPage,
           enqueued: enqueueResult.enqueued,
           skipped: enqueueResult.skipped,
+          pages: enqueueResult.pages,
+          cursor: enqueueResult.cursor,
           message: 'Photos enqueued and workflow triggered'
         });
       } catch (error) {
@@ -74,23 +70,16 @@ export default {
   async scheduled(event, env, ctx) {
     console.log('Cron triggered');
 
-    const pageState = await env.DB.prepare('SELECT value FROM State WHERE key = ?').bind('last_page').first();
-    const currentPage = pageState?.value ? parseInt(pageState.value) : 1;
-
     try {
       const enqueueTask = new EnqueuePhotosTask();
-      const enqueueResult = await enqueueTask.run(env, { page: currentPage });
-
-      if (enqueueResult.enqueued > 0) {
-        await env.DB.prepare(`
-          INSERT INTO State (key, value, updated_at) VALUES ('last_page', ?, ?)
-          ON CONFLICT(key) DO UPDATE SET value = ?, updated_at = ?
-        `).bind(String(currentPage + 1), new Date().toISOString(), String(currentPage + 1), new Date().toISOString()).run();
-      }
+      const enqueueResult = await enqueueTask.run(env, { 
+        startPage: 1, 
+        endPage: 3
+      });
 
       const instance = await env.WORKFLOW.create({ payload: {} });
 
-      console.log(`Enqueued ${enqueueResult.enqueued} photos from page ${currentPage}, workflow ID: ${instance.id}`);
+      console.log(`Enqueued ${enqueueResult.enqueued} photos (${enqueueResult.pages} pages), cursor: ${enqueueResult.cursor}, workflow ID: ${instance.id}`);
     } catch (error) {
       console.error('Failed to enqueue and start workflow:', error);
     }
