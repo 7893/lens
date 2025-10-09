@@ -102,6 +102,37 @@ export class ProcessPhotoTask {
           UPDATE ProcessingQueue SET ai_success=1, updated_at=datetime('now')
           WHERE unsplash_id=?
         `).bind(photoId).run();
+      } else {
+        const description = photoDetail.alt_description || photoDetail.description || 'No description';
+        const classifyTask = new ClassifyWithModelTask();
+        const models = [
+          '@cf/meta/llama-3-8b-instruct',
+          '@cf/meta/llama-3.1-8b-instruct-fp8',
+          '@cf/mistral/mistral-7b-instruct-v0.1',
+          '@cf/meta/llama-3.2-3b-instruct'
+        ];
+        
+        const classifyResults = await Promise.all(
+          models.map(modelName => classifyTask.run(env, { description, modelName }))
+        );
+
+        const validResults = classifyResults.filter(r => r !== null);
+        const scoreMap = {};
+        validResults.forEach(({ label, score }) => {
+          scoreMap[label] = (scoreMap[label] || 0) + score;
+        });
+
+        bestCategory = 'uncategorized';
+        let bestScore = 0;
+        for (const [label, totalScore] of Object.entries(scoreMap)) {
+          if (totalScore > bestScore) {
+            bestScore = totalScore;
+            bestCategory = label;
+          }
+        }
+
+        confidence = bestScore / models.length;
+        r2Key = `${bestCategory}/${photoDetail.id}.jpg`;
       }
 
       if (!metadataSuccess) {
