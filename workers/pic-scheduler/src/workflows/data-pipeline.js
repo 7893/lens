@@ -9,14 +9,28 @@ export class DataPipelineWorkflow extends WorkflowEntrypoint {
     const workflowId = `wf-${Date.now()}`;
     const batchSize = 10;
     
-    const photos = await step.do('fetch-photo-list', async () => {
-      const task = new FetchPhotosTask();
-      return await task.run(this.env, { page: inputPage, perPage: 30 });
+    const failedPhotos = await step.do('check-failed-queue', async () => {
+      const failed = await this.env.DB.prepare(
+        'SELECT unsplash_id FROM ProcessingQueue WHERE status="failed" AND retry_count < 3 ORDER BY created_at LIMIT ?'
+      ).bind(batchSize).all();
+      return failed.results || [];
     });
 
-    console.log(`Fetched ${photos.length} photos, processing from offset ${inputOffset}`);
+    let photosToProcess = [];
+    
+    if (failedPhotos.length > 0) {
+      console.log(`Retrying ${failedPhotos.length} failed photos`);
+      photosToProcess = failedPhotos.map(p => ({ id: p.unsplash_id }));
+    } else {
+      const photos = await step.do('fetch-photo-list', async () => {
+        const task = new FetchPhotosTask();
+        return await task.run(this.env, { page: inputPage, perPage: 30 });
+      });
 
-    const photosToProcess = photos.slice(inputOffset, inputOffset + batchSize);
+      console.log(`Fetched ${photos.length} photos, processing from offset ${inputOffset}`);
+      photosToProcess = photos.slice(inputOffset, inputOffset + batchSize);
+    }
+
     const results = [];
 
     for (let i = 0; i < photosToProcess.length; i++) {
@@ -26,7 +40,8 @@ export class DataPipelineWorkflow extends WorkflowEntrypoint {
         const task = new ProcessPhotoTask();
         return await task.run(this.env, { 
           photoId: photo.id, 
-          apiKey: this.env.UNSPLASH_API_KEY 
+          apiKey: this.env.UNSPLASH_API_KEY,
+          page: inputPage
         });
       });
       
@@ -36,11 +51,19 @@ export class DataPipelineWorkflow extends WorkflowEntrypoint {
     await step.do('update-progress', async () => {
       const successful = results.filter(r => r.success && !r.skipped).length;
       const skipped = results.filter(r => r.skipped).length;
-      const failed = results.filter(r => !r.success).length;
+      const failed = results.filter(r => !r.success && !r.giveUp).length;
+      const gaveUp = results.filter(r => r.giveUp).length;
       
-      const newOffset = inputOffset + batchSize;
-      const nextPage = newOffset >= photos.length ? inputPage + 1 : inputPage;
-      const nextOffset = newOffset >= photos.length ? 0 : newOffset;
+      let nextPage = inputPage;
+      let nextOffset = inputOffset;
+
+      if (failedPhotos.length === 0) {
+        nextOffset = inputOffset + batchSize;
+        if (nextOffset >= 30) {
+          nextPage = inputPage + 1;
+          nextOffset = 0;
+        }
+      }
 
       await this.env.DB.prepare(`
         INSERT INTO WorkflowRuns (id, page, status, photos_success, photos_failed, photos_skipped, started_at, completed_at)
@@ -50,7 +73,7 @@ export class DataPipelineWorkflow extends WorkflowEntrypoint {
         inputPage,
         failed > 0 ? 'failed' : 'success',
         successful,
-        failed,
+        failed + gaveUp,
         skipped,
         new Date().toISOString(),
         new Date().toISOString()
