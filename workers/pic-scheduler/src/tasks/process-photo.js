@@ -59,10 +59,8 @@ export class ProcessPhotoTask {
 
       if (!aiSuccess) {
         const models = [
-          '@cf/meta/llama-3-8b-instruct',
-          '@cf/meta/llama-3.1-8b-instruct-fp8',
-          '@cf/mistral/mistral-7b-instruct-v0.1',
-          '@cf/meta/llama-3.2-3b-instruct'
+          '@cf/meta/llama-3.2-3b-instruct',
+          '@cf/mistral/mistral-7b-instruct-v0.1'
         ];
 
         const classifyTask = new ClassifyWithModelTask();
@@ -106,10 +104,8 @@ export class ProcessPhotoTask {
         const description = photoDetail.alt_description || photoDetail.description || 'No description';
         const classifyTask = new ClassifyWithModelTask();
         const models = [
-          '@cf/meta/llama-3-8b-instruct',
-          '@cf/meta/llama-3.1-8b-instruct-fp8',
-          '@cf/mistral/mistral-7b-instruct-v0.1',
-          '@cf/meta/llama-3.2-3b-instruct'
+          '@cf/meta/llama-3.2-3b-instruct',
+          '@cf/mistral/mistral-7b-instruct-v0.1'
         ];
         
         const classifyResults = await Promise.all(
