@@ -33,4 +33,4 @@ name = "pic-classify-wf"
 class_name = "ClassifyWorkflow"
 
 [triggers]
-crons = ["*/10 * * * *"]
+crons = ["*/15 * * * *"]
