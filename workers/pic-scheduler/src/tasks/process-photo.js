@@ -13,7 +13,7 @@ export class ProcessPhotoTask {
     }
 
     const maxRetries = 2;
-    const timeout = 30000;
+    const timeout = 60000;
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
