@@ -10,10 +10,15 @@ export class ClassifyWorkflow extends WorkflowEntrypoint {
     const tasks = await step.do('dequeue-classify-tasks', async () => {
       const downloaded = await this.env.DB.prepare(`
         SELECT * FROM ProcessingQueue 
-        WHERE status = 'downloaded' 
-        AND download_success = 1
+        WHERE (status = 'downloaded' OR (status = 'failed' AND download_success = 1))
         AND ai_success = 0
-        ORDER BY created_at ASC
+        AND retry_count < 3
+        ORDER BY 
+          CASE status 
+            WHEN 'failed' THEN 0 
+            WHEN 'downloaded' THEN 1 
+          END,
+          created_at ASC
         LIMIT ?
       `).bind(batchSize).all();
 
