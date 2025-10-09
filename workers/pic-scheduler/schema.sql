@@ -1,9 +1,10 @@
-CREATE TABLE IF NOT EXISTS JobState (
+CREATE TABLE IF NOT EXISTS State (
   key TEXT PRIMARY KEY,
-  value INTEGER NOT NULL
+  value TEXT NOT NULL,
+  updated_at TEXT NOT NULL
 );
 
-INSERT OR IGNORE INTO JobState (key, value) VALUES ('last_processed_page', 0);
+INSERT OR IGNORE INTO State (key, value, updated_at) VALUES ('last_page', '0', datetime('now'));
 
 CREATE TABLE IF NOT EXISTS Photos (
   unsplash_id TEXT PRIMARY KEY,
@@ -58,3 +59,47 @@ CREATE INDEX IF NOT EXISTS idx_downloaded_at ON Photos(downloaded_at);
 CREATE INDEX IF NOT EXISTS idx_photographer_username ON Photos(photographer_username);
 CREATE INDEX IF NOT EXISTS idx_location_country ON Photos(photo_location_country);
 CREATE INDEX IF NOT EXISTS idx_exif_make ON Photos(exif_make);
+
+CREATE TABLE IF NOT EXISTS GlobalStats (
+  id INTEGER PRIMARY KEY DEFAULT 1,
+  total_photos INTEGER DEFAULT 0,
+  total_storage_bytes INTEGER DEFAULT 0,
+  total_categories INTEGER DEFAULT 0,
+  total_workflows INTEGER DEFAULT 0,
+  successful_workflows INTEGER DEFAULT 0,
+  failed_workflows INTEGER DEFAULT 0,
+  total_downloads INTEGER DEFAULT 0,
+  successful_downloads INTEGER DEFAULT 0,
+  skipped_downloads INTEGER DEFAULT 0,
+  updated_at TEXT NOT NULL
+);
+
+INSERT OR IGNORE INTO GlobalStats (id, updated_at) VALUES (1, datetime('now'));
+
+CREATE TABLE IF NOT EXISTS CategoryStats (
+  category TEXT PRIMARY KEY,
+  photo_count INTEGER DEFAULT 0,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS WorkflowRuns (
+  id TEXT PRIMARY KEY,
+  page INTEGER NOT NULL,
+  status TEXT NOT NULL,
+  photos_success INTEGER DEFAULT 0,
+  photos_failed INTEGER DEFAULT 0,
+  photos_skipped INTEGER DEFAULT 0,
+  started_at TEXT NOT NULL,
+  completed_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS ApiQuota (
+  api_name TEXT PRIMARY KEY,
+  calls_used INTEGER DEFAULT 0,
+  quota_limit INTEGER NOT NULL,
+  next_reset_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+INSERT OR IGNORE INTO ApiQuota (api_name, quota_limit, next_reset_at, updated_at) 
+VALUES ('unsplash', 50, datetime('now', '+1 hour'), datetime('now'));

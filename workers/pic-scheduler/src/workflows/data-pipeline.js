@@ -4,26 +4,20 @@ import { ProcessPhotoTask } from '../tasks/process-photo.js';
 
 export class DataPipelineWorkflow extends WorkflowEntrypoint {
   async run(event, step) {
-    const page = event.payload?.page || 1;
-    const workflowId = event.id;
+    const inputPage = event.payload?.page || 1;
+    const workflowId = `wf-${Date.now()}`;
     
-    // Step 1: Fetch photo list (1 call)
     const photos = await step.do('fetch-photo-list', async () => {
       const task = new FetchPhotosTask();
-      return await task.run(this.env, { page, perPage: 30 });
+      return await task.run(this.env, { page: inputPage, perPage: 30 });
     });
 
     console.log(`Fetched ${photos.length} photos`);
 
-    // Step 2: Process each photo in parallel (30 calls)
     const results = [];
-    for (let i = 0; i < Math.min(photos.length, 2); i++) {  // 先测试2张
+    for (let i = 0; i < Math.min(photos.length, 2); i++) {
       const photo = photos[i];
       
-      // Each process-single-photo will internally:
-      // - Call classify-with-model 4 times (4 models)
-      // - Call extract-exif-data 1 time
-      // - Call save-metadata-to-d1 1 time
       const result = await step.do(`process-photo-${photo.id}`, async () => {
         const task = new ProcessPhotoTask();
         return await task.run(this.env, { 
@@ -35,34 +29,41 @@ export class DataPipelineWorkflow extends WorkflowEntrypoint {
       results.push(result);
     }
 
-    // Step 3: Record workflow completion
-    await step.do('record-completion', async () => {
+    await step.do('update-stats', async () => {
       const successful = results.filter(r => r.success && !r.skipped).length;
       const skipped = results.filter(r => r.skipped).length;
       const failed = results.filter(r => !r.success).length;
       
-      // Record to Events table
-      const eventId = `wf-${Date.now()}`;
-      await this.env.DB.prepare(
-        'INSERT INTO Events (id, event_type, event_data, status, created_at, completed_at) VALUES (?, ?, ?, ?, ?, ?)'
-      ).bind(
-        eventId,
-        'workflow',
-        JSON.stringify({ page, successful, skipped, failed }),
+      await this.env.DB.prepare(`
+        INSERT INTO WorkflowRuns (id, page, status, photos_success, photos_failed, photos_skipped, started_at, completed_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `).bind(
+        workflowId,
+        inputPage,
         failed > 0 ? 'failed' : 'success',
+        successful,
+        failed,
+        skipped,
         new Date().toISOString(),
         new Date().toISOString()
       ).run();
-      
-      // Update metrics
-      await this.env.DB.prepare(
-        'INSERT INTO Metrics (metric_key, metric_value, dimension, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(metric_key) DO UPDATE SET metric_value = CAST(CAST(metric_value AS INTEGER) + ? AS TEXT), updated_at = ?'
-      ).bind(
-        'workflows.total',
-        '1',
-        'global',
-        new Date().toISOString(),
-        1,
+
+      await this.env.DB.prepare(`
+        UPDATE GlobalStats SET 
+          total_workflows = total_workflows + 1,
+          successful_workflows = successful_workflows + ?,
+          failed_workflows = failed_workflows + ?,
+          total_downloads = total_downloads + ?,
+          successful_downloads = successful_downloads + ?,
+          skipped_downloads = skipped_downloads + ?,
+          updated_at = ?
+        WHERE id = 1
+      `).bind(
+        failed > 0 ? 0 : 1,
+        failed > 0 ? 1 : 0,
+        results.length,
+        successful,
+        skipped,
         new Date().toISOString()
       ).run();
     });
@@ -72,12 +73,11 @@ export class DataPipelineWorkflow extends WorkflowEntrypoint {
     const failed = results.filter(r => !r.success).length;
 
     return { 
-      page, 
+      page: inputPage, 
       successful, 
       skipped, 
       failed, 
-      total: photos.length,
-      summary: `Processed ${successful}/${photos.length} photos successfully`
+      total: photos.length
     };
   }
 }

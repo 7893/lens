@@ -1,5 +1,7 @@
 export class SaveMetadataTask {
   async run(env, { photoDetail, category, confidence, r2Key }) {
+    const imageSize = photoDetail.width * photoDetail.height * 3;
+    
     await env.DB.prepare(`
       INSERT INTO Photos (
         unsplash_id, slug, r2_key, downloaded_at,
@@ -54,6 +56,25 @@ export class SaveMetadataTask {
       confidence,
       JSON.stringify({ [category]: confidence })
     ).run();
+
+    await env.DB.prepare(`
+      UPDATE GlobalStats SET 
+        total_photos = total_photos + 1,
+        total_storage_bytes = total_storage_bytes + ?,
+        updated_at = ?
+      WHERE id = 1
+    `).bind(imageSize, new Date().toISOString()).run();
+
+    await env.DB.prepare(`
+      INSERT INTO CategoryStats (category, photo_count, updated_at)
+      VALUES (?, 1, ?)
+      ON CONFLICT(category) DO UPDATE SET 
+        photo_count = photo_count + 1,
+        updated_at = ?
+    `).bind(category, new Date().toISOString(), new Date().toISOString()).run();
+
+    const categories = await env.DB.prepare('SELECT COUNT(DISTINCT ai_category) as count FROM Photos').first();
+    await env.DB.prepare('UPDATE GlobalStats SET total_categories = ? WHERE id = 1').bind(categories.count).run();
 
     return { success: true };
   }
