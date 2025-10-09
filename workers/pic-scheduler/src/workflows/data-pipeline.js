@@ -1,67 +1,24 @@
-import { WorkflowEntrypoint, WorkflowStep } from 'cloudflare:workers';
-import { FetchPhotosTask } from '../tasks/fetch-photos.js';
-import { ProcessPhotoTask } from '../tasks/process-photo.js';
+import { WorkflowEntrypoint } from 'cloudflare:workers';
 
 export class DataPipelineWorkflow extends WorkflowEntrypoint {
   async run(event, step) {
-    const { page } = event.payload;
-    const workflowId = event.id;
+    const page = event.payload?.page || 1;
+    const wfId = event.id;  // 使用不同的变量名
     
-    // Step 1: Record workflow start
-    await step.do('record-start', async () => {
+    // Test: 直接在bind中生成值，不使用外部变量
+    await step.do('test-insert', async () => {
+      const id = 'wf-' + Date.now();
+      const data = JSON.stringify({ page: 1 });
+      const status = 'running';
+      const time = new Date().toISOString();
+      
       await this.env.DB.prepare(
         'INSERT INTO Events (id, event_type, event_data, status, created_at) VALUES (?, ?, ?, ?, ?)'
-      ).bind(
-        workflowId, 
-        'workflow', 
-        JSON.stringify({ page: page || 1 }), 
-        'running', 
-        new Date().toISOString()
-      ).run();
-    });
-    
-    // Step 2: Fetch photos using task
-    const photos = await step.do('fetch-photos', async () => {
-      const task = new FetchPhotosTask();
-      return await task.run(this.env, { page: page || 1, perPage: 30 });
+      ).bind(id, 'workflow', data, status, time).run();
+      
+      return { id };
     });
 
-    // Step 3: Process each photo in parallel
-    const results = [];
-    for (let i = 0; i < Math.min(photos.length, 2); i++) {
-      const photo = photos[i];
-      
-      const result = await step.do(`photo-${photo.id}`, async () => {
-        const task = new ProcessPhotoTask();
-        return await task.run(this.env, { 
-          photoId: photo.id, 
-          apiKey: this.env.UNSPLASH_API_KEY 
-        });
-      });
-      
-      results.push(result);
-    }
-
-    // Step 4: Record completion
-    await step.do('complete', async () => {
-      const successful = results.filter(r => r.success && !r.skipped).length;
-      const skipped = results.filter(r => r.skipped).length;
-      const failed = results.filter(r => !r.success).length;
-      
-      await this.env.DB.prepare(
-        'UPDATE Events SET status = ?, event_data = ?, completed_at = ? WHERE id = ?'
-      ).bind(
-        failed > 0 ? 'failed' : 'success',
-        JSON.stringify({ page, successful, skipped, failed }),
-        new Date().toISOString(),
-        workflowId
-      ).run();
-    });
-
-    const successful = results.filter(r => r.success && !r.skipped).length;
-    const skipped = results.filter(r => r.skipped).length;
-    const failed = results.filter(r => !r.success).length;
-
-    return { page, successful, skipped, failed, total: photos.length };
+    return { page, status: 'test-ok' };
   }
 }
