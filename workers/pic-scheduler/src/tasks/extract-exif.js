@@ -1,5 +1,5 @@
 export class ExtractExifTask {
-  async run(env, { imageBuffer }) {
+  async run(_env, { imageBuffer: _imageBuffer }) {
     // Note: exifr library is not available in Workers
     // Unsplash API already provides EXIF data, so we skip local parsing
     // This task is a placeholder for future enhancement
