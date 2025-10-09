@@ -5,6 +5,8 @@ CREATE TABLE IF NOT EXISTS State (
 );
 
 INSERT OR IGNORE INTO State (key, value, updated_at) VALUES ('last_page', '1', datetime('now'));
+INSERT OR IGNORE INTO State (key, value, updated_at) VALUES ('last_cursor_time', '', datetime('now'));
+INSERT OR IGNORE INTO State (key, value, updated_at) VALUES ('last_cursor_id', '', datetime('now'));
 
 CREATE TABLE IF NOT EXISTS ProcessingQueue (
   unsplash_id TEXT PRIMARY KEY,
