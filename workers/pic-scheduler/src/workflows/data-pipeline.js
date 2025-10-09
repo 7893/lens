@@ -4,7 +4,7 @@ import { ProcessPhotoTask } from '../tasks/process-photo.js';
 export class DataPipelineWorkflow extends WorkflowEntrypoint {
   async run(event, step) {
     const workflowId = `wf-${Date.now()}`;
-    const batchSize = 10;
+    const batchSize = 30;
     const maxRetries = 3;
     
     const tasks = await step.do('dequeue-tasks', async () => {
