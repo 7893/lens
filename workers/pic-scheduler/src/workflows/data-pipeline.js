@@ -6,16 +6,17 @@ export class DataPipelineWorkflow extends WorkflowEntrypoint {
   async run(event, step) {
     const { page } = event.payload;
     const workflowId = event.id;
+    const startTime = Date.now();
     
-    // Step 1: Record start
+    // Record workflow start
     await step.do('record-start', async () => {
       await this.env.DB.prepare(`
-        INSERT INTO WorkflowRuns (workflow_id, page, status, started_at)
-        VALUES (?, ?, 'running', ?)
-      `).bind(workflowId, page, new Date().toISOString()).run();
+        INSERT INTO Events (id, event_type, event_data, status, created_at)
+        VALUES (?, 'workflow', ?, 'running', ?)
+      `).bind(workflowId, JSON.stringify({ page }), new Date().toISOString()).run();
     });
     
-    // Step 2: Fetch photos
+    // Fetch photos
     const photos = await step.do('fetch-photos', async () => {
       const unsplash = new UnsplashService(this.env.UNSPLASH_API_KEY);
       return await unsplash.fetchPhotos(page, 30);
@@ -23,34 +24,30 @@ export class DataPipelineWorkflow extends WorkflowEntrypoint {
 
     const results = [];
 
-    // Step 3: Process each photo
+    // Process each photo
     for (let i = 0; i < photos.length; i++) {
       const photo = photos[i];
       
       const result = await step.do(`process-${photo.id}`, async () => {
         try {
-          // Check if exists
           const existing = await this.env.DB.prepare(
             'SELECT unsplash_id FROM Photos WHERE unsplash_id = ?'
           ).bind(photo.id).first();
           
           if (existing) {
-            return { success: true, skipped: true, id: photo.id };
+            return { success: true, skipped: true };
           }
 
-          // Get photo details
           const detailResponse = await fetch(
             `https://api.unsplash.com/photos/${photo.id}?client_id=${this.env.UNSPLASH_API_KEY}`
           );
           const photoDetail = await detailResponse.json();
           
-          // Download image
           const imageResponse = await fetch(photoDetail.urls.raw);
           if (!imageResponse.ok) throw new Error('Download failed');
           
           const imageBuffer = await imageResponse.arrayBuffer();
 
-          // AI classify
           const aiResult = await new AIClassifier(this.env.AI).classifyImage(
             photoDetail.alt_description || photoDetail.description || 'No description'
           );
@@ -58,12 +55,10 @@ export class DataPipelineWorkflow extends WorkflowEntrypoint {
           const category = aiResult.category;
           const r2Key = `${category}/${photoDetail.id}.jpg`;
 
-          // Upload to R2
           await this.env.R2.put(r2Key, imageBuffer, {
             httpMetadata: { contentType: 'image/jpeg' }
           });
 
-          // Save to DB
           await this.env.DB.prepare(`
             INSERT INTO Photos (
               unsplash_id, slug, r2_key, downloaded_at,
@@ -76,8 +71,7 @@ export class DataPipelineWorkflow extends WorkflowEntrypoint {
               photo_location_latitude, photo_location_longitude,
               exif_make, exif_model, exif_name, exif_exposure_time,
               exif_aperture, exif_focal_length, exif_iso,
-              tags,
-              ai_category, ai_confidence, ai_model_scores
+              tags, ai_category, ai_confidence, ai_model_scores
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `).bind(
             photoDetail.id, photoDetail.slug, r2Key, new Date().toISOString(),
@@ -95,31 +89,41 @@ export class DataPipelineWorkflow extends WorkflowEntrypoint {
             category, aiResult.confidence, JSON.stringify(aiResult.scores)
           ).run();
 
-          return { success: true, id: photoDetail.id };
+          return { success: true };
         } catch (error) {
-          console.error(`Error processing ${photo.id}:`, error);
-          return { success: false, id: photo.id, error: error.message };
+          console.error(`Error:`, error);
+          return { success: false, error: error.message };
         }
       });
 
       results.push(result);
     }
 
-    // Step 4: Record completion
+    // Record completion
     await step.do('record-complete', async () => {
       const successful = results.filter(r => r.success && !r.skipped).length;
       const skipped = results.filter(r => r.skipped).length;
       const failed = results.filter(r => !r.success).length;
+      const duration = Date.now() - startTime;
       
-      await this.env.DB.prepare(`
-        UPDATE WorkflowRuns 
-        SET status = ?, photos_total = ?, photos_success = ?, photos_failed = ?, photos_skipped = ?, completed_at = ?
-        WHERE workflow_id = ?
-      `).bind(
-        failed > 0 ? 'failed' : 'success',
-        photos.length, successful, failed, skipped,
-        new Date().toISOString(), workflowId
-      ).run();
+      await this.env.DB.batch([
+        this.env.DB.prepare(`
+          UPDATE Events SET status = ?, event_data = ?, completed_at = ? WHERE id = ?
+        `).bind(
+          failed > 0 ? 'failed' : 'success',
+          JSON.stringify({ page, successful, skipped, failed, duration }),
+          new Date().toISOString(),
+          workflowId
+        ),
+        
+        this.env.DB.prepare(`
+          INSERT INTO Metrics (metric_key, metric_value, dimension, updated_at)
+          VALUES ('workflows.total', '1', 'global', ?)
+          ON CONFLICT(metric_key) DO UPDATE SET 
+            metric_value = CAST(CAST(metric_value AS INTEGER) + 1 AS TEXT),
+            updated_at = ?
+        `).bind(new Date().toISOString(), new Date().toISOString())
+      ]);
     });
 
     const successful = results.filter(r => r.success && !r.skipped).length;
@@ -129,4 +133,3 @@ export class DataPipelineWorkflow extends WorkflowEntrypoint {
     return { page, successful, skipped, failed, total: photos.length };
   }
 }
-
