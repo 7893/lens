@@ -1,10 +1,9 @@
-import { DataPipelineWorkflow } from './workflows/data-pipeline.js';
 import { DownloadWorkflow } from './workflows/download-workflow.js';
 import { ClassifyWorkflow } from './workflows/classify-workflow.js';
 import { EnqueuePhotosTask } from './tasks/enqueue-photos.js';
 import { Analytics } from './utils/analytics.js';
 
-export { DataPipelineWorkflow, DownloadWorkflow, ClassifyWorkflow };
+export { DownloadWorkflow, ClassifyWorkflow };
 
 let statsCache = null;
 let statsCacheTime = 0;
