@@ -3,8 +3,8 @@ main = "src/index.js"
 compatibility_date = "2024-10-01"
 compatibility_flags = ["nodejs_compat"]
 
-[vars]
-UNSPLASH_API_KEY = "REDACTED_UNSPLASH_API_KEY"
+# Environment variables should be set via wrangler secrets
+# Run: wrangler secret put UNSPLASH_API_KEY
 
 [[r2_buckets]]
 binding = "R2"
