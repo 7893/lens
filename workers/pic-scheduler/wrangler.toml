@@ -23,11 +23,6 @@ binding = "AE"
 dataset = "pic-ae"
 
 [[workflows]]
-binding = "WORKFLOW"
-name = "pic-wf"
-class_name = "DataPipelineWorkflow"
-
-[[workflows]]
 binding = "DOWNLOAD_WORKFLOW"
 name = "pic-download-wf"
 class_name = "DownloadWorkflow"

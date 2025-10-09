@@ -6,21 +6,22 @@ Description: "${description}"
 
 Return a single-word or hyphenated category (lowercase) with confidence score 0-1.`;
 
-    const maxRetries = 2;
-    const timeout = 60000;
+    const maxRetries = 1;
+    const timeout = 30000;
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), timeout);
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('AI timeout')), timeout)
+        );
 
-        const response = await env.AI.run(modelName, {
+        const aiPromise = env.AI.run(modelName, {
           messages: [{ role: 'user', content: prompt }],
           max_tokens: 50,
           temperature: 0.1
         });
 
-        clearTimeout(timeoutId);
+        const response = await Promise.race([aiPromise, timeoutPromise]);
 
         const text = response.response?.trim();
         if (!text) continue;
@@ -42,7 +43,7 @@ Return a single-word or hyphenated category (lowercase) with confidence score 0-
           console.error(`Model ${modelName} failed after ${maxRetries + 1} attempts:`, error.message);
           return null;
         }
-        await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
+        await new Promise(resolve => setTimeout(resolve, 500));
       }
     }
     return null;
