@@ -6,32 +6,45 @@ Description: "${description}"
 
 Return a single-word or hyphenated category (lowercase) with confidence score 0-1.`;
 
-    try {
-      const response = await env.AI.run(modelName, {
-        messages: [{ role: 'user', content: prompt }],
-        max_tokens: 50,
-        temperature: 0.1
-      });
+    const maxRetries = 2;
+    const timeout = 15000;
 
-      const text = response.response?.trim();
-      if (!text) return null;
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), timeout);
 
-      const jsonMatch = text.match(/\{[^}]+\}/);
-      if (!jsonMatch) return null;
+        const response = await env.AI.run(modelName, {
+          messages: [{ role: 'user', content: prompt }],
+          max_tokens: 50,
+          temperature: 0.1
+        });
 
-      const result = JSON.parse(jsonMatch[0]);
-      if (!result.label || !result.score) return null;
+        clearTimeout(timeoutId);
 
-      const label = result.label.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
-      const score = parseFloat(result.score);
+        const text = response.response?.trim();
+        if (!text) continue;
 
-      if (label && score >= 0 && score <= 1) {
-        return { label, score, model: modelName };
+        const jsonMatch = text.match(/\{[^}]+\}/);
+        if (!jsonMatch) continue;
+
+        const result = JSON.parse(jsonMatch[0]);
+        if (!result.label || !result.score) continue;
+
+        const label = result.label.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+        const score = parseFloat(result.score);
+
+        if (label && score >= 0 && score <= 1) {
+          return { label, score, model: modelName };
+        }
+      } catch (error) {
+        if (attempt === maxRetries) {
+          console.error(`Model ${modelName} failed after ${maxRetries + 1} attempts:`, error.message);
+          return null;
+        }
+        await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
       }
-      return null;
-    } catch (error) {
-      console.error(`Model ${modelName} failed:`, error.message);
-      return null;
     }
+    return null;
   }
 }
