@@ -1,61 +1,56 @@
 import { WorkflowEntrypoint } from 'cloudflare:workers';
 import { UnsplashService } from '../services/unsplash.js';
 import { AIClassifier } from '../services/ai-classifier.js';
-import { StatsUpdater } from '../services/stats-updater.js';
 
 export class DataPipelineWorkflow extends WorkflowEntrypoint {
   async run(event, step) {
     const { page } = event.payload;
     const workflowId = event.id;
-    const stats = new StatsUpdater(this.env.DB);
-    const startTime = Date.now();
     
+    // Step 1: Record start
     await step.do('record-start', async () => {
-      await stats.recordWorkflowStart(workflowId, page);
+      await this.env.DB.prepare(`
+        INSERT INTO WorkflowRuns (workflow_id, page, status, started_at)
+        VALUES (?, ?, 'running', ?)
+      `).bind(workflowId, page, new Date().toISOString()).run();
     });
     
+    // Step 2: Fetch photos
     const photos = await step.do('fetch-photos', async () => {
-      await stats.checkAndResetQuota('unsplash');
-      await stats.updateApiQuota('unsplash', 1);
-      
       const unsplash = new UnsplashService(this.env.UNSPLASH_API_KEY);
       return await unsplash.fetchPhotos(page, 30);
     });
 
     const results = [];
 
+    // Step 3: Process each photo
     for (let i = 0; i < photos.length; i++) {
       const photo = photos[i];
       
       const result = await step.do(`process-${photo.id}`, async () => {
-        const existing = await this.env.DB.prepare(
-          'SELECT unsplash_id FROM Photos WHERE unsplash_id = ?'
-        ).bind(photo.id).first();
-        
-        if (existing) {
-          return { success: true, skipped: true, id: photo.id };
-        }
-
         try {
-          const unsplash = new UnsplashService(this.env.UNSPLASH_API_KEY);
+          // Check if exists
+          const existing = await this.env.DB.prepare(
+            'SELECT unsplash_id FROM Photos WHERE unsplash_id = ?'
+          ).bind(photo.id).first();
           
-          await stats.updateApiQuota('unsplash', 1);
+          if (existing) {
+            return { success: true, skipped: true, id: photo.id };
+          }
+
+          // Get photo details
           const detailResponse = await fetch(
             `https://api.unsplash.com/photos/${photo.id}?client_id=${this.env.UNSPLASH_API_KEY}`
           );
           const photoDetail = await detailResponse.json();
           
-          await unsplash.triggerDownload(photoDetail.links.download_location);
-
-          const imageUrl = photoDetail.urls.raw;
-          await stats.updateApiQuota('unsplash', 1);
-          const imageResponse = await fetch(imageUrl);
-          if (!imageResponse.ok) throw new Error('Image download failed');
+          // Download image
+          const imageResponse = await fetch(photoDetail.urls.raw);
+          if (!imageResponse.ok) throw new Error('Download failed');
           
           const imageBuffer = await imageResponse.arrayBuffer();
-          const fileSize = imageBuffer.byteLength;
 
-          await stats.updateApiQuota('cloudflare-ai', 4);
+          // AI classify
           const aiResult = await new AIClassifier(this.env.AI).classifyImage(
             photoDetail.alt_description || photoDetail.description || 'No description'
           );
@@ -63,11 +58,12 @@ export class DataPipelineWorkflow extends WorkflowEntrypoint {
           const category = aiResult.category;
           const r2Key = `${category}/${photoDetail.id}.jpg`;
 
-          await stats.updateApiQuota('r2', 1);
+          // Upload to R2
           await this.env.R2.put(r2Key, imageBuffer, {
             httpMetadata: { contentType: 'image/jpeg' }
           });
 
+          // Save to DB
           await this.env.DB.prepare(`
             INSERT INTO Photos (
               unsplash_id, slug, r2_key, downloaded_at,
@@ -84,50 +80,24 @@ export class DataPipelineWorkflow extends WorkflowEntrypoint {
               ai_category, ai_confidence, ai_model_scores
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `).bind(
-            photoDetail.id,
-            photoDetail.slug,
-            r2Key,
-            new Date().toISOString(),
-            photoDetail.description,
-            photoDetail.alt_description,
-            photoDetail.blur_hash,
-            photoDetail.width,
-            photoDetail.height,
-            photoDetail.color,
-            photoDetail.likes,
-            photoDetail.created_at,
-            photoDetail.updated_at,
-            photoDetail.promoted_at,
-            photoDetail.user.id,
-            photoDetail.user.username,
-            photoDetail.user.name,
-            photoDetail.user.bio,
-            photoDetail.user.location,
-            photoDetail.user.portfolio_url,
-            photoDetail.user.instagram_username,
-            photoDetail.user.twitter_username,
-            photoDetail.location?.name,
-            photoDetail.location?.city,
-            photoDetail.location?.country,
-            photoDetail.location?.position?.latitude,
-            photoDetail.location?.position?.longitude,
-            photoDetail.exif?.make,
-            photoDetail.exif?.model,
-            photoDetail.exif?.name,
-            photoDetail.exif?.exposure_time,
-            photoDetail.exif?.aperture,
-            photoDetail.exif?.focal_length,
-            photoDetail.exif?.iso,
+            photoDetail.id, photoDetail.slug, r2Key, new Date().toISOString(),
+            photoDetail.description, photoDetail.alt_description, photoDetail.blur_hash,
+            photoDetail.width, photoDetail.height, photoDetail.color, photoDetail.likes,
+            photoDetail.created_at, photoDetail.updated_at, photoDetail.promoted_at,
+            photoDetail.user.id, photoDetail.user.username, photoDetail.user.name,
+            photoDetail.user.bio, photoDetail.user.location, photoDetail.user.portfolio_url,
+            photoDetail.user.instagram_username, photoDetail.user.twitter_username,
+            photoDetail.location?.name, photoDetail.location?.city, photoDetail.location?.country,
+            photoDetail.location?.position?.latitude, photoDetail.location?.position?.longitude,
+            photoDetail.exif?.make, photoDetail.exif?.model, photoDetail.exif?.name,
+            photoDetail.exif?.exposure_time, photoDetail.exif?.aperture, photoDetail.exif?.focal_length, photoDetail.exif?.iso,
             JSON.stringify(photoDetail.tags?.map(t => t.title) || []),
-            category,
-            aiResult.confidence,
-            JSON.stringify(aiResult.scores)
+            category, aiResult.confidence, JSON.stringify(aiResult.scores)
           ).run();
 
-          await stats.updateCategoryStats(category, fileSize);
-
-          return { success: true, id: photoDetail.id, category, fileSize };
+          return { success: true, id: photoDetail.id };
         } catch (error) {
+          console.error(`Error processing ${photo.id}:`, error);
           return { success: false, id: photo.id, error: error.message };
         }
       });
@@ -135,23 +105,26 @@ export class DataPipelineWorkflow extends WorkflowEntrypoint {
       results.push(result);
     }
 
+    // Step 4: Record completion
+    await step.do('record-complete', async () => {
+      const successful = results.filter(r => r.success && !r.skipped).length;
+      const skipped = results.filter(r => r.skipped).length;
+      const failed = results.filter(r => !r.success).length;
+      
+      await this.env.DB.prepare(`
+        UPDATE WorkflowRuns 
+        SET status = ?, photos_total = ?, photos_success = ?, photos_failed = ?, photos_skipped = ?, completed_at = ?
+        WHERE workflow_id = ?
+      `).bind(
+        failed > 0 ? 'failed' : 'success',
+        photos.length, successful, failed, skipped,
+        new Date().toISOString(), workflowId
+      ).run();
+    });
+
     const successful = results.filter(r => r.success && !r.skipped).length;
     const skipped = results.filter(r => r.skipped).length;
     const failed = results.filter(r => !r.success).length;
-
-    await step.do('record-complete', async () => {
-      const duration = Date.now() - startTime;
-      await stats.recordWorkflowComplete(workflowId, {
-        total: photos.length,
-        successful,
-        failed,
-        skipped
-      }, duration);
-      
-      if (successful > 0) {
-        await stats.updateStorageStats();
-      }
-    });
 
     return { page, successful, skipped, failed, total: photos.length };
   }
