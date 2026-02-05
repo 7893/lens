@@ -16,16 +16,15 @@ Error: Workflow execution failed
 wrangler tail pic-scheduler --format pretty
 ```
 
-2. 检查 ProcessingQueue 状态
+2. 检查 Queue 状态
 ```bash
-wrangler d1 execute pic-d1 --remote --command \
-  "SELECT status, COUNT(*) FROM ProcessingQueue GROUP BY status"
+wrangler queues list
 ```
 
-3. 查看失败任务
+3. 查看失败的 Workflow
 ```bash
 wrangler d1 execute pic-d1 --remote --command \
-  "SELECT * FROM ProcessingQueue WHERE status='failed' LIMIT 10"
+  "SELECT * FROM Photos WHERE downloaded_at IS NULL LIMIT 10"
 ```
 
 **常见原因：**
@@ -36,7 +35,7 @@ wrangler d1 execute pic-d1 --remote --command \
 **解决方案：**
 - 降低 Cron 频率
 - 检查 R2 配额
-- 增加重试次数
+- Workflow 会自动重试
 
 ---
 
@@ -47,21 +46,15 @@ wrangler d1 execute pic-d1 --remote --command \
 
 **排查步骤：**
 
-1. 检查游标状态
-```bash
-wrangler d1 execute pic-d1 --remote --command \
-  "SELECT * FROM State WHERE key LIKE 'last_cursor%'"
-```
-
-2. 查看重复照片
+1. 检查重复照片
 ```bash
 wrangler d1 execute pic-d1 --remote --command \
   "SELECT unsplash_id, COUNT(*) FROM Photos GROUP BY unsplash_id HAVING COUNT(*) > 1"
 ```
 
 **解决方案：**
-- 确保 Workflow ID 使用照片 ID（幂等性）
-- 在 Cron 中添加去重逻辑
+- Workflow ID 使用照片 ID 保证幂等性
+- Cron 中已添加数据库去重逻辑
 
 ---
 
@@ -77,32 +70,11 @@ wrangler d1 execute pic-d1 --remote --command \
 wrangler r2 object list pic-r2 --prefix temp/
 ```
 
-2. 检查对应的 ProcessingQueue 记录
-```bash
-wrangler d1 execute pic-d1 --remote --command \
-  "SELECT * FROM ProcessingQueue WHERE status='failed' AND download_success=1"
-```
-
 **解决方案：**
 
-手动清理脚本：
-```bash
-# 列出所有临时文件
-wrangler r2 object list pic-r2 --prefix temp/ > temp_files.txt
-
-# 批量删除（谨慎操作）
-while read key; do
-  wrangler r2 object delete pic-r2 "$key"
-done < temp_files.txt
-```
-
-或使用 R2 生命周期规则（推荐）：
+使用 R2 生命周期规则自动清理：
 ```toml
 # wrangler.toml
-[[r2_buckets]]
-binding = "R2"
-bucket_name = "pic-r2"
-
 [[r2_buckets.lifecycle_rules]]
 prefix = "temp/"
 expiration_days = 1
@@ -123,46 +95,12 @@ wrangler d1 execute pic-d1 --remote --command \
   "SELECT ai_category, AVG(ai_confidence) as avg_conf FROM Photos GROUP BY ai_category"
 ```
 
-2. 查看低置信度照片
-```bash
-wrangler d1 execute pic-d1 --remote --command \
-  "SELECT * FROM Photos WHERE ai_confidence < 0.5 LIMIT 10"
-```
-
 **优化方案：**
 - 使用图像识别模型（ResNet）而非文本分类
-- 增加 AI 模型数量（投票机制）
+- 调整 AI 提示词
 - 添加人工审核流程
 
----
-
-### 5. 数据库查询慢
-
-**症状：**
-前端加载缓慢
-
-**排查步骤：**
-
-1. 检查索引
-```bash
-wrangler d1 execute pic-d1 --remote --command \
-  "SELECT * FROM sqlite_master WHERE type='index'"
-```
-
-2. 分析查询计划
-```bash
-wrangler d1 execute pic-d1 --remote --command \
-  "EXPLAIN QUERY PLAN SELECT * FROM Photos ORDER BY downloaded_at DESC LIMIT 30"
-```
-
-**优化方案：**
-- 添加索引：`CREATE INDEX idx_photos_downloaded ON Photos(downloaded_at DESC)`
-- 使用缓存（30 秒 TTL）
-- 分页查询
-
----
-
-### 6. Cron 未触发
+### 5. Cron 未触发
 
 **症状：**
 超过 10 分钟没有新照片
@@ -186,25 +124,22 @@ wrangler tail pic-scheduler --format pretty | grep "Cron triggered"
 
 ---
 
-### 7. API 配额超限
+### 6. Queue 消息堆积
 
 **症状：**
-```
-Error: Unsplash API rate limit exceeded
-```
+Queue 中有大量未处理消息
 
 **排查步骤：**
 
-1. 查看 API 使用情况
+1. 查看 Queue 状态
 ```bash
-wrangler d1 execute pic-d1 --remote --command \
-  "SELECT * FROM ApiQuota WHERE api_name='unsplash'"
+wrangler queues list
 ```
 
 **解决方案：**
-- 降低 Cron 频率（从 10 分钟改为 15 分钟）
-- 减少每次获取的页数（从 2 页改为 1 页）
-- 升级 Unsplash API 套餐
+- 检查 Consumer Worker 是否正常运行
+- 增加 max_concurrency（当前 10）
+- 检查 Workflow 是否有大量失败
 
 ---
 
@@ -224,10 +159,6 @@ wrangler tail pic-frontend --format pretty
 # 总照片数
 wrangler d1 execute pic-d1 --remote --command "SELECT COUNT(*) FROM Photos"
 
-# 队列状态
-wrangler d1 execute pic-d1 --remote --command \
-  "SELECT status, COUNT(*) FROM ProcessingQueue GROUP BY status"
-
 # 分类分布
 wrangler d1 execute pic-d1 --remote --command \
   "SELECT category, photo_count FROM CategoryStats ORDER BY photo_count DESC LIMIT 10"
@@ -242,21 +173,29 @@ wrangler r2 object list pic-r2 --limit 10
 wrangler r2 bucket info pic-r2
 ```
 
+### Queue 状态
+```bash
+# 查看 Queue
+wrangler queues list
+
+# 查看消费者
+wrangler queues consumer list photo-queue
+```
+
 ---
 
 ## 紧急恢复
 
 ### 停止所有处理
 ```bash
-# 暂停 Cron
-wrangler deployments list --name pic-scheduler
-# 在 Dashboard 中禁用 Cron Trigger
+# 暂停 Cron（在 Dashboard 中禁用）
+# 或临时修改 cron 配置为不触发的时间
 ```
 
-### 清空队列
+### 清空 Queue
 ```bash
-wrangler d1 execute pic-d1 --remote --command \
-  "DELETE FROM ProcessingQueue WHERE status IN ('pending', 'downloading', 'classifying')"
+# Queue 会自动处理，无需手动清空
+# 如需停止消费，可以临时禁用 Consumer
 ```
 
 ### 回滚部署
