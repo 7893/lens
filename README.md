@@ -1,51 +1,73 @@
-# 🖼️ Pic - AI 驱动的图片收集系统
+# 🖼️ Pic - AI Photo Gallery
 
 [![Cloudflare Workers](https://img.shields.io/badge/Cloudflare-Workers-orange)](https://workers.cloudflare.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-基于 Cloudflare 无服务器生态系统构建的自动化图片收集和分类系统。从 Unsplash API 获取照片，使用 AI 进行分类，并将其存储在 R2 中，元数据保存在 D1 数据库中。
+基于 Cloudflare 无服务器生态的自动化图片收集和 AI 分类系统。从 Unsplash 获取照片，使用 AI 智能分类，存储在 R2，元数据保存在 D1。
 
 ## ✨ 特性
 
-- 🤖 **自动收集**：每 10 分钟从 Unsplash 获取 60 张照片
-- 🧠 **AI 分类**：使用 2 个 Cloudflare AI 模型进行智能分类
-- 📦 **无服务器架构**：100% 基于 Cloudflare Workers、D1、R2 和 Workflows
-- 🔄 **游标同步**：通过智能分页防止重复照片
-- 📊 **实时统计**：带有处理指标的实时仪表板
-- 🎯 **检查点系统**：具有自动重试的容错处理
+- 🤖 **自动收集**：每 10 分钟从 Unsplash 获取最新照片
+- 🧠 **AI 分类**：使用 Cloudflare AI 模型智能分类
+- 📦 **无服务器**：100% Cloudflare 生态（Workers + D1 + R2 + Workflows）
+- 🔄 **去重机制**：基于游标的增量同步，避免重复
+- 📊 **实时统计**：分类分布、处理状态、API 配额监控
+- 🎯 **容错处理**：Workflow 步骤级重试，自动恢复
 
 ## 🚀 快速开始
 
 ### 前置要求
 
-- Node.js 22.19.0（参见 `.nvmrc`）
-- 启用了 Workers、D1、R2 和 AI 的 Cloudflare 账户
-- Unsplash API 密钥
+- Node.js 22.20.0（参见 `.nvmrc` 或 `.tool-versions`）
+- Cloudflare 账户（启用 Workers、D1、R2、AI）
+- Unsplash API Key（[免费申请](https://unsplash.com/developers)）
 
 ### 安装
 
 ```bash
 # 克隆仓库
-git clone <your-repo-url>
+git clone git@github.com:7893/pic.git
 cd pic
 
 # 安装依赖
 npm install
 
-# 设置环境变量
-cp workers/pic-scheduler/.env.example workers/pic-scheduler/.env
-# 编辑 .env 并添加你的 UNSPLASH_API_KEY
+# 配置 Unsplash API Key
+wrangler secret put UNSPLASH_API_KEY --config workers/pic-scheduler/wrangler.toml
+```
+
+### 初始化数据库
+
+```bash
+# 创建 D1 数据库
+wrangler d1 create pic-d1
+
+# 应用 schema
+wrangler d1 execute pic-d1 --remote --file=workers/pic-scheduler/schema.sql
 ```
 
 ### 部署
 
 ```bash
 # 部署所有服务
-npm run deploy
+npm run deploy:all
 
 # 或单独部署
-npm run deploy:scheduler
-npm run deploy:frontend
+npm run deploy:scheduler  # 后端调度器
+npm run deploy:frontend   # 前端展示
+```
+
+### 验证
+
+```bash
+# 手动触发一次处理
+curl -X POST https://pic-scheduler.53.workers.dev/api/trigger
+
+# 查看统计
+curl https://pic.53.workers.dev/api/stats
+
+# 访问前端
+open https://pic.53.workers.dev
 ```
 
 ## 📁 项目结构
@@ -79,78 +101,119 @@ pic/
 
 ## 🏗️ 架构
 
-### 组件
+### 当前架构（待优化）
 
-- **pic-scheduler**：定时触发的后端，编排照片收集
-- **pic-frontend**：用于浏览照片和查看统计信息的 Web UI
-- **pic-download-wf**：下载照片到 R2 的工作流
-- **pic-classify-wf**：AI 分类工作流
+```
+Cron (10min) → Enqueue Photos → ProcessingQueue
+                                      ↓
+                              Download Workflow (30张)
+                                      ↓
+                              ProcessingQueue (已下载)
+                                      ↓
+                              Classify Workflow (30张)
+                                      ↓
+                              Photos 表 + R2 存储
+```
+
+**已知问题：**
+- ⚠️ 双 Workflow 架构复杂，状态管理困难
+- ⚠️ ProcessingQueue 表过度设计
+- ⚠️ R2 临时文件需要手动清理
+- ⚠️ 缺少幂等性保证
+
+### 推荐架构（规划中）
+
+```
+Cron (10min) → Queue (60 messages) → Single Workflow
+                                           ↓
+                                    Download → Classify → Save
+                                           ↓
+                                    Photos 表 + R2 存储
+```
+
+**改进点：**
+- ✅ 单一 Workflow，逻辑清晰
+- ✅ 使用 Cloudflare Queues 解耦
+- ✅ 步骤级重试，无需中间状态表
+- ✅ 直接存最终位置，无临时文件
+
+详见 [架构改进计划](docs/ARCHITECTURE.md)
 
 ### 技术栈
 
-| 组件 | 技术 |
-|------|------|
-| 计算 | Cloudflare Workers |
-| 数据库 | Cloudflare D1 (SQLite) |
-| 存储 | Cloudflare R2 |
-| 编排 | Cloudflare Workflows |
-| AI | Cloudflare AI (Llama 3.2-3B, Mistral 7B) |
-| 分析 | Analytics Engine |
-| 图片源 | Unsplash API |
+| 组件 | 技术 | 用途 |
+|------|------|------|
+| 计算 | Cloudflare Workers | 无服务器函数 |
+| 数据库 | D1 (SQLite) | 元数据存储 |
+| 存储 | R2 | 图片文件存储 |
+| 编排 | Workflows | 多步骤任务编排 |
+| 队列 | Queues (规划中) | 消息队列 |
+| AI | Cloudflare AI | 图片分类 |
+| 监控 | Analytics Engine | 事件追踪 |
 
-### 数据流
+## 📊 性能指标
 
-```
-Cron（每 10 分钟）
-  → EnqueuePhotosTask（通过 2 次 API 调用获取 60 张照片）
-    → ProcessingQueue（待处理）
-      → DownloadWorkflow（下载到 R2）
-        → ProcessingQueue（已下载）
-          → ClassifyWorkflow（AI 分类）
-            → Photos 表（已完成）
-```
+### 当前状态
+- **处理能力**：60 张照片/10分钟 = 8,640 张/天
+- **API 调用**：2 次/10分钟 = 288 次/天（Unsplash 限制 50 次/小时）
+- **AI 推理**：2 模型 × 8,640 张 = 17,280 次/天
+- **成功率**：~100%（带重试机制）
 
-## 📊 性能
-
-- **吞吐量**：360 张照片/小时（8,640 张/天）
-- **API 使用**：288 次 Unsplash API 调用/天
-- **AI 推理**：约 17,000 次调用/天（2 个模型 × 8,640 张照片）
-- **成功率**：100%（带重试机制）
+### 资源使用（Cloudflare 免费套餐）
+- Workers 请求：< 10 万次/天 ✅
+- D1 读写：< 500 万次/天 ✅
+- R2 存储：无限制 ✅
+- AI 推理：无限制 ✅
+- Workflows：10 万步/月 ⚠️（当前约 52 万步/月，需优化）
 
 ## 🛠️ 开发
 
 ```bash
-# 启动本地开发
-npm run dev:scheduler
-npm run dev:frontend
+# 本地开发
+npm run dev:scheduler  # 启动调度器（端口 8787）
+npm run dev:frontend   # 启动前端（端口 8788）
 
-# 运行测试
-npm test
+# 查看日志
+wrangler tail pic-scheduler
+wrangler tail pic-frontend
 
-# 检查系统状态
-./scripts/test.sh
+# 数据库操作
+wrangler d1 execute pic-d1 --remote --command "SELECT COUNT(*) FROM Photos"
+
+# 测试
+npm test  # 运行单元测试
+./scripts/test.sh  # 系统集成测试
 ```
 
 ## 📖 文档
 
-- [部署指南](docs/DEPLOY.md)
-- [系统状态](docs/STATUS.md)
-- [项目摘要](docs/SUMMARY.md)
+- [架构改进计划](docs/ARCHITECTURE.md) - 从双 Workflow 迁移到 Queue + Single Workflow
+- [部署指南](docs/DEPLOY.md) - 完整部署步骤和配置说明
+- [API 文档](docs/API.md) - 前后端 API 接口说明
+- [故障排查](docs/TROUBLESHOOTING.md) - 常见问题和解决方案
 
 ## 🔗 在线演示
 
 - **前端**：https://pic.53.workers.dev
-- **调度器 API**：https://pic-scheduler.53.workers.dev
+- **API**：https://pic-scheduler.53.workers.dev/api/stats
 
 ## 🤝 贡献
 
-欢迎贡献！请随时提交 Pull Request。
+欢迎贡献！请遵循以下步骤：
+
+1. Fork 本仓库
+2. 创建特性分支（`git checkout -b feature/amazing-feature`）
+3. 提交更改（`git commit -m 'Add amazing feature'`）
+4. 推送到分支（`git push origin feature/amazing-feature`）
+5. 开启 Pull Request
+
+详见 [贡献指南](CONTRIBUTING.md)
 
 ## 📝 许可证
 
-本项目采用 MIT 许可证 - 详见 [LICENSE](LICENSE) 文件。
+MIT License - 详见 [LICENSE](LICENSE) 文件
 
 ## 🙏 致谢
 
-- [Unsplash](https://unsplash.com/) 提供照片 API
-- [Cloudflare](https://cloudflare.com/) 提供无服务器平台
+- [Unsplash](https://unsplash.com/) - 提供高质量照片 API
+- [Cloudflare](https://cloudflare.com/) - 提供无服务器平台
