@@ -18,7 +18,7 @@ GET /health
 }
 ```
 
-### 获取统计信息
+### 获取队列统计
 
 ```http
 GET /api/stats
@@ -27,11 +27,8 @@ GET /api/stats
 **响应：**
 ```json
 {
-  "total": 100,
-  "queue": [
-    { "status": "pending", "count": 10 },
-    { "status": "downloading", "count": 5 }
-  ],
+  "total": 1000,
+  "processing": 5,
   "cached": true,
   "cacheAge": 15000
 }
@@ -49,13 +46,9 @@ POST /api/trigger
 ```json
 {
   "success": true,
-  "downloadWorkflowId": "dl-1234567890",
-  "classifyWorkflowId": "cl-1234567890",
   "enqueued": 45,
   "skipped": 15,
-  "pages": 2,
-  "cursor": "2026-02-05T08:00:00.000Z",
-  "message": "Photos enqueued and workflows triggered"
+  "message": "Photos enqueued to queue"
 }
 ```
 

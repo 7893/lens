@@ -101,43 +101,52 @@ pic/
 
 ## 🏗️ 架构
 
-### 当前架构（待优化）
+### 系统架构
 
 ```
-Cron (10min) → Enqueue Photos → ProcessingQueue
-                                      ↓
-                              Download Workflow (30张)
-                                      ↓
-                              ProcessingQueue (已下载)
-                                      ↓
-                              Classify Workflow (30张)
-                                      ↓
-                              Photos 表 + R2 存储
+┌─────────────┐
+│ Cron Trigger│ (每 10 分钟)
+└──────┬──────┘
+       │ 获取 60 张照片
+       │ 去重并发送到 Queue
+       ▼
+┌─────────────────┐
+│ Cloudflare Queue│
+└────────┬────────┘
+         │ 批量消费 (并发: 10)
+         ▼
+┌──────────────────────────────┐
+│   Photo Processing Workflow  │
+│                              │
+│  Step 1: Download to R2      │
+│  Step 2: AI Classify         │
+│  Step 3: Move to Category    │
+│  Step 4: Save to Database    │
+└──────────────────────────────┘
+         │
+         ▼
+┌──────────────────┐
+│ Photos + R2      │
+└──────────────────┘
 ```
 
-**已知问题：**
-- ⚠️ 双 Workflow 架构复杂，状态管理困难
-- ⚠️ ProcessingQueue 表过度设计
-- ⚠️ R2 临时文件需要手动清理
-- ⚠️ 缺少幂等性保证
+### 核心组件
 
-### 推荐架构（规划中）
+**1. Cron Worker（调度器）**
+- 每 10 分钟触发一次
+- 从 Unsplash 获取最新照片
+- 数据库去重
+- 发送到 Queue
 
-```
-Cron (10min) → Queue (60 messages) → Single Workflow
-                                           ↓
-                                    Download → Classify → Save
-                                           ↓
-                                    Photos 表 + R2 存储
-```
+**2. Cloudflare Queue（消息队列）**
+- 解耦调度和处理
+- 并发控制（max_concurrency: 10）
+- 自动重试失败消息
 
-**改进点：**
-- ✅ 单一 Workflow，逻辑清晰
-- ✅ 使用 Cloudflare Queues 解耦
-- ✅ 步骤级重试，无需中间状态表
-- ✅ 直接存最终位置，无临时文件
-
-详见 [架构改进计划](docs/ARCHITECTURE.md)
+**3. Single Workflow（处理核心）**
+- 步骤级重试（下载成功后无需重下）
+- 幂等性保证（Workflow ID = 照片 ID）
+- 状态自动持久化
 
 ### 技术栈
 
@@ -146,25 +155,52 @@ Cron (10min) → Queue (60 messages) → Single Workflow
 | 计算 | Cloudflare Workers | 无服务器函数 |
 | 数据库 | D1 (SQLite) | 元数据存储 |
 | 存储 | R2 | 图片文件存储 |
+| 队列 | Queues | 消息队列 |
 | 编排 | Workflows | 多步骤任务编排 |
-| 队列 | Queues (规划中) | 消息队列 |
 | AI | Cloudflare AI | 图片分类 |
 | 监控 | Analytics Engine | 事件追踪 |
 
+### 数据流
+
+1. **Cron 触发**（每 10 分钟）
+   - 调用 Unsplash API 获取 60 张照片
+   - 查询数据库过滤已存在的照片
+   - 将新照片发送到 Queue
+
+2. **Queue 消费**
+   - 批量接收消息（max_batch_size: 10）
+   - 为每张照片启动一个 Workflow 实例
+   - Workflow ID = 照片 ID（保证幂等性）
+
+3. **Workflow 处理**
+   - Step 1: 下载图片并上传到 R2 临时位置
+   - Step 2: 调用 AI 模型进行分类
+   - Step 3: 移动到最终分类目录
+   - Step 4: 保存元数据到 D1 数据库
+
+4. **前端展示**
+   - 从 D1 读取照片列表
+   - 从 R2 加载图片文件
+   - 展示统计信息和分类
+
 ## 📊 性能指标
 
-### 当前状态
 - **处理能力**：60 张照片/10分钟 = 8,640 张/天
 - **API 调用**：2 次/10分钟 = 288 次/天（Unsplash 限制 50 次/小时）
-- **AI 推理**：2 模型 × 8,640 张 = 17,280 次/天
-- **成功率**：~100%（带重试机制）
+- **AI 推理**：1 模型 × 8,640 张 = 8,640 次/天
+- **成功率**：~100%（Workflow 自动重试）
 
-### 资源使用（Cloudflare 免费套餐）
-- Workers 请求：< 10 万次/天 ✅
-- D1 读写：< 500 万次/天 ✅
-- R2 存储：无限制 ✅
-- AI 推理：无限制 ✅
-- Workflows：10 万步/月 ⚠️（当前约 52 万步/月，需优化）
+### Cloudflare 免费套餐资源使用
+
+| 资源 | 限制 | 使用量 | 状态 |
+|------|------|--------|------|
+| Workers 请求 | 10 万次/天 | < 1 万次/天 | ✅ 充足 |
+| D1 读写 | 500 万次/天 | < 10 万次/天 | ✅ 充足 |
+| R2 存储 | 10 GB | ~5 GB | ✅ 充足 |
+| R2 操作 | 100 万次/月 | ~26 万次/月 | ✅ 充足 |
+| Queues 消息 | 100 万条/月 | ~26 万条/月 | ✅ 充足 |
+| Workflows 步数 | 10 万步/月 | ~10 万步/月 | ✅ 合理 |
+| AI 推理 | 无限制 | 8,640 次/天 | ✅ 免费 |
 
 ## 🛠️ 开发
 
@@ -187,9 +223,8 @@ npm test  # 运行单元测试
 
 ## 📖 文档
 
-- [架构改进计划](docs/ARCHITECTURE.md) - 从双 Workflow 迁移到 Queue + Single Workflow
-- [部署指南](docs/DEPLOY.md) - 完整部署步骤和配置说明
 - [API 文档](docs/API.md) - 前后端 API 接口说明
+- [部署指南](docs/DEPLOY.md) - 完整部署步骤和配置
 - [故障排查](docs/TROUBLESHOOTING.md) - 常见问题和解决方案
 
 ## 🔗 在线演示
