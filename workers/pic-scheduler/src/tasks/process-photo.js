@@ -37,7 +37,8 @@ export class ProcessPhotoTask {
         const imgController = new AbortController();
         const imgTimeoutId = setTimeout(() => imgController.abort(), timeout);
 
-        const imgRes = await fetch(photoDetail.urls.raw, { signal: imgController.signal });
+        // Use regular quality instead of raw to save storage
+        const imgRes = await fetch(photoDetail.urls.regular, { signal: imgController.signal });
         
         clearTimeout(imgTimeoutId);
 
@@ -51,7 +52,7 @@ export class ProcessPhotoTask {
           WHERE unsplash_id=?
         `).bind(photoId).run();
       } else {
-        const imgRes = await fetch(photoDetail.urls.raw);
+        const imgRes = await fetch(photoDetail.urls.regular);
         imageBuffer = await imgRes.arrayBuffer();
       }
 
