@@ -137,10 +137,10 @@ CREATE TABLE IF NOT EXISTS ApiQuota (
 INSERT OR IGNORE INTO ApiQuota (api_name, quota_limit, next_reset_at, updated_at) 
 VALUES ('unsplash', 50, datetime('now', '+1 hour'), datetime('now'));
 
--- Data retention policy: keep only last 30 days or max 10,000 photos
+-- Data retention policy: keep only last 30 days or max 4,000 photos
 -- Add retention config to State table
 INSERT OR IGNORE INTO State (key, value, updated_at) VALUES ('retention_days', '30', datetime('now'));
-INSERT OR IGNORE INTO State (key, value, updated_at) VALUES ('max_photos', '10000', datetime('now'));
+INSERT OR IGNORE INTO State (key, value, updated_at) VALUES ('max_photos', '4000', datetime('now'));
 
 -- Create cleanup tracking table
 CREATE TABLE IF NOT EXISTS CleanupLog (

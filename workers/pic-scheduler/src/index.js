@@ -99,7 +99,7 @@ export default {
       const enqueueTask = new EnqueuePhotosTask();
       const enqueueResult = await enqueueTask.run(env, { 
         startPage: 1, 
-        endPage: 2
+        endPage: 1
       });
 
       // Step 2: Start workflow to process queue
