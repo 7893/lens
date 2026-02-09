@@ -7,12 +7,14 @@
 
 ## ✨ 特性
 
-- 🤖 **自动收集**：每 10 分钟从 Unsplash 获取最新照片
+- 🤖 **自动收集**：每小时从 Unsplash 获取最新照片
 - 🧠 **AI 分类**：使用 Cloudflare AI 模型智能分类
 - 📦 **无服务器**：100% Cloudflare 生态（Workers + D1 + R2 + Workflows）
 - 🔄 **去重机制**：基于游标的增量同步，避免重复
 - 📊 **实时统计**：分类分布、处理状态、API 配额监控
 - 🎯 **容错处理**：Workflow 步骤级重试，自动恢复
+- 💾 **自动清理**：保留最新 4,000 张照片，自动删除旧数据
+- 🔒 **配额管理**：API 调用限制和自动重置机制
 
 ## 🚀 快速开始
 
@@ -45,17 +47,14 @@ npm install
 # 1. 配置 Unsplash API Key
 wrangler secret put UNSPLASH_API_KEY --config workers/pic-scheduler/wrangler.toml
 
-# 2. 创建 Queue
-wrangler queues create photo-queue
+# 2. 创建 R2 Bucket（部署时自动创建）
+# wrangler r2 bucket create pic-r2
 
-# 3. 创建 R2 Bucket
-wrangler r2 bucket create pic-r2
-
-# 4. 创建 D1 数据库
+# 3. 创建 D1 数据库
 wrangler d1 create pic-d1
-# 记录返回的 database_id，更新到 workers/pic-scheduler/wrangler.toml
+# 记录返回的 database_id，更新到两个 wrangler.toml 文件
 
-# 5. 应用数据库 schema
+# 4. 应用数据库 schema
 wrangler d1 execute pic-d1 --remote --file=workers/pic-scheduler/schema.sql
 ```
 
@@ -117,31 +116,25 @@ pic/
 
 ```
 ┌──────────────────┐
-│  Cron Trigger    │  每 10 分钟触发
+│  Cron Trigger    │  每小时触发
 │  (Scheduler)     │
 └────────┬─────────┘
          │
-         │ 1. Fetch 60 photos from Unsplash
+         │ 1. Fetch 30 photos from Unsplash (regular quality)
          │ 2. Filter duplicates (check DB)
-         │ 3. Send to Queue
-         │
-         ▼
-┌──────────────────┐
-│ Cloudflare Queue │  消息队列
-│  (photo-queue)   │
-└────────┬─────────┘
-         │
-         │ Batch consume (max_concurrency: 10)
+         │ 3. Insert to ProcessingQueue
          │
          ▼
 ┌──────────────────────────────────────┐
 │  Photo Processing Workflow           │
-│  (per photo, idempotent)             │
+│  (DataPipelineWorkflow)              │
+│  - Batch process from queue          │
+│  - Per photo, idempotent             │
 │                                      │
 │  ┌────────────────────────────────┐ │
-│  │ Step 1: Download to R2         │ │
-│  │  - Fetch image from Unsplash   │ │
-│  │  - Upload to temp/             │ │
+│  │ Step 1: Download Image         │ │
+│  │  - Fetch from Unsplash         │ │
+│  │  - Use regular quality (~500KB)│ │
 │  └────────────────────────────────┘ │
 │                                      │
 │  ┌────────────────────────────────┐ │
@@ -151,9 +144,8 @@ pic/
 │  └────────────────────────────────┘ │
 │                                      │
 │  ┌────────────────────────────────┐ │
-│  │ Step 3: Move to Category       │ │
-│  │  - Move from temp/ to category/│ │
-│  │  - Delete temp file            │ │
+│  │ Step 3: Upload to R2           │ │
+│  │  - Save to category/{id}.jpg   │ │
 │  └────────────────────────────────┘ │
 │                                      │
 │  ┌────────────────────────────────┐ │
@@ -167,25 +159,25 @@ pic/
 ┌──────────────────┐
 │  D1 + R2         │  持久化存储
 │  (Photos + Files)│
+│                  │
+│  Auto Cleanup:   │
+│  Keep 4,000 max  │
 └──────────────────┘
 ```
 
 ### 核心组件
 
 **1. Cron Worker（调度器）**
-- 每 10 分钟触发一次
-- 从 Unsplash 获取最新照片
+- 每小时触发一次
+- 从 Unsplash 获取最新照片（30 张）
 - 数据库去重
-- 发送到 Queue
+- 插入到 ProcessingQueue
+- 自动清理超出限制的旧照片
 
-**2. Cloudflare Queue（消息队列）**
-- 解耦调度和处理
-- 并发控制（max_concurrency: 10）
-- 自动重试失败消息
-
-**3. Single Workflow（处理核心）**
+**2. DataPipeline Workflow（处理核心）**
+- 批量处理队列中的照片
 - 步骤级重试（下载成功后无需重下）
-- 幂等性保证（Workflow ID = 照片 ID）
+- 幂等性保证（检查 Photos 表避免重复）
 - 状态自动持久化
 
 ### 技术栈
@@ -195,52 +187,51 @@ pic/
 | 计算 | Cloudflare Workers | 无服务器函数 |
 | 数据库 | D1 (SQLite) | 元数据存储 |
 | 存储 | R2 | 图片文件存储 |
-| 队列 | Queues | 消息队列 |
 | 编排 | Workflows | 多步骤任务编排 |
 | AI | Cloudflare AI | 图片分类 |
 | 监控 | Analytics Engine | 事件追踪 |
 
 ### 数据流
 
-1. **Cron 触发**（每 10 分钟）
-   - 调用 Unsplash API 获取 60 张照片
+1. **Cron 触发**（每小时）
+   - 调用 Unsplash API 获取 30 张照片（regular 质量）
    - 查询数据库过滤已存在的照片
-   - 将新照片发送到 Queue
+   - 将新照片插入到 ProcessingQueue
+   - 检查并清理超出 4,000 张限制的旧照片
 
-2. **Queue 消费**
-   - 批量接收消息（max_batch_size: 10）
-   - 为每张照片启动一个 Workflow 实例
-   - Workflow ID = 照片 ID（保证幂等性）
-
-3. **Workflow 处理**
-   - Step 1: 下载图片并上传到 R2 临时位置
+2. **Workflow 处理**
+   - 从 ProcessingQueue 批量获取待处理照片
+   - 为每张照片执行 4 步处理流程
+   - Step 1: 下载图片（~500 KB regular 质量）
    - Step 2: 调用 AI 模型进行分类
-   - Step 3: 移动到最终分类目录
+   - Step 3: 上传到 R2（category/{id}.jpg）
    - Step 4: 保存元数据到 D1 数据库
 
-4. **前端展示**
+3. **前端展示**
    - 从 D1 读取照片列表
    - 从 R2 加载图片文件
    - 展示统计信息和分类
 
 ## 📊 性能指标
 
-- **处理能力**：60 张照片/10分钟 = 8,640 张/天
-- **API 调用**：2 次/10分钟 = 288 次/天（Unsplash 限制 50 次/小时）
-- **AI 推理**：1 模型 × 8,640 张 = 8,640 次/天
+- **处理能力**：30 张照片/小时 = 720 张/天
+- **API 调用**：1 次/小时 = 24 次/天（Unsplash 限制 50 次/小时）
+- **AI 推理**：2 模型 × 720 张 = 1,440 次/天
 - **成功率**：~100%（Workflow 自动重试）
+- **存储优化**：使用 regular 质量（~500 KB vs 2-5 MB raw）
 
 ### Cloudflare 免费套餐资源使用
 
 | 资源 | 限制 | 使用量 | 状态 |
 |------|------|--------|------|
-| Workers 请求 | 10 万次/天 | < 1 万次/天 | ✅ 充足 |
-| D1 读写 | 500 万次/天 | < 10 万次/天 | ✅ 充足 |
-| R2 存储 | 10 GB | ~5 GB | ✅ 充足 |
-| R2 操作 | 100 万次/月 | ~26 万次/月 | ✅ 充足 |
-| Queues 消息 | 100 万条/月 | ~26 万条/月 | ✅ 充足 |
-| Workflows 步数 | 10 万步/月 | ~10 万步/月 | ✅ 合理 |
-| AI 推理 | 无限制 | 8,640 次/天 | ✅ 免费 |
+| Workers 请求 | 10 万次/天 | < 3 千次/天 | ✅ 充足 |
+| D1 读写 | 500 万次/天 | < 30 万次/月 | ✅ 充足 |
+| R2 存储 | 10 GB | ~2 GB | ✅ 充足 |
+| R2 操作 | 100 万次/月 | ~4.3 万次/月 | ✅ 充足 |
+| Workflows 步数 | 10 万步/月 | ~8.6 万步/月 | ✅ 合理 |
+| AI 推理 | 无限制 | 1,440 次/天 | ✅ 免费 |
+
+**稳定状态**：保持 4,000 张照片，约 2 GB 存储，完全免费运行。
 
 ## 🛠️ 开发
 
