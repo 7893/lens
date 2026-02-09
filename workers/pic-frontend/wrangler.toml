@@ -10,4 +10,4 @@ bucket_name = "pic-r2"
 [[d1_databases]]
 binding = "DB"
 database_name = "pic-d1"
-database_id = "1a110c7e-1ba4-4389-8a64-f73fd7076443"
+database_id = "6e19bd43-7d51-474c-bcd7-de00cadde82e"
