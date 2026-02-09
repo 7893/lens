@@ -28,4 +28,4 @@ name = "pic-photo-wf"
 class_name = "DataPipelineWorkflow"
 
 [triggers]
-crons = ["*/10 * * * *"]
+crons = ["0 * * * *"]
