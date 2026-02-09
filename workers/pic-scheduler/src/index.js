@@ -1,9 +1,8 @@
-import { DownloadWorkflow } from './workflows/download-workflow.js';
-import { ClassifyWorkflow } from './workflows/classify-workflow.js';
+import { DataPipelineWorkflow } from './workflows/data-pipeline.js';
 import { EnqueuePhotosTask } from './tasks/enqueue-photos.js';
 import { Analytics } from './utils/analytics.js';
 
-export { DownloadWorkflow, ClassifyWorkflow };
+export { DataPipelineWorkflow };
 
 let statsCache = null;
 let statsCacheTime = 0;
@@ -53,22 +52,18 @@ export default {
           endPage: 3
         });
 
-        const [downloadInstance, classifyInstance] = await Promise.all([
-          env.DOWNLOAD_WORKFLOW.create({ payload: {} }),
-          env.CLASSIFY_WORKFLOW.create({ payload: {} })
-        ]);
+        const workflowInstance = await env.PHOTO_WORKFLOW.create({ payload: {} });
 
         await analytics.logEvent('trigger', { status: 'success' });
 
         return Response.json({
           success: true,
-          downloadWorkflowId: downloadInstance.id,
-          classifyWorkflowId: classifyInstance.id,
+          workflowId: workflowInstance.id,
           enqueued: enqueueResult.enqueued,
           skipped: enqueueResult.skipped,
           pages: enqueueResult.pages,
           cursor: enqueueResult.cursor,
-          message: 'Photos enqueued and workflows triggered'
+          message: 'Photos enqueued and workflow triggered'
         });
       } catch (error) {
         return Response.json({
@@ -100,28 +95,91 @@ export default {
 
       const analytics = new Analytics(env.AE);
       
+      // Step 1: Enqueue new photos
       const enqueueTask = new EnqueuePhotosTask();
       const enqueueResult = await enqueueTask.run(env, { 
         startPage: 1, 
         endPage: 2
       });
 
-      const downloadInstance = await env.DOWNLOAD_WORKFLOW.create({ payload: {} });
-      
-      ctx.waitUntil((async () => {
-        await new Promise(resolve => setTimeout(resolve, 30000));
-        const classifyInstance = await env.CLASSIFY_WORKFLOW.create({ payload: {} });
-        console.log(`Classify workflow started (delayed): ${classifyInstance.id}`);
-      })());
+      // Step 2: Start workflow to process queue
+      const workflowInstance = await env.PHOTO_WORKFLOW.create({ payload: {} });
+
+      // Step 3: Cleanup old data (async)
+      ctx.waitUntil(this.cleanupOldData(env));
 
       await analytics.logEvent('cron', { 
         status: 'success',
         enqueued: enqueueResult.enqueued 
       });
 
-      console.log(`Enqueued ${enqueueResult.enqueued} photos, download: ${downloadInstance.id}`);
+      console.log(`Enqueued ${enqueueResult.enqueued} photos, workflow: ${workflowInstance.id}`);
     } catch (error) {
-      console.error('Failed to enqueue and start workflows:', error);
+      console.error('Failed to enqueue and start workflow:', error);
+    }
+  },
+
+  async cleanupOldData(env) {
+    try {
+      const retentionConfig = await env.DB.prepare(
+        'SELECT key, value FROM State WHERE key IN (?, ?)'
+      ).bind('retention_days', 'max_photos').all();
+
+      const config = Object.fromEntries(
+        retentionConfig.results.map(r => [r.key, parseInt(r.value)])
+      );
+
+      const retentionDays = config.retention_days || 30;
+      const maxPhotos = config.max_photos || 10000;
+
+      // Check current photo count
+      const { total } = await env.DB.prepare(
+        'SELECT COUNT(*) as total FROM Photos'
+      ).first();
+
+      if (total <= maxPhotos) {
+        console.log(`Photo count (${total}) within limit (${maxPhotos})`);
+        return;
+      }
+
+      // Delete oldest photos beyond limit
+      const toDelete = total - maxPhotos;
+      const oldPhotos = await env.DB.prepare(`
+        SELECT unsplash_id, r2_key FROM Photos 
+        ORDER BY downloaded_at ASC 
+        LIMIT ?
+      `).bind(toDelete).all();
+
+      let deletedFiles = 0;
+      for (const photo of oldPhotos.results) {
+        try {
+          await env.R2.delete(photo.r2_key);
+          deletedFiles++;
+        } catch (err) {
+          console.error(`Failed to delete R2 file ${photo.r2_key}:`, err);
+        }
+      }
+
+      // Delete from database
+      const photoIds = oldPhotos.results.map(p => p.unsplash_id);
+      await env.DB.prepare(`
+        DELETE FROM Photos WHERE unsplash_id IN (${photoIds.map(() => '?').join(',')})
+      `).bind(...photoIds).run();
+
+      // Log cleanup
+      await env.DB.prepare(`
+        INSERT INTO CleanupLog (photos_deleted, r2_files_deleted, cleanup_reason, executed_at)
+        VALUES (?, ?, ?, ?)
+      `).bind(
+        photoIds.length,
+        deletedFiles,
+        `Exceeded max_photos limit (${maxPhotos})`,
+        new Date().toISOString()
+      ).run();
+
+      console.log(`Cleanup: deleted ${photoIds.length} photos, ${deletedFiles} R2 files`);
+    } catch (error) {
+      console.error('Cleanup failed:', error);
     }
   }
 };
