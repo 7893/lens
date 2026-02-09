@@ -1,6 +1,38 @@
 export class EnqueuePhotosTask {
   async run(env, { startPage = 1, endPage = 2 }) {
     try {
+      // Check API quota before making requests
+      const quotaCheck = await env.DB.prepare(
+        'SELECT calls_used, quota_limit, next_reset_at FROM ApiQuota WHERE api_name = ?'
+      ).bind('unsplash').first();
+
+      if (quotaCheck) {
+        const now = new Date();
+        const resetTime = new Date(quotaCheck.next_reset_at);
+
+        // Reset counter if past reset time
+        if (now >= resetTime) {
+          await env.DB.prepare(`
+            UPDATE ApiQuota SET calls_used = 0, next_reset_at = ?, updated_at = ?
+            WHERE api_name = ?
+          `).bind(
+            new Date(now.getTime() + 3600000).toISOString(), // +1 hour
+            now.toISOString(),
+            'unsplash'
+          ).run();
+        } else if (quotaCheck.calls_used >= quotaCheck.quota_limit - 5) {
+          // Leave 5 calls buffer
+          console.warn(`API quota near limit: ${quotaCheck.calls_used}/${quotaCheck.quota_limit}`);
+          return { 
+            enqueued: 0, 
+            skipped: 0, 
+            pages: 0, 
+            error: 'API quota limit reached',
+            quotaReset: quotaCheck.next_reset_at
+          };
+        }
+      }
+
       const [cursorTime, cursorId] = await Promise.all([
         env.DB.prepare('SELECT value FROM State WHERE key = ?').bind('last_cursor_time').first(),
         env.DB.prepare('SELECT value FROM State WHERE key = ?').bind('last_cursor_id').first()
@@ -14,11 +46,14 @@ export class EnqueuePhotosTask {
       let newCursorTime = lastCursorTime;
       let newCursorId = lastCursorId;
       let allPhotos = [];
+      let apiCallsMade = 0;
 
       for (let page = startPage; page <= endPage; page++) {
         const response = await fetch(
           `https://api.unsplash.com/photos?order_by=latest&per_page=30&page=${page}&client_id=${env.UNSPLASH_API_KEY}`
         );
+        
+        apiCallsMade++;
         
         if (!response.ok) {
           console.error(`Unsplash API failed: ${response.status}`);
@@ -28,6 +63,12 @@ export class EnqueuePhotosTask {
         const photos = await response.json();
         allPhotos.push(...photos);
       }
+
+      // Update API quota counter
+      await env.DB.prepare(`
+        UPDATE ApiQuota SET calls_used = calls_used + ?, updated_at = ?
+        WHERE api_name = ?
+      `).bind(apiCallsMade, new Date().toISOString(), 'unsplash').run();
 
       if (allPhotos.length === 0) {
         return { enqueued: 0, skipped: 0, pages: 0, cursor: lastCursorTime };
