@@ -129,8 +129,7 @@ export default {
         retentionConfig.results.map(r => [r.key, parseInt(r.value)])
       );
 
-      const retentionDays = config.retention_days || 30;
-      const maxPhotos = config.max_photos || 10000;
+      const maxPhotos = config.max_photos || 4000;
 
       // Check current photo count
       const { total } = await env.DB.prepare(
