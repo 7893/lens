@@ -28,69 +28,14 @@ CREATE INDEX IF NOT EXISTS idx_queue_status ON ProcessingQueue(status);
 CREATE INDEX IF NOT EXISTS idx_queue_page ON ProcessingQueue(page);
 CREATE INDEX IF NOT EXISTS idx_queue_retry ON ProcessingQueue(retry_count);
 
-CREATE TABLE IF NOT EXISTS Photos (
-  unsplash_id TEXT PRIMARY KEY,
-  slug TEXT,
-  r2_key TEXT,
-  downloaded_at TEXT,
-  
-  description TEXT,
-  alt_description TEXT,
-  blur_hash TEXT,
-  width INTEGER,
-  height INTEGER,
-  color TEXT,
-  likes INTEGER,
-  views INTEGER,
-  downloads INTEGER,
-  
-  created_at TEXT,
-  updated_at TEXT,
-  promoted_at TEXT,
-  
-  photographer_id TEXT,
-  photographer_username TEXT,
-  photographer_name TEXT,
-  photographer_bio TEXT,
-  photographer_location TEXT,
-  photographer_portfolio_url TEXT,
-  photographer_instagram TEXT,
-  photographer_twitter TEXT,
-  
-  photo_location_name TEXT,
-  photo_location_city TEXT,
-  photo_location_country TEXT,
-  photo_location_latitude REAL,
-  photo_location_longitude REAL,
-  
-  exif_make TEXT,
-  exif_model TEXT,
-  exif_name TEXT,
-  exif_exposure_time TEXT,
-  exif_aperture TEXT,
-  exif_focal_length TEXT,
-  exif_iso INTEGER,
-  
-  tags TEXT,
-  topics TEXT,
-  
-  ai_category TEXT,
-  ai_confidence REAL,
-  ai_model_scores TEXT
-);
-
-CREATE INDEX IF NOT EXISTS idx_ai_category ON Photos(ai_category);
-CREATE INDEX IF NOT EXISTS idx_downloaded_at ON Photos(downloaded_at);
-CREATE INDEX IF NOT EXISTS idx_photographer_username ON Photos(photographer_username);
-CREATE INDEX IF NOT EXISTS idx_location_country ON Photos(photo_location_country);
-CREATE INDEX IF NOT EXISTS idx_exif_make ON Photos(exif_make);
-
+-- Photos table: stores photo metadata and AI classification results
 CREATE TABLE IF NOT EXISTS Photos (
   unsplash_id TEXT PRIMARY KEY,
   slug TEXT,
   r2_key TEXT NOT NULL,
   downloaded_at TEXT NOT NULL,
   
+  -- Photo details
   description TEXT,
   alt_description TEXT,
   blur_hash TEXT,
@@ -98,11 +43,15 @@ CREATE TABLE IF NOT EXISTS Photos (
   height INTEGER NOT NULL,
   color TEXT,
   likes INTEGER,
+  views INTEGER,
+  downloads INTEGER,
   
+  -- Timestamps
   created_at TEXT NOT NULL,
   updated_at TEXT,
   promoted_at TEXT,
   
+  -- Photographer info
   photographer_id TEXT NOT NULL,
   photographer_username TEXT NOT NULL,
   photographer_name TEXT NOT NULL,
@@ -112,12 +61,14 @@ CREATE TABLE IF NOT EXISTS Photos (
   photographer_instagram TEXT,
   photographer_twitter TEXT,
   
+  -- Location
   photo_location_name TEXT,
   photo_location_city TEXT,
   photo_location_country TEXT,
   photo_location_latitude REAL,
   photo_location_longitude REAL,
   
+  -- EXIF data
   exif_make TEXT,
   exif_model TEXT,
   exif_name TEXT,
@@ -126,8 +77,11 @@ CREATE TABLE IF NOT EXISTS Photos (
   exif_focal_length TEXT,
   exif_iso INTEGER,
   
+  -- Tags and topics
   tags TEXT,
+  topics TEXT,
   
+  -- AI classification
   ai_category TEXT NOT NULL,
   ai_confidence REAL NOT NULL,
   ai_model_scores TEXT NOT NULL
@@ -182,3 +136,17 @@ CREATE TABLE IF NOT EXISTS ApiQuota (
 
 INSERT OR IGNORE INTO ApiQuota (api_name, quota_limit, next_reset_at, updated_at) 
 VALUES ('unsplash', 50, datetime('now', '+1 hour'), datetime('now'));
+
+-- Data retention policy: keep only last 30 days or max 10,000 photos
+-- Add retention config to State table
+INSERT OR IGNORE INTO State (key, value, updated_at) VALUES ('retention_days', '30', datetime('now'));
+INSERT OR IGNORE INTO State (key, value, updated_at) VALUES ('max_photos', '10000', datetime('now'));
+
+-- Create cleanup tracking table
+CREATE TABLE IF NOT EXISTS CleanupLog (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  photos_deleted INTEGER DEFAULT 0,
+  r2_files_deleted INTEGER DEFAULT 0,
+  cleanup_reason TEXT,
+  executed_at TEXT NOT NULL
+);

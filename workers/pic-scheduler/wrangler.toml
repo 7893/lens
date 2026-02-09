@@ -23,14 +23,9 @@ binding = "AE"
 dataset = "pic-ae"
 
 [[workflows]]
-binding = "DOWNLOAD_WORKFLOW"
-name = "pic-download-wf"
-class_name = "DownloadWorkflow"
-
-[[workflows]]
-binding = "CLASSIFY_WORKFLOW"
-name = "pic-classify-wf"
-class_name = "ClassifyWorkflow"
+binding = "PHOTO_WORKFLOW"
+name = "pic-photo-wf"
+class_name = "DataPipelineWorkflow"
 
 [triggers]
 crons = ["*/10 * * * *"]
