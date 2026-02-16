@@ -4,47 +4,47 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![MIT](https://img.shields.io/badge/MIT-blue.svg)](LICENSE)
 
-Search images by meaning, not keywords.
+用语义搜图，不是关键词。
 
-Type "loneliness" and get a figure walking through a snowy alley at night. Type "warmth" and get a fireplace. The AI actually understands what's in every photo.
+搜"孤独感"，出来的是雪夜独行的小巷。搜"温暖"，出来的是壁炉。AI 真的看懂了每一张图。
 
 ---
 
-### Three-Stage Search Pipeline
+### 三级搜索管道
 
 ```
-Query → LLM Expansion → Vector Retrieval → LLM Re-ranking → Results
+查询 → LLM 扩展 → 向量检索 → LLM 重排 → 结果
 ```
 
-**Stage 1 — Query Expansion.** Llama 3.2 translates and enriches the query. Supports any language.
+**第一级 — 查询扩展。** Llama 3.2 自动翻译 + 扩展查询词。中日英随便搜。
 
-**Stage 2 — Vector Retrieval.** BGE Large encodes the expanded query into a 1024-dim vector. Vectorize returns the top 100 candidates by cosine similarity.
+**第二级 — 向量检索。** BGE Large 把扩展后的查询编码为 1024 维向量，Vectorize 余弦相似度召回 top 100。
 
-**Stage 3 — LLM Re-ranking.** Llama 3.2 re-scores the top 50 candidates by semantic relevance. Fixes what vector search gets wrong.
+**第三级 — 语义重排。** Llama 3.2 对 top 50 候选重新打分排序。向量搜错的，这一步纠正。
 
-### Autonomous Ingestion
+### 自动采集
 
-Every hour, a cron job pulls 30 random photos from Unsplash. Each one goes through a Workflow pipeline:
+每小时 cron 从 Unsplash 拉 30 张图，每张走一遍 Workflow：
 
-**Download → Llama 3.2 Vision → BGE Large Embedding → D1 + Vectorize**
+**下载 → Llama 3.2 Vision 分析 → BGE Large 向量化 → 写入 D1 + Vectorize**
 
-The embedding fuses AI caption, tags, alt description, photographer, location, and topic metadata. Every step retries independently. The gallery grows on its own, forever.
+向量融合了 AI 描述、标签、原始描述、摄影师、地点、分类。每步独立重试。图库自己长，永远不停。
 
-### Stack
+### 技术栈
 
 Hono · React · Vite · Tailwind · D1 · R2 · Vectorize · Queues · Workflows · Llama 3.2 11B Vision · BGE Large 1024d · Terraform · GitHub Actions
 
-Two Workers. Zero servers. 55-second deploys.
+两个 Worker。零服务器。`git push` 55 秒上线。
 
-### What Makes This Different
+### 凭什么不一样
 
-- **Three-stage search** — most vector search apps stop at retrieval. Lens adds LLM expansion before and LLM re-ranking after.
-- **Full metadata embedding** — vectors encode not just AI captions, but location, photographer, topics, and Unsplash descriptions. Search "Dubai" and it matches by geography, not just visual similarity.
-- **Multilingual** — query in Chinese, Japanese, or any language. The LLM translates before embedding.
-- **Complete data pipeline** — every Unsplash field is stored, served via API, and rendered in the frontend. Nothing is thrown away.
-- **Edge-native AI** — three AI tasks (vision, expansion, re-ranking) all run on Cloudflare's edge. No external API calls. No GPU instances.
-- **Self-healing** — Cron → Queue → Workflow. Each step is durable and retries on failure. The system runs unattended.
+- **三级搜索** — 大多数向量搜索到检索就结束了。Lens 在前面加了 LLM 扩展，后面加了 LLM 重排。
+- **全元数据向量化** — 向量不只编码 AI 描述，还融合了地点、摄影师、分类、Unsplash 原始描述。搜"Dubai"靠地理信息命中，不只是视觉相似。
+- **多语言** — 中文、日文、随便什么语言。LLM 先翻译再检索。
+- **完整数据链路** — Unsplash 每个字段都存了、都返回了、都展示了。没有丢任何东西。
+- **边缘原生 AI** — 视觉理解、查询扩展、结果重排，三个 AI 任务全跑在 Cloudflare 边缘。没有外部 API，没有 GPU 实例。
+- **自愈架构** — Cron → Queue → Workflow，每步持久化，失败自动重试。系统无人值守运行。
 
-### Docs
+### 文档
 
-[System Design](docs/architecture/DESIGN.md) · [Frontend](docs/architecture/FRONTEND_DESIGN.md) · [API Reference](docs/api/OPENAPI.md) · [Development](docs/guide/DEVELOPMENT.md) · [Deployment](docs/guide/SETUP.md) · [ADR](docs/ADR/001-architecture-decisions.md)
+[系统设计](docs/architecture/DESIGN.md) · [前端架构](docs/architecture/FRONTEND_DESIGN.md) · [API 参考](docs/api/OPENAPI.md) · [开发指南](docs/guide/DEVELOPMENT.md) · [部署指南](docs/guide/SETUP.md) · [架构决策](docs/ADR/001-architecture-decisions.md)
