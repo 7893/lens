@@ -1,4 +1,4 @@
-# Iris
+# Lens
 
 **AI-Powered Semantic Image Search on Cloudflare Edge**
 
@@ -11,7 +11,7 @@
 
 ---
 
-## Iris 是什么
+## Lens 是什么
 
 一个**零运维、全自动**的 AI 语义图库。
 
