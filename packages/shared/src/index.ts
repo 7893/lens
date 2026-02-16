@@ -35,9 +35,11 @@ export interface DBSystemConfig {
 export interface IngestionTask {
   type: 'process-photo';
   photoId: string;
-  downloadUrl: string; // Raw URL
+  downloadUrl: string;
+  displayUrl?: string;
   photographer: string;
   source: 'unsplash';
+  meta?: UnsplashPhoto;
 }
 
 // ==========================================
