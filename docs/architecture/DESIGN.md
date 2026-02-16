@@ -60,7 +60,7 @@ Frontend is bundled as static assets in the same Worker.
 | Object Storage | R2 | `pic-r2` |
 | Vector Index | Vectorize (768d, cosine) | `pic-vectors` |
 | Task Queue | Queues | `pic-ingestion` |
-| Vision AI | `@cf/llava-hf/llava-1.5-7b-hf` | — |
+| Vision AI | `@cf/meta/llama-3.2-11b-vision-instruct` | — |
 | Embedding AI | `@cf/baai/bge-base-en-v1.5` | — |
 
 ## D1 Schema
