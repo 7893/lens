@@ -13,7 +13,7 @@
 
 🔄 **全自动采集管道** — Cron 定时触发 → Queue 削峰 → Workflow 编排 5 步流水线（下载 → AI 视觉分析 → 向量化 → 持久化 → 索引）。每一步独立重试，单步失败不影响整体。你睡觉的时候它在自动扩充图库。
 
-🏗️ **现代工程实践** — TypeScript 全栈 strict mode、Monorepo（npm workspaces）、Terraform IaC 管理基础设施、GitHub Actions CI/CD 自动部署。推一次代码，三个组件同时上线。
+🏗️ **现代工程实践** — TypeScript 全栈 strict mode、Monorepo（npm workspaces）、Terraform IaC 管理基础设施、GitHub Actions CI/CD 自动部署。推一次代码，两个 Worker 同时上线。
 
 💰 **极致成本控制** — R2 零出口流量费、D1 免费额度覆盖日常使用、Workers AI 按调用计费。整套系统月成本趋近于零。
 
@@ -25,9 +25,9 @@
   用户搜索 "sunset over ocean"
        │
        ▼
-  ┌─────────┐  embedding   ┌───────────┐  top-K   ┌────┐
-  │ pic-api │ ──────────▶  │ Vectorize │ ───────▶ │ D1 │ ──▶ 返回结果
-  └─────────┘              └───────────┘          └────┘
+  ┌─────┐  embedding   ┌───────────┐  top-K   ┌────┐
+  │ pic │ ──────────▶  │ Vectorize │ ───────▶ │ D1 │ ──▶ 返回结果
+  └─────┘              └───────────┘          └────┘
        │
        │ 图片代理
        ▼
@@ -59,7 +59,7 @@
 |---|------|------|
 | 搜索 API | Hono + Workers | 类型安全的轻量路由 |
 | 采集引擎 | Workflows + Queues | 可重试的异步编排 |
-| 前端 | React + Vite + Tailwind | 静态部署到 Pages |
+| 前端 | React + Vite + Tailwind | 打包为 Worker 静态资源 |
 | 数据库 | D1 (SQLite) | 图片元数据 |
 | 向量检索 | Vectorize (768d, cosine) | 语义搜索 |
 | 存储 | R2 | 原始图 + 展示图 |

@@ -22,16 +22,3 @@ resource "null_resource" "vectorize_index" {
     command = "npx wrangler vectorize create ${self.triggers.index_name} --dimensions=768 --metric=cosine || echo 'Index already exists'"
   }
 }
-
-# Cloudflare Pages Project (Frontend)
-resource "cloudflare_pages_project" "web" {
-  account_id        = var.account_id
-  name              = "pic"
-  production_branch = "main"
-
-  build_config {
-    build_command   = "npm run build"
-    destination_dir = "dist"
-    root_dir        = "apps/web"
-  }
-}

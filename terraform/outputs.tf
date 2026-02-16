@@ -7,8 +7,3 @@ output "queue_name" {
   value       = cloudflare_queue.ingestion.name
   description = "Queue name"
 }
-
-output "pages_subdomain" {
-  value       = cloudflare_pages_project.web.subdomain
-  description = "Pages subdomain"
-}
