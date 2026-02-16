@@ -31,31 +31,37 @@ export const CONFIG = {
     WARN: 2,
     ERROR: 3,
   },
-};
+} as const;
 
 export class Logger {
-  constructor(level = CONFIG.LOG_LEVEL.INFO) {
+  private level: number;
+
+  constructor(level: number = CONFIG.LOG_LEVEL.INFO) {
     this.level = level;
   }
-  debug(...args) {
+
+  debug(...args: unknown[]): void {
     if (this.level <= CONFIG.LOG_LEVEL.DEBUG) console.log('[DEBUG]', ...args);
   }
-  info(...args) {
+
+  info(...args: unknown[]): void {
     if (this.level <= CONFIG.LOG_LEVEL.INFO) console.log('[INFO]', ...args);
   }
-  warn(...args) {
+
+  warn(...args: unknown[]): void {
     if (this.level <= CONFIG.LOG_LEVEL.WARN) console.warn('[WARN]', ...args);
   }
-  error(...args) {
+
+  error(...args: unknown[]): void {
     if (this.level <= CONFIG.LOG_LEVEL.ERROR) console.error('[ERROR]', ...args);
   }
 }
 
-export function generateRequestId() {
+export function generateRequestId(): string {
   return `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 }
 
-export function safeErrorResponse(error, requestId) {
+export function safeErrorResponse(error: Error, requestId: string): Response {
   return Response.json({
     success: false,
     error: error.message,
@@ -63,18 +69,18 @@ export function safeErrorResponse(error, requestId) {
   }, { status: 500 });
 }
 
-export function validatePagination(page, limit, maxLimit = CONFIG.PAGINATION.MAX_PAGE_SIZE) {
-  const validPage = Math.max(1, parseInt(page) || 1);
-  const validLimit = Math.min(maxLimit, Math.max(1, parseInt(limit) || maxLimit));
+export function validatePagination(page: unknown, limit: unknown, maxLimit: number = CONFIG.PAGINATION.MAX_PAGE_SIZE): { page: number; limit: number } {
+  const validPage = Math.max(1, parseInt(String(page)) || 1);
+  const validLimit = Math.min(maxLimit, Math.max(1, parseInt(String(limit)) || maxLimit));
   return { page: validPage, limit: validLimit };
 }
 
-export function validateImageId(imageId) {
+export function validateImageId(imageId: unknown): boolean {
   if (!imageId || typeof imageId !== 'string') return false;
   return CONFIG.VALIDATION.IMAGE_ID_REGEX.test(imageId);
 }
 
-export function validateCategory(category) {
+export function validateCategory(category: unknown): boolean {
   if (!category || typeof category !== 'string') return false;
   return CONFIG.VALIDATION.CATEGORY_REGEX.test(category);
 }
