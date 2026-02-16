@@ -1,4 +1,4 @@
-import { UnsplashPhoto } from '@pic/shared';
+import { UnsplashPhoto } from '@iris/shared';
 
 const UNSPLASH_API_URL = 'https://api.unsplash.com';
 

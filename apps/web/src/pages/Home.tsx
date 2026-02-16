@@ -1,5 +1,5 @@
 import { useSearch } from '../hooks/use-search';
-import { ImageResult } from '@pic/shared';
+import { ImageResult } from '@iris/shared';
 import { Search, X, Camera, Sparkles, MapPin, Eye, Download, Heart, Aperture, Clock, ExternalLink } from 'lucide-react';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { decode } from 'blurhash';
@@ -217,7 +217,7 @@ export default function Home() {
     <div className="min-h-screen bg-gray-50">
       <div className={`transition-all duration-500 ease-out ${results.length > 0 || isLoading ? 'pt-8' : 'pt-[30vh]'}`}>
         <div className="max-w-4xl mx-auto mb-12 text-center px-8">
-          <h1 className="text-4xl font-bold text-gray-900 mb-4">Pic Gallery</h1>
+          <h1 className="text-4xl font-bold text-gray-900 mb-4">Iris</h1>
           <p className="text-gray-500 mb-8">AI-Powered Semantic Search</p>
 
           <div className="relative max-w-xl mx-auto">
