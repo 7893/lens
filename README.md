@@ -68,17 +68,6 @@
 | IaC | Terraform | 基础设施声明式管理 |
 | CI/CD | GitHub Actions | 推送即部署 |
 
-## 快速开始
-
-```bash
-git clone https://github.com/7893/pic.git
-cd pic
-npm install
-npm run dev
-```
-
-完整部署指南见 [Setup Guide](docs/guide/SETUP.md)。
-
 ## 文档
 
 - [系统设计](docs/architecture/DESIGN.md)
