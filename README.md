@@ -1,287 +1,112 @@
-# 🖼️ Pic - AI Photo Gallery
+# 🖼️ Pic - AI Photo Gallery (Monolith Worker)
 
 [![Cloudflare Workers](https://img.shields.io/badge/Cloudflare-Workers-orange)](https://workers.cloudflare.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-基于 Cloudflare 无服务器生态的自动化图片收集和 AI 分类系统。从 Unsplash 获取照片，使用 AI 智能分类，存储在 R2，元数据保存在 D1。
+基于 Cloudflare 全家桶（Workers + D1 + R2 + AI + Workflows + Analytics）构建的一体化智能相册系统。
+它能够全自动地从 Unsplash 收集高质量图片，使用 AI 进行分类，并对外提供极速的图片展示服务。
 
-## ✨ 特性
+## ✨ 核心特性
 
-- 🤖 **自动收集**：每小时从 Unsplash 获取最新照片
-- 🧠 **AI 分类**：使用 Cloudflare AI 模型智能分类
-- 📦 **无服务器**：100% Cloudflare 生态（Workers + D1 + R2 + Workflows）
-- 🔄 **去重机制**：基于游标的增量同步，避免重复
-- 📊 **实时统计**：分类分布、处理状态、API 配额监控
-- 🎯 **容错处理**：Workflow 步骤级重试，自动恢复
-- 💾 **自动清理**：保留最新 4,000 张照片，自动删除旧数据
-- 🔒 **配额管理**：API 调用限制和自动重置机制
+- 🏗️ **单体架构 (Monolith)**：仅需部署一个 Worker，即可同时处理前端展示、API 服务、定时调度和后台工作流。
+- 🤖 **全自动采集**：通过 Cron Trigger 每小时触发，自动从 Unsplash 获取最新图片。
+- 🧠 **AI 智能分类**：集成 Cloudflare AI 模型，对每张图片进行内容识别和打标签。
+- 📦 **Serverless 存储**：图片原图存入 R2，元数据存入 D1，事件日志存入 Analytics Engine。
+- 🔄 **稳健的工作流**：使用 Cloudflare Workflows 编排下载、分类、存储任务，支持步骤级重试。
+- 📊 **自适应清理**：内置容量管理逻辑，自动清理旧图片以保持存储用量在免费额度内（默认保留 4,000 张）。
+- 🚀 **极速体验**：前端直接由 Worker 渲染，图片通过 R2 代理或 CDN 分发。
 
-## 🚀 快速开始
+## 📚 文档中心 (Documentation)
 
-### 前置要求
+我们将文档整理为以下几个部分，方便查阅：
 
-- Node.js 22.20.0（参见 `.nvmrc` 或 `.tool-versions`）
-- Cloudflare 账户（启用 Workers、D1、R2、AI、Queues）
-- Unsplash API Key（[免费申请](https://unsplash.com/developers)）
+### 🚀 快速入门
+- [**快速上手 (Getting Started)**](docs/guide/GETTING_STARTED.md): 从零开始部署你的第一个 Pic 实例。
+- [**开发指南 (Development Guide)**](docs/guide/DEVELOPMENT.md): 本地开发环境搭建与调试技巧。
 
-### 环境变量
+### 📖 参考手册
+- [**系统架构 (Architecture)**](docs/reference/ARCHITECTURE.md): 深入了解单体 Worker 的内部设计与数据流。
+- [**API 文档 (API Reference)**](docs/reference/API.md): 前后端 HTTP 接口定义。
+- [**配置说明 (Configuration)**](docs/reference/CONFIGURATION.md): 环境变量与 `wrangler.toml` 配置详解。
 
-| 变量名 | 说明 | 获取方式 |
-|--------|------|----------|
-| `UNSPLASH_API_KEY` | Unsplash API 密钥 | [注册应用](https://unsplash.com/oauth/applications) |
+### 🔧 故障排除
+- [**常见问题 (FAQ)**](docs/troubleshooting/FAQ.md): 部署失败、API 报错等常见问题的排查与解决。
 
-### 安装
+## 🚀 快速预览
+
+### 1. 配置环境
 
 ```bash
 # 克隆仓库
-git clone git@github.com:7893/pic.git
+git clone https://github.com/your-username/pic.git
 cd pic
 
 # 安装依赖
 npm install
+
+# 配置 Unsplash API Key
+wrangler secret put UNSPLASH_API_KEY
 ```
 
-### 配置
+### 2. 创建资源
 
 ```bash
-# 1. 配置 Unsplash API Key
-wrangler secret put UNSPLASH_API_KEY --config workers/pic-scheduler/wrangler.toml
-
-# 2. 创建 R2 Bucket（部署时自动创建）
-# wrangler r2 bucket create pic-r2
-
-# 3. 创建 D1 数据库
+# 创建 D1 数据库
 wrangler d1 create pic-d1
-# 记录返回的 database_id，更新到两个 wrangler.toml 文件
 
-# 4. 应用数据库 schema
+# *重要*：将返回的 database_id 填入 wrangler.toml 的 [d1_databases] 部分
+
+# 初始化数据库结构
 wrangler d1 execute pic-d1 --remote --file=workers/pic-scheduler/schema.sql
+
+# 创建 R2 存储桶
+wrangler r2 bucket create pic-r2
 ```
 
-### 部署
+### 3. 一键部署
 
 ```bash
-# 部署所有服务
-npm run deploy:all
-
-# 或单独部署
-npm run deploy:scheduler  # 后端调度器
-npm run deploy:frontend   # 前端展示
+npm run deploy
 ```
 
-### 验证
+详细步骤请参考 [快速上手指南](docs/guide/GETTING_STARTED.md)。
 
-```bash
-# 手动触发一次处理
-curl -X POST https://<your-worker>.workers.dev/api/trigger
+## 🏗️ 简要架构图
 
-# 查看统计
-curl https://<your-frontend>.workers.dev/api/stats
+```mermaid
+graph TD
+    User((User)) -->|HTTP Request| Worker
+    Cron((Cron Trigger)) -->|Every Hour| Worker
 
-# 访问前端
-open https://<your-frontend>.workers.dev
+    subgraph "Cloudflare Worker (pic)"
+        direction TB
+        Router[Router / Dispatcher]
+        
+        subgraph "Modules"
+            API[API & UI Module]
+            Scheduler[Scheduler Module]
+            Pipeline[Data Pipeline Workflow]
+        end
+        
+        Router -->|GET /| API
+        Router -->|GET /api/*| API
+        Router -->|Scheduled Event| Scheduler
+        Scheduler -->|Trigger| Pipeline
+    end
+
+    subgraph "Cloudflare Services"
+        Unsplash[Unsplash API]
+        AI[Workers AI]
+        R2[(R2 Storage)]
+        D1[(D1 Database)]
+    end
+
+    Pipeline -->|Fetch| Unsplash
+    Pipeline -->|Classify| AI
+    Pipeline -->|Store| R2
+    Pipeline -->|Persist| D1
 ```
-
-## 📁 项目结构
-
-```
-pic/
-├── .github/workflows/      # GitHub Actions CI/CD
-├── docs/                   # 技术文档
-│   ├── API.md             # API 接口文档
-│   ├── DEPLOY.md          # 部署指南
-│   └── TROUBLESHOOTING.md # 故障排查
-├── scripts/
-│   └── test.sh            # 系统测试脚本
-├── workers/
-│   ├── pic-scheduler/     # 后端调度器
-│   │   ├── src/
-│   │   │   ├── workflows/ # Workflow 实现
-│   │   │   ├── tasks/     # 任务模块
-│   │   │   ├── services/  # 外部服务
-│   │   │   └── utils/     # 工具函数
-│   │   ├── schema.sql     # D1 数据库 schema
-│   │   └── wrangler.toml  # Worker 配置
-│   └── pic-frontend/      # 前端展示
-│       ├── src/index.js   # 主入口
-│       └── wrangler.toml  # Worker 配置
-├── package.json           # 根工作区配置
-├── .tool-versions         # asdf 版本锁定
-└── .nvmrc                 # Node 版本锁定
-```
-
-## 🏗️ 架构
-
-### 系统架构
-
-```
-┌──────────────────┐
-│  Cron Trigger    │  每小时触发
-│  (Scheduler)     │
-└────────┬─────────┘
-         │
-         │ 1. Fetch 30 photos from Unsplash (regular quality)
-         │ 2. Filter duplicates (check DB)
-         │ 3. Insert to ProcessingQueue
-         │
-         ▼
-┌──────────────────────────────────────┐
-│  Photo Processing Workflow           │
-│  (DataPipelineWorkflow)              │
-│  - Batch process from queue          │
-│  - Per photo, idempotent             │
-│                                      │
-│  ┌────────────────────────────────┐ │
-│  │ Step 1: Download Image         │ │
-│  │  - Fetch from Unsplash         │ │
-│  │  - Use regular quality (~500KB)│ │
-│  └────────────────────────────────┘ │
-│                                      │
-│  ┌────────────────────────────────┐ │
-│  │ Step 2: AI Classify            │ │
-│  │  - Call Cloudflare AI          │ │
-│  │  - Get category label          │ │
-│  └────────────────────────────────┘ │
-│                                      │
-│  ┌────────────────────────────────┐ │
-│  │ Step 3: Upload to R2           │ │
-│  │  - Save to category/{id}.jpg   │ │
-│  └────────────────────────────────┘ │
-│                                      │
-│  ┌────────────────────────────────┐ │
-│  │ Step 4: Save to Database       │ │
-│  │  - INSERT INTO Photos          │ │
-│  │  - UPDATE CategoryStats        │ │
-│  └────────────────────────────────┘ │
-└──────────────────────────────────────┘
-         │
-         ▼
-┌──────────────────┐
-│  D1 + R2         │  持久化存储
-│  (Photos + Files)│
-│                  │
-│  Auto Cleanup:   │
-│  Keep 4,000 max  │
-└──────────────────┘
-```
-
-### 核心组件
-
-**1. Cron Worker（调度器）**
-- 每小时触发一次
-- 从 Unsplash 获取最新照片（30 张）
-- 数据库去重
-- 插入到 ProcessingQueue
-- 自动清理超出限制的旧照片
-
-**2. DataPipeline Workflow（处理核心）**
-- 批量处理队列中的照片
-- 步骤级重试（下载成功后无需重下）
-- 幂等性保证（检查 Photos 表避免重复）
-- 状态自动持久化
-
-### 技术栈
-
-| 组件 | 技术 | 用途 |
-|------|------|------|
-| 计算 | Cloudflare Workers | 无服务器函数 |
-| 数据库 | D1 (SQLite) | 元数据存储 |
-| 存储 | R2 | 图片文件存储 |
-| 编排 | Workflows | 多步骤任务编排 |
-| AI | Cloudflare AI | 图片分类 |
-| 监控 | Analytics Engine | 事件追踪 |
-
-### 数据流
-
-1. **Cron 触发**（每小时）
-   - 调用 Unsplash API 获取 30 张照片（regular 质量）
-   - 查询数据库过滤已存在的照片
-   - 将新照片插入到 ProcessingQueue
-   - 检查并清理超出 4,000 张限制的旧照片
-
-2. **Workflow 处理**
-   - 从 ProcessingQueue 批量获取待处理照片
-   - 为每张照片执行 4 步处理流程
-   - Step 1: 下载图片（~500 KB regular 质量）
-   - Step 2: 调用 AI 模型进行分类
-   - Step 3: 上传到 R2（category/{id}.jpg）
-   - Step 4: 保存元数据到 D1 数据库
-
-3. **前端展示**
-   - 从 D1 读取照片列表
-   - 从 R2 加载图片文件
-   - 展示统计信息和分类
-
-## 📊 性能指标
-
-- **处理能力**：30 张照片/小时 = 720 张/天
-- **API 调用**：1 次/小时 = 24 次/天（Unsplash 限制 50 次/小时）
-- **AI 推理**：2 模型 × 720 张 = 1,440 次/天
-- **成功率**：~100%（Workflow 自动重试）
-- **存储优化**：使用 regular 质量（~500 KB vs 2-5 MB raw）
-
-### Cloudflare 免费套餐资源使用
-
-| 资源 | 限制 | 使用量 | 状态 |
-|------|------|--------|------|
-| Workers 请求 | 10 万次/天 | < 3 千次/天 | ✅ 充足 |
-| D1 读写 | 500 万次/天 | < 30 万次/月 | ✅ 充足 |
-| R2 存储 | 10 GB | ~2 GB | ✅ 充足 |
-| R2 操作 | 100 万次/月 | ~4.3 万次/月 | ✅ 充足 |
-| Workflows 步数 | 10 万步/月 | ~8.6 万步/月 | ✅ 合理 |
-| AI 推理 | 无限制 | 1,440 次/天 | ✅ 免费 |
-
-**稳定状态**：保持 4,000 张照片，约 2 GB 存储，完全免费运行。
-
-## 🛠️ 开发
-
-```bash
-# 本地开发
-npm run dev:scheduler  # 启动调度器（端口 8787）
-npm run dev:frontend   # 启动前端（端口 8788）
-
-# 查看日志
-wrangler tail pic-scheduler
-wrangler tail pic-frontend
-
-# 数据库操作
-wrangler d1 execute pic-d1 --remote --command "SELECT COUNT(*) FROM Photos"
-
-# 测试
-npm test  # 运行单元测试
-./scripts/test.sh  # 系统集成测试
-```
-
-## 📖 文档
-
-- [API 文档](docs/API.md) - 前后端 API 接口说明
-- [部署指南](docs/DEPLOY.md) - 完整部署步骤和配置
-- [故障排查](docs/TROUBLESHOOTING.md) - 常见问题和解决方案
-
-## 🔗 在线演示
-
-- **前端**：https://pic.53.workers.dev
-- **API**：https://pic-scheduler.53.workers.dev/api/stats
-
-> 注意：这是作者的部署实例，你需要部署自己的版本。
-
-## 🤝 贡献
-
-欢迎贡献！请遵循以下步骤：
-
-1. Fork 本仓库
-2. 创建特性分支（`git checkout -b feature/amazing-feature`）
-3. 提交更改（`git commit -m 'Add amazing feature'`）
-4. 推送到分支（`git push origin feature/amazing-feature`）
-5. 开启 Pull Request
-
-详见 [贡献指南](CONTRIBUTING.md)
 
 ## 📝 许可证
 
-MIT License - 详见 [LICENSE](LICENSE) 文件
-
-## 🙏 致谢
-
-- [Unsplash](https://unsplash.com/) - 提供高质量照片 API
-- [Cloudflare](https://cloudflare.com/) - 提供无服务器平台
+MIT License
