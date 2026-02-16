@@ -1,6 +1,6 @@
 # Pic API Reference
 
-Base URL: `https://pic.53.workers.dev`
+Base URL: `https://iris.53.workers.dev`
 
 ## Endpoints
 

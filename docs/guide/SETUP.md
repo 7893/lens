@@ -23,17 +23,17 @@ terraform apply
 
 ```bash
 # D1
-wrangler d1 create pic-db
-wrangler d1 execute pic-db --remote --file=apps/processor/schema.sql
+wrangler d1 create iris-db
+wrangler d1 execute iris-db --remote --file=apps/processor/schema.sql
 
 # R2
-wrangler r2 bucket create pic-r2
+wrangler r2 bucket create iris-r2
 
 # Vectorize (768 dims = bge-base-en-v1.5)
-wrangler vectorize create pic-vectors --dimensions=768 --metric=cosine
+wrangler vectorize create iris-vectors --dimensions=768 --metric=cosine
 
 # Queue
-wrangler queues create pic-ingestion
+wrangler queues create iris-queue
 ```
 
 Update resource IDs in `apps/api/wrangler.toml` and `apps/processor/wrangler.toml`.
@@ -51,13 +51,13 @@ CI/CD via GitHub Actions (`.github/workflows/`). On push to `main`:
 
 1. Builds shared package
 2. Builds web frontend → copies to `apps/api/public`
-3. Deploys `pic` Worker (API + frontend)
-4. Deploys `pic-processor` Worker
+3. Deploys `iris` Worker (API + frontend)
+4. Deploys `iris-processor` Worker
 
 Manual deploy:
 ```bash
-npm run build --workspace=@pic/shared
-npm run build --workspace=@pic/web
+npm run build --workspace=@iris/shared
+npm run build --workspace=@iris/web
 cp -r apps/web/dist apps/api/public
 cd apps/api && npx wrangler deploy
 cd ../processor && npx wrangler deploy
@@ -65,6 +65,6 @@ cd ../processor && npx wrangler deploy
 
 ## Verify
 
-1. Open: `https://pic.53.workers.dev/`
-2. Health: `curl https://pic.53.workers.dev/health`
-3. Search: `curl "https://pic.53.workers.dev/api/search?q=sunset&limit=3"`
+1. Open: `https://iris.53.workers.dev/`
+2. Health: `curl https://iris.53.workers.dev/health`
+3. Search: `curl "https://iris.53.workers.dev/api/search?q=sunset&limit=3"`
