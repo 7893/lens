@@ -2,7 +2,7 @@
 
 **Stack**: React 18 + Vite + Tailwind CSS + SWR + Lucide Icons + BlurHash
 
-Bundled as static assets into the `pic` Worker (Hono serves API + static files).
+Bundled as static assets into the `iris` Worker (Hono serves API + static files).
 
 ## Structure
 

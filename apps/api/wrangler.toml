@@ -1,4 +1,4 @@
-name = "pic"
+name = "iris"
 main = "src/index.ts"
 compatibility_date = "2024-10-01"
 compatibility_flags = ["nodejs_compat"]
@@ -12,13 +12,13 @@ not_found_handling = "single-page-application"
 # D1 Database (Metadata)
 [[d1_databases]]
 binding = "DB"
-database_name = "pic-db"
-database_id = "7b877d5a-593c-4e0a-82b1-1131bc560479"
+database_name = "iris-db"
+database_id = "c8739df0-a736-46ee-9504-faf50911c750"
 
 # Vectorize Index (Semantic Search)
 [[vectorize]]
 binding = "VECTORIZE"
-index_name = "pic-vectors"
+index_name = "iris-vectors"
 
 # Workers AI (Embedding)
 [ai]
@@ -27,4 +27,4 @@ binding = "AI"
 # R2 Bucket (Image Storage)
 [[r2_buckets]]
 binding = "R2"
-bucket_name = "pic-r2"
+bucket_name = "iris-r2"

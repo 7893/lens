@@ -1,5 +1,5 @@
 {
-  "name": "@pic/processor",
+  "name": "@iris/processor",
   "version": "6.0.0",
   "private": true,
   "type": "module",
@@ -9,7 +9,7 @@
     "setup:local-db": "echo 'Run d1 creation command for processor'"
   },
   "dependencies": {
-    "@pic/shared": "^1.0.0"
+    "@iris/shared": "^1.0.0"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20241022.0",
