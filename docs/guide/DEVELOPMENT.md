@@ -9,7 +9,7 @@ pic/
 ├── apps/
 │   ├── api/          # Hono Worker (搜索与API后端)
 │   ├── processor/    # Queue Worker (采集与处理流水线)
-│   └── web/          # React + Vite (前端展示)
+│   └── web/          # React + Vite (前端展示, shadcn/ui, SWR)
 ├── packages/
 │   └── shared/       # 共享的 TypeScript 类型定义与配置
 ├── package.json      # 工作区根配置
