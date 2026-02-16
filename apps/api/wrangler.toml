@@ -1,4 +1,4 @@
-name = "iris"
+name = "lens"
 main = "src/index.ts"
 compatibility_date = "2024-10-01"
 compatibility_flags = ["nodejs_compat"]
@@ -12,13 +12,13 @@ not_found_handling = "single-page-application"
 # D1 Database (Metadata)
 [[d1_databases]]
 binding = "DB"
-database_name = "iris-db"
-database_id = "c8739df0-a736-46ee-9504-faf50911c750"
+database_name = "lens-db"
+database_id = "4b1414c1-7800-4ccf-af7b-90d63720b6aa"
 
 # Vectorize Index (Semantic Search)
 [[vectorize]]
 binding = "VECTORIZE"
-index_name = "iris-vectors"
+index_name = "lens-vectors"
 
 # Workers AI (Embedding)
 [ai]
@@ -27,4 +27,4 @@ binding = "AI"
 # R2 Bucket (Image Storage)
 [[r2_buckets]]
 binding = "R2"
-bucket_name = "iris-r2"
+bucket_name = "lens-r2"
