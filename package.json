@@ -1,7 +1,7 @@
 {
   "name": "pic",
   "version": "2.0.0",
-  "description": "完全基于 Cloudflare Serverless 生态的图片采集、处理和展示系统",
+  "description": "AI-powered photo collection and gallery on Cloudflare Workers",
   "private": true,
   "type": "module",
   "engines": {
