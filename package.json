@@ -1,6 +1,6 @@
 {
   "name": "pic",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "完全基于 Cloudflare Serverless 生态的图片采集、处理和展示系统",
   "private": true,
   "type": "module",
@@ -9,15 +9,11 @@
     "npm": ">=11.8.0"
   },
   "workspaces": [
-    "workers/pic-scheduler",
-    "workers/pic-frontend"
+    "workers/pic-scheduler"
   ],
   "scripts": {
-    "dev:scheduler": "npm run dev --workspace=pic-scheduler",
-    "dev:frontend": "npm run dev --workspace=pic-frontend",
-    "deploy:scheduler": "npx wrangler deploy --config workers/pic-scheduler/wrangler.toml",
-    "deploy:frontend": "npx wrangler deploy --config workers/pic-frontend/wrangler.toml",
-    "deploy:all": "npm run deploy:scheduler && npm run deploy:frontend",
+    "dev": "npm run dev --workspace=pic-scheduler",
+    "deploy": "npx wrangler deploy --config workers/pic-scheduler/wrangler.toml",
     "lint": "eslint . --ext .js",
     "lint:fix": "eslint . --ext .js --fix",
     "format": "prettier --write \"**/*.{js,json,md}\"",
@@ -36,10 +32,10 @@
   "author": "",
   "license": "MIT",
   "devDependencies": {
-    "eslint": "^9.37.0",
+    "eslint": "^10.0.0",
     "husky": "^9.1.7",
     "lint-staged": "^16.2.3",
     "prettier": "^3.6.2",
-    "wrangler": "^4.61.1"
+    "wrangler": "^4.65.0"
   }
 }
