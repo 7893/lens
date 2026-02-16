@@ -63,8 +63,18 @@ app.get('/api/search', async (c) => {
   const start = Date.now();
 
   try {
-    const embeddingResp = await c.env.AI.run('@cf/baai/bge-base-en-v1.5', {
-      text: [q]
+    // Query expansion: enrich short queries with related terms
+    let expandedQuery = q;
+    if (q.split(/\s+/).length <= 4) {
+      const expansion = await c.env.AI.run('@cf/meta/llama-3.2-11b-vision-instruct' as any, {
+        prompt: `Expand this image search query with related visual terms. Reply with ONLY the expanded query, no explanation. Keep it under 30 words.\nQuery: ${q}`,
+        max_tokens: 50,
+      }) as { response?: string };
+      expandedQuery = expansion.response?.trim() || q;
+    }
+
+    const embeddingResp = await c.env.AI.run('@cf/baai/bge-large-en-v1.5', {
+      text: [expandedQuery]
     }) as { data: number[][] };
     const vector = embeddingResp.data[0];
 
@@ -177,6 +187,36 @@ app.get('/image/:type/:filename', async (c) => {
   headers.set('cache-control', 'public, max-age=31536000'); // Cache 1 year
 
   return new Response(object.body, { headers });
+});
+
+// Temporary: regenerate all embeddings with bge-large 1024d
+app.post('/api/backfill', async (c) => {
+  const offset = Number(c.req.query('offset') || '0');
+  const limit = Number(c.req.query('limit') || '5');
+  const { results } = await c.env.DB.prepare(
+    'SELECT id, ai_caption, ai_tags, meta_json FROM images WHERE ai_caption IS NOT NULL ORDER BY id LIMIT ? OFFSET ?'
+  ).bind(limit, offset).all<DBImage>();
+
+  let done = 0;
+  for (const img of results) {
+    const meta = JSON.parse(img.meta_json || '{}');
+    const tags = JSON.parse(img.ai_tags || '[]');
+    const parts = [img.ai_caption || ''];
+    if (tags.length) parts.push(`Tags: ${tags.join(', ')}`);
+    if (meta.alt_description) parts.push(meta.alt_description);
+    if (meta.description) parts.push(meta.description);
+    if (meta.user?.name) parts.push(`Photographer: ${meta.user.name}`);
+    if (meta.location?.name) parts.push(`Location: ${meta.location.name}`);
+    const topics = Object.keys(meta.topic_submissions || {});
+    if (topics.length) parts.push(`Topics: ${topics.join(', ')}`);
+
+    const resp = await c.env.AI.run('@cf/baai/bge-large-en-v1.5', { text: [parts.join(' | ')] }) as { data: number[][] };
+    await c.env.DB.prepare('UPDATE images SET ai_embedding = ? WHERE id = ?')
+      .bind(JSON.stringify(resp.data[0]), img.id).run();
+    await c.env.VECTORIZE.upsert([{ id: img.id, values: resp.data[0] }]);
+    done++;
+  }
+  return c.json({ offset, limit, done, hasMore: results.length === limit });
 });
 
 export default app;
