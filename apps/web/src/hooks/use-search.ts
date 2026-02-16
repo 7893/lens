@@ -19,7 +19,7 @@ export function useSearch() {
 
   const searchUrl = debouncedQuery
     ? `/api/search?q=${encodeURIComponent(debouncedQuery)}`
-    : '/api/latest';
+    : null;
 
   const { data, isLoading } = useSWR<SearchResponse>(searchUrl, fetcher, { keepPreviousData: true });
 
