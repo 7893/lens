@@ -107,26 +107,47 @@ app.get('/api/images/:id', async (c) => {
     id: image.id,
     urls: {
       raw: `/image/raw/${image.id}.jpg`,
-      display: `/image/display/${image.id}.jpg`
+      display: `/image/display/${image.id}.jpg`,
     },
     width: image.width,
     height: image.height,
     color: image.color,
-    description: meta.alt_description || meta.description,
+    blurHash: meta.blur_hash,
+    description: meta.description,
+    altDescription: meta.alt_description,
+    createdAt: meta.created_at,
+    promotedAt: meta.promoted_at,
     photographer: {
       name: meta.user?.name,
       username: meta.user?.username,
+      bio: meta.user?.bio,
       location: meta.user?.location,
       profile: meta.user?.links?.html,
+      profileImage: meta.user?.profile_image?.medium,
+      instagram: meta.user?.instagram_username,
+      twitter: meta.user?.twitter_username,
+      portfolio: meta.user?.portfolio_url,
+      totalPhotos: meta.user?.total_photos,
     },
     exif: meta.exif ? {
+      make: meta.exif.make,
+      model: meta.exif.model,
       camera: meta.exif.name,
       aperture: meta.exif.aperture ? `f/${meta.exif.aperture}` : null,
       exposure: meta.exif.exposure_time ? `${meta.exif.exposure_time}s` : null,
       focalLength: meta.exif.focal_length ? `${meta.exif.focal_length}mm` : null,
       iso: meta.exif.iso,
     } : null,
-    location: meta.location?.name || null,
+    location: meta.location ? {
+      name: meta.location.name,
+      city: meta.location.city,
+      country: meta.location.country,
+      latitude: meta.location.position?.latitude,
+      longitude: meta.location.position?.longitude,
+    } : null,
+    topics: Object.entries(meta.topic_submissions || {})
+      .filter(([, v]: [string, any]) => v.status === 'approved')
+      .map(([k]) => k),
     stats: {
       views: meta.views,
       downloads: meta.downloads,
@@ -137,7 +158,6 @@ app.get('/api/images/:id', async (c) => {
       tags: JSON.parse(image.ai_tags || '[]'),
     },
     source: meta.links?.html,
-    createdAt: meta.created_at,
   });
 });
 
