@@ -1,4 +1,4 @@
-# Pic v6.0 API Reference
+# Pic API Reference
 
 Base URL: `https://pic-api.53.workers.dev`
 
@@ -9,7 +9,7 @@ Base URL: `https://pic-api.53.workers.dev`
 - **GET** `/health`
 - **Response** `200`:
   ```json
-  { "status": "healthy", "version": "v6.0.0" }
+  { "status": "healthy", "version": "6.0.0" }
   ```
 
 ### 2. Semantic Search
