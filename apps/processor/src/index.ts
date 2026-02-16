@@ -77,16 +77,17 @@ export class PicIngestWorkflow extends WorkflowEntrypoint<Env, IngestionTask> {
   async run(event: WorkflowEvent<IngestionTask>, step: WorkflowStep) {
     const task = event.payload;
     const { photoId } = task;
-    const displayUrl = (task as any).displayUrl as string;
-    const meta = (task as any).meta as UnsplashPhoto;
+    const { displayUrl, meta } = task;
 
     await step.do('download-and-store', async () => {
       await streamToR2(task.downloadUrl, `raw/${photoId}.jpg`, this.env.R2);
-      const displayResp = await fetch(displayUrl);
-      const displayBuffer = await displayResp.arrayBuffer();
-      await this.env.R2.put(`display/${photoId}.jpg`, displayBuffer, {
-        httpMetadata: { contentType: 'image/jpeg' }
-      });
+      if (displayUrl) {
+        const displayResp = await fetch(displayUrl);
+        const displayBuffer = await displayResp.arrayBuffer();
+        await this.env.R2.put(`display/${photoId}.jpg`, displayBuffer, {
+          httpMetadata: { contentType: 'image/jpeg' }
+        });
+      }
       return { success: true };
     });
 
@@ -107,9 +108,9 @@ export class PicIngestWorkflow extends WorkflowEntrypoint<Env, IngestionTask> {
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET ai_caption = excluded.ai_caption, ai_embedding = excluded.ai_embedding
       `).bind(
-        photoId, meta.width, meta.height, meta.color,
+        photoId, meta?.width ?? 0, meta?.height ?? 0, meta?.color ?? null,
         `raw/${photoId}.jpg`, `display/${photoId}.jpg`,
-        JSON.stringify(meta), JSON.stringify(analysis.tags),
+        JSON.stringify(meta ?? {}), JSON.stringify(analysis.tags),
         analysis.caption, JSON.stringify(vector), Date.now()
       ).run();
     });

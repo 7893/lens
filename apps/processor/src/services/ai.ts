@@ -1,5 +1,3 @@
-import { Ai } from '@cloudflare/workers-types';
-
 export async function analyzeImage(ai: Ai, imageStream: ReadableStream): Promise<{ caption: string; tags: string[] }> {
   // Need to convert stream to array buffer for current AI bindings
   // Note: This limits us to Worker memory limits. For huge files, we might need a workaround,

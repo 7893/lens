@@ -6,6 +6,7 @@ npm-debug.log
 # Cloudflare
 .wrangler/
 .dev.vars
+worker-configuration.d.ts
 
 # Build
 dist/

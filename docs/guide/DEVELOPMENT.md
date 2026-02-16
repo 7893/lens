@@ -1,86 +1,49 @@
-# 开发指南 (Monorepo Development)
+# Development Guide
 
-Pic v6.0 采用基于 npm workspaces 管理的 Monorepo 结构。
+Pic v6.0 uses npm workspaces monorepo.
 
-## 项目结构 (Structure)
+## Structure
 
 ```
 pic/
 ├── apps/
-│   ├── api/          # Hono Worker (搜索与API后端)
-│   ├── processor/    # Queue Worker (采集与处理流水线)
-│   └── web/          # React + Vite (前端展示, shadcn/ui, SWR)
+│   ├── api/          # Hono Worker (search, image proxy)
+│   ├── processor/    # Queue/Workflow Worker (ingestion)
+│   └── web/          # React + Vite + Tailwind (Pages)
 ├── packages/
-│   └── shared/       # 共享的 TypeScript 类型定义与配置
-├── terraform/        # 基础设施即代码 (IaC) - 可选
-├── package.json      # 工作区根配置
+│   └── shared/       # Shared TypeScript types
+├── terraform/        # IaC (optional)
+└── docs/
 ```
 
-## 前置要求 (Prerequisites)
-
-- Node.js 20+
-- Cloudflare Wrangler CLI (`npm i -g wrangler`)
-- Git
-- (可选) Terraform 1.5+
-
-## 安装依赖 (Installation)
+## Install
 
 ```bash
-# 在根目录安装所有工作区的依赖
 npm install
 ```
 
-## 本地运行 (Running Locally)
-
-### 1. 初始化基础设施 (Setup Local DB/R2)
-
-你可以使用 `npm run setup:local-db` 快速创建本地 D1 数据库模拟，或者在 `terraform/` 目录下初始化生产环境资源。
+## Local Dev
 
 ```bash
-npm run setup:local-db
-```
-
-### 2. 启动服务 (Start Services)
-
-你可以单独启动某个服务：
-
-```bash
-# 启动 API Worker
+# API Worker
 npm run dev --workspace=apps/api
 
-# 启动 Processor Worker (模拟 Queue/Cron)
+# Processor Worker
 npm run dev --workspace=apps/processor
 
-# 启动前端 (Frontend)
+# Frontend
 npm run dev --workspace=apps/web
 ```
 
-或者（推荐）同时启动所有后端服务：
+## Type Check
 
 ```bash
-npm run dev:backend
+cd apps/api && npx tsc --noEmit
+cd apps/processor && npx tsc --noEmit
+cd apps/web && npx tsc --noEmit
+cd packages/shared && npx tsc --noEmit
 ```
 
-## 测试 (Testing)
+## Deploy
 
-我们使用 Vitest 进行单元测试。
-
-```bash
-# 运行所有包的测试
-npm test
-```
-
-## 部署 (Deployment)
-
-推荐使用 Terraform 管理资源，使用 Wrangler 部署代码。
-
-```bash
-# 部署基础设施 (Terraform)
-cd terraform && terraform apply
-
-# 部署所有 Workers (Wrangler)
-npm run deploy
-
-# 仅部署前端到 Pages
-npm run deploy:web
-```
+Push to `main` triggers GitHub Actions CI/CD. See `.github/workflows/` for details.
