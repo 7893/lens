@@ -78,7 +78,7 @@ app.get('/api/search', async (c) => {
     }) as { data: number[][] };
     const vector = embeddingResp.data[0];
 
-    const vecResults = await c.env.VECTORIZE.query(vector, { topK: 100 });
+    const vecResults = await c.env.VECTORIZE.query(vector, { topK: 200 });
 
     if (vecResults.matches.length === 0) {
       return c.json<SearchResponse>({ results: [], total: 0, took: Date.now() - start });
@@ -90,11 +90,44 @@ app.get('/api/search', async (c) => {
       `SELECT * FROM images WHERE id IN (${placeholders})`
     ).bind(...ids).all<DBImage>();
 
-    const images: ImageResult[] = vecResults.matches.map(match => {
+    // Re-rank: LLM scores relevance of top candidates
+    const candidates = vecResults.matches.map(match => {
       const dbImage = results.find(r => r.id === match.id);
       if (!dbImage) return null;
-      return toImageResult(dbImage, match.score);
-    }).filter(Boolean) as ImageResult[];
+      return { dbImage, vecScore: match.score };
+    }).filter(Boolean) as { dbImage: DBImage; vecScore: number }[];
+
+    const summaries = candidates.slice(0, 50).map((c, i) => {
+      const meta = JSON.parse(c.dbImage.meta_json || '{}');
+      return `${i}: ${c.dbImage.ai_caption || ''} | ${meta.alt_description || ''} | ${meta.location?.name || ''}`;
+    }).join('\n');
+
+    let reranked = candidates;
+    try {
+      const rankResp = await c.env.AI.run('@cf/meta/llama-3.2-11b-vision-instruct' as any, {
+        prompt: `Given the search query "${q}", rank the most relevant images by their index number. Return ONLY a comma-separated list of index numbers from most to least relevant. Only include the top 20 most relevant.\n\nImages:\n${summaries}`,
+        max_tokens: 100,
+      }) as { response?: string };
+
+      const rankedIndices = (rankResp.response || '').match(/\d+/g)?.map(Number).filter(i => i < candidates.length) || [];
+      if (rankedIndices.length >= 5) {
+        const seen = new Set<number>();
+        const top: typeof candidates = [];
+        for (const i of rankedIndices) {
+          if (!seen.has(i)) { seen.add(i); top.push(candidates[i]); }
+        }
+        // Append remaining candidates not in re-ranked list
+        const rest = candidates.filter((_, i) => !seen.has(i));
+        reranked = [...top, ...rest];
+      }
+    } catch (e) {
+      console.error('Re-rank failed, using vector order:', e);
+    }
+
+    const images: ImageResult[] = reranked.slice(0, 100).map((c, i) => {
+      const score = i < 20 ? 1 - i * 0.01 : c.vecScore; // Re-ranked items get position-based score
+      return toImageResult(c.dbImage, score);
+    });
 
     return c.json<SearchResponse>({ results: images, total: images.length, took: Date.now() - start });
   } catch (err) {
