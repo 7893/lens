@@ -88,21 +88,6 @@
 - **边缘原生 AI** — 模型跑在 Cloudflare 边缘节点，无外部 API 调用
 - **极简架构** — 两个 Worker 撑起整个系统，零微服务开销
 
-## 项目结构
-
-```
-lens/
-├── apps/
-│   ├── api/          # Hono Worker：API + 静态前端
-│   ├── processor/    # Cron + Queue + Workflow 采集引擎
-│   └── web/          # React + Vite + Tailwind（构建后复制到 api/public）
-├── packages/
-│   └── shared/       # @lens/shared — TypeScript 类型定义
-├── terraform/        # 基础设施定义
-├── docs/             # 架构、API、开发指南
-└── .github/workflows # CI/CD
-```
-
 ## 文档
 
 | 文档 | 内容 |
