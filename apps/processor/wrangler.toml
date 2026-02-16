@@ -6,8 +6,8 @@ compatibility_flags = ["nodejs_compat"]
 # D1 Database (Metadata)
 [[d1_databases]]
 binding = "DB"
-database_name = "pic-v6-prod-db"
-database_id = "6cca2532-a99b-4ffc-8ed2-b0d7a71e71e3"
+database_name = "pic-db"
+database_id = "7b877d5a-593c-4e0a-82b1-1131bc560479"
 
 # Workflow (Orchestration)
 [[workflows]]
@@ -22,24 +22,24 @@ binding = "AI"
 # Queue Producer (From Cron -> Queue)
 [[queues.producers]]
 binding = "PHOTO_QUEUE"
-queue = "pic-v6-prod-ingestion"
+queue = "pic-ingestion"
 
 # Queue Consumer (From Queue -> Workflow)
 [[queues.consumers]]
-queue = "pic-v6-prod-ingestion"
+queue = "pic-ingestion"
 max_batch_size = 10
 max_batch_timeout = 30
 
 # R2 Bucket (Storage)
 [[r2_buckets]]
 binding = "R2"
-bucket_name = "pic-v6-prod-assets"
+bucket_name = "pic-r2"
 
 # Vectorize Index (Semantic Search)
 [[vectorize]]
 binding = "VECTORIZE"
-index_name = "pic-v6-prod-vectors"
+index_name = "pic-vectors"
 
 # Cron Trigger (Scheduler)
 [triggers]
-crons = ["0 * * * *"] # Every hour
+crons = ["0 * * * *"]

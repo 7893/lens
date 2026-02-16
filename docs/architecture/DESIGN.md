@@ -38,11 +38,11 @@ User query → API Worker
 |-----------|------|-------------|
 | API Worker | Hono | `pic-api` |
 | Processor Worker | Queue/Workflow | `pic-processor` |
-| Frontend | React + Vite (Pages) | `pic-v6-prod-web` |
-| Database | D1 (SQLite) | `pic-v6-prod-db` |
-| Object Storage | R2 | `pic-v6-prod-assets` |
-| Vector Index | Vectorize (768d, cosine) | `pic-v6-prod-vectors` |
-| Task Queue | Queues | `pic-v6-prod-ingestion` |
+| Frontend | React + Vite (Pages) | `pic` |
+| Database | D1 (SQLite) | `pic-db` |
+| Object Storage | R2 | `pic-r2` |
+| Vector Index | Vectorize (768d, cosine) | `pic-vectors` |
+| Task Queue | Queues | `pic-ingestion` |
 | Vision AI | `@cf/llava-hf/llava-1.5-7b-hf` | — |
 | Embedding AI | `@cf/baai/bge-base-en-v1.5` | — |
 
