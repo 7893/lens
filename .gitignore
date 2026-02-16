@@ -1,0 +1,18 @@
+# Node
+node_modules/
+npm-debug.log
+.DS_Store
+
+# Cloudflare
+.wrangler/
+.dev.vars
+
+# Build
+dist/
+.output/
+
+# Env
+.env
+
+# VS Code
+.vscode/
