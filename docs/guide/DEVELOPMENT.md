@@ -1,99 +1,78 @@
-# 🛠️ Development Guide
+# Development Guide (Monorepo)
 
-## Local Setup
+Pic v6.0 uses a Monorepo structure managed by npm workspaces.
+
+## Structure
+
+```
+pic/
+├── apps/
+│   ├── api/          # Hono Worker (Search & API)
+│   ├── processor/    # Queue Worker (Ingestion Pipeline)
+│   └── web/          # React + Vite (Frontend)
+├── packages/
+│   └── shared/       # Shared TypeScript types & configs
+├── package.json      # Workspace root
+```
+
+## Prerequisites
+
+- Node.js 20+
+- Cloudflare Wrangler (`npm i -g wrangler`)
+- Git
+
+## Installation
 
 ```bash
-git clone https://github.com/your-username/pic.git
-cd pic
+# Install dependencies for all workspaces
 npm install
 ```
 
-## TypeScript
+## Running Locally
 
-The project is fully written in TypeScript with `strict: true`.
-
-- Compiler: `typescript`
-- Type definitions: `@cloudflare/workers-types`
-- Type check: `npm run lint` (runs `tsc --noEmit`)
-
-Wrangler natively resolves `.ts` files — no manual compilation needed.
-
-## Running & Debugging
-
-### Dev server
+### 1. Initialize Infrastructure (Local D1/R2/Vectorize)
 
 ```bash
-npm run dev
+# Create local D1 database
+npm run setup:local-db
 ```
 
-### Simulate triggers
+### 2. Start Services
+
+You can run services independently:
 
 ```bash
-# Trigger the data pipeline manually
-curl -X POST http://localhost:8787/api/trigger
+# Start API Worker
+npm run dev --workspace=apps/api
 
-# Check local D1
-wrangler d1 execute pic-d1 --local --command "SELECT * FROM Photos"
+# Start Processor Worker (Simulates Queue/Cron)
+npm run dev --workspace=apps/processor
+
+# Start Frontend
+npm run dev --workspace=apps/web
 ```
 
-### Workflow notes
+Or run all backend services together (recommended):
 
-- `step.do` executes immediately in local dev.
-- `step.sleep` may skip or resolve quickly.
-- Check console output for stack traces on errors.
-
-## Project Structure
-
-All source code is in `workers/pic-scheduler/src/`:
-
-```
-src/
-├── index.ts              # Entry: fetch router + scheduled handler
-├── config.ts             # Runtime constants
-├── env.d.ts              # Env interface & module declarations
-├── types.ts              # Data model interfaces
-├── services/
-│   ├── ai-classifier.ts  # AI model invocation
-│   ├── downloader.ts     # Image download from Unsplash
-│   └── unsplash.ts       # Unsplash API client
-├── tasks/
-│   ├── enqueue-photos.ts # Fetch & deduplicate new photos
-│   ├── fetch-photos.ts   # Photo list fetching
-│   ├── process-photo.ts  # Single photo processing
-│   ├── classify-with-model.ts
-│   ├── extract-exif.ts
-│   └── save-metadata.ts
-├── workflows/
-│   ├── data-pipeline.ts      # Main orchestration workflow
-│   ├── download-workflow.ts   # Batch download workflow
-│   └── classify-workflow.ts   # Batch classification workflow
-└── utils/
-    └── analytics.ts      # Analytics Engine helpers
+```bash
+npm run dev:backend
 ```
 
-## Code Style
+## Testing
 
-- Lint: `npm run lint` (runs `tsc --noEmit`)
-- Format: `npm run format` (Prettier, targets `*.ts`, `*.json`, `*.md`)
-- Pre-commit hook: husky + lint-staged runs Prettier on staged `.ts` files
+We use Vitest for unit testing.
 
-### Commit messages
-
-English, single line, concise. Follow [Conventional Commits](https://www.conventionalcommits.org/):
-- `feat: add category filter endpoint`
-- `fix: resolve R2 upload timeout`
-- `docs: update architecture diagram`
-
-## Local Secrets
-
-Create `.dev.vars` in `workers/pic-scheduler/` for local development:
-
-```
-UNSPLASH_API_KEY=your_key_here
+```bash
+# Run tests for all packages
+npm test
 ```
 
-For production, use `wrangler secret put UNSPLASH_API_KEY`.
+## Deployment
 
-## AI
+```bash
+# Deploy all workers
+npm run deploy
 
-`wrangler dev` connects to remote Cloudflare AI (requires `wrangler login` with AI-enabled account).
+# Deploy frontend only
+npm run deploy:web
+```
