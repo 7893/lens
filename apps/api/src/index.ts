@@ -90,24 +90,42 @@ app.get('/api/images/:id', async (c) => {
 
   const meta = JSON.parse(image.meta_json || '{}');
 
-  const response: ImageDetailResponse = {
+  return c.json({
     id: image.id,
     urls: {
-      raw: `/image/raw/${image.id}.jpg`, // Proxy URL
+      raw: `/image/raw/${image.id}.jpg`,
       display: `/image/display/${image.id}.jpg`
     },
-    metadata: {
-      photographer: meta.user?.name || 'Unknown',
-      location: meta.location?.name,
-      exif: meta.exif
+    width: image.width,
+    height: image.height,
+    color: image.color,
+    description: meta.alt_description || meta.description,
+    photographer: {
+      name: meta.user?.name,
+      username: meta.user?.username,
+      location: meta.user?.location,
+      profile: meta.user?.links?.html,
+    },
+    exif: meta.exif ? {
+      camera: meta.exif.name,
+      aperture: meta.exif.aperture ? `f/${meta.exif.aperture}` : null,
+      exposure: meta.exif.exposure_time ? `${meta.exif.exposure_time}s` : null,
+      focalLength: meta.exif.focal_length ? `${meta.exif.focal_length}mm` : null,
+      iso: meta.exif.iso,
+    } : null,
+    location: meta.location?.name || null,
+    stats: {
+      views: meta.views,
+      downloads: meta.downloads,
+      likes: meta.likes,
     },
     ai: {
       caption: image.ai_caption,
-      tags: JSON.parse(image.ai_tags || '[]')
-    }
-  };
-
-  return c.json(response);
+      tags: JSON.parse(image.ai_tags || '[]'),
+    },
+    source: meta.links?.html,
+    createdAt: meta.created_at,
+  });
 });
 
 // 4. Image Proxy (Optional: if R2 is not public)
