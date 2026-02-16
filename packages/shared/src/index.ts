@@ -1,29 +1,125 @@
-// Shared types for Pic v6.0
+// ==========================================
+// 1. Database Schema Types (D1)
+// ==========================================
 
-// D1 Photo Metadata
-export interface PhotoMetadata {
+export interface DBImage {
+  id: string; // Unsplash ID
+  width: number;
+  height: number;
+  color: string | null;
+  
+  // Storage Keys (R2)
+  raw_key: string;
+  display_key: string;
+  
+  // Metadata (Stored as JSON string in DB)
+  meta_json: string; // Serialized UnsplashPhoto
+  
+  // AI Analysis (Stored as JSON string in DB)
+  ai_tags: string; // Serialized string[]
+  ai_caption: string | null;
+  
+  created_at: number; // Unix timestamp
+}
+
+export interface DBSystemConfig {
+  key: string;
+  value: string;
+  updated_at: number;
+}
+
+// ==========================================
+// 2. Queue Message Types
+// ==========================================
+
+export interface IngestionTask {
+  type: 'process-photo';
+  photoId: string;
+  downloadUrl: string; // Raw URL
+  photographer: string;
+  source: 'unsplash';
+}
+
+// ==========================================
+// 3. API Response Types
+// ==========================================
+
+export interface ImageResult {
   id: string;
+  url: string; // Display URL
+  width: number;
+  height: number;
+  caption: string | null;
+  tags: string[];
+  score?: number; // Vector search score
+  photographer?: string;
+}
+
+export interface SearchResponse {
+  results: ImageResult[];
+  total: number;
+  page: number;
+  took: number; // ms
+}
+
+export interface ImageDetailResponse {
+  id: string;
+  urls: {
+    raw: string;
+    display: string;
+  };
+  metadata: {
+    photographer: string;
+    location?: string;
+    exif?: Record<string, string | number>;
+  };
+  ai: {
+    caption: string | null;
+    tags: string[];
+  };
+}
+
+// ==========================================
+// 4. External API Types (Unsplash subset)
+// ==========================================
+
+export interface UnsplashPhoto {
+  id: string;
+  created_at: string;
   width: number;
   height: number;
   color: string;
-  raw_key: string;
-  display_key: string;
-  meta_json: string; // JSON string from Unsplash
-  ai_tags: string[]; // JSON string array
-  ai_caption: string;
-  created_at: number; // Timestamp
-}
-
-// API Search Response
-export interface SearchResponse {
-  results: {
+  description: string | null;
+  alt_description: string | null;
+  urls: {
+    raw: string;
+    full: string;
+    regular: string;
+    small: string;
+    thumb: string;
+  };
+  links: {
+    self: string;
+    html: string;
+    download: string;
+  };
+  user: {
     id: string;
-    display_url: string;
-    width: number;
-    height: number;
-    ai_caption: string;
-    score?: number;
-  }[];
-  total?: number;
-  page: number;
+    username: string;
+    name: string;
+    portfolio_url: string | null;
+  };
+  exif?: {
+    make: string;
+    model: string;
+    exposure_time: string;
+    aperture: string;
+    focal_length: string;
+    iso: number;
+  };
+  location?: {
+    name: string;
+    city: string;
+    country: string;
+  };
 }
