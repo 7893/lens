@@ -1,6 +1,6 @@
-import useSWRInfinite from 'swr/infinite';
+import useSWR from 'swr';
 import { SearchResponse, ImageResult } from '@pic/shared';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
 const PAGE_SIZE = 20;
@@ -8,32 +8,33 @@ const PAGE_SIZE = 20;
 export function useSearch() {
   const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
+  const [visible, setVisible] = useState(PAGE_SIZE);
 
   useEffect(() => {
     const handler = setTimeout(() => setDebouncedQuery(query), 500);
     return () => clearTimeout(handler);
   }, [query]);
 
-  const getKey = (pageIndex: number, prev: SearchResponse | null) => {
-    if (!debouncedQuery) return null;
-    if (prev && prev.results.length === 0) return null;
-    return `/api/search?q=${encodeURIComponent(debouncedQuery)}&limit=${PAGE_SIZE}&page=${pageIndex + 1}`;
-  };
+  useEffect(() => { setVisible(PAGE_SIZE); }, [debouncedQuery]);
 
-  const { data, error, isLoading, isValidating, size, setSize } = useSWRInfinite<SearchResponse>(getKey, fetcher);
+  const { data, isLoading } = useSWR<SearchResponse>(
+    debouncedQuery ? `/api/search?q=${encodeURIComponent(debouncedQuery)}` : null,
+    fetcher,
+    { keepPreviousData: true }
+  );
 
-  const results: ImageResult[] = data ? data.flatMap(d => d.results) : [];
-  const hasMore = data ? data[data.length - 1]?.results.length === PAGE_SIZE : false;
+  const all = data?.results || [];
+  const results = all.slice(0, visible);
+  const hasMore = visible < all.length;
 
   return {
     query,
     setQuery,
     results,
-    total: data?.[0]?.total || 0,
+    total: all.length,
     isLoading,
-    isLoadingMore: isValidating && size > 1,
     hasMore,
-    loadMore: () => setSize(size + 1),
-    took: data?.[0]?.took
+    loadMore: useCallback(() => setVisible(v => v + PAGE_SIZE), []),
+    took: data?.took
   };
 }

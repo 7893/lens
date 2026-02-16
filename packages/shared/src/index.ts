@@ -60,7 +60,7 @@ export interface ImageResult {
 export interface SearchResponse {
   results: ImageResult[];
   total: number;
-  page: number;
+  page?: number;
   took: number; // ms
 }
 
