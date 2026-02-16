@@ -1,7 +1,13 @@
-name = "pic-api"
+name = "pic"
 main = "src/index.ts"
 compatibility_date = "2024-10-01"
 compatibility_flags = ["nodejs_compat"]
+
+# Static assets (web frontend)
+[assets]
+directory = "./public"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
 
 # D1 Database (Metadata)
 [[d1_databases]]

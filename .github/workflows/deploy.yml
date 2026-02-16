@@ -25,10 +25,13 @@ jobs:
       - name: Build Shared Package
         run: npm run build --workspace=@pic/shared
 
-      # ==========================================
-      # 1. Deploy API Worker
-      # ==========================================
-      - name: Deploy API Worker
+      - name: Build Web Frontend
+        run: npm run build --workspace=@pic/web
+
+      - name: Copy Web Assets to API
+        run: cp -r apps/web/dist apps/api/public
+
+      - name: Deploy Pic Worker
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -36,9 +39,6 @@ jobs:
           workingDirectory: 'apps/api'
           command: deploy
 
-      # ==========================================
-      # 2. Deploy Processor Worker
-      # ==========================================
       - name: Deploy Processor Worker
         uses: cloudflare/wrangler-action@v3
         with:
@@ -46,22 +46,7 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: 'apps/processor'
           command: deploy
-          # Inject Unsplash Key into Worker Secrets
           secrets: |
             UNSPLASH_API_KEY
         env:
           UNSPLASH_API_KEY: ${{ secrets.UNSPLASH_API_KEY }}
-
-      # ==========================================
-      # 3. Deploy Web (Pages)
-      # ==========================================
-      - name: Build Web Frontend
-        run: npm run build --workspace=@pic/web
-
-      - name: Deploy Web to Pages
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          # Deploy the 'dist' folder to Pages project 'pic'
-          command: pages deploy apps/web/dist --project-name pic

@@ -3,7 +3,6 @@ import { SearchResponse } from '@pic/shared';
 import { useState, useEffect } from 'react';
 
 // Fetcher function
-const API_BASE = 'https://pic-api.53.workers.dev';
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
 export function useSearch() {
@@ -16,7 +15,7 @@ export function useSearch() {
   }, [query]);
 
   const { data, error, isLoading } = useSWR<SearchResponse>(
-    debouncedQuery ? `${API_BASE}/api/search?q=${encodeURIComponent(debouncedQuery)}` : null,
+    debouncedQuery ? `/api/search?q=${encodeURIComponent(debouncedQuery)}` : null,
     fetcher
   );
 
