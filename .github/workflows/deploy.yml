@@ -63,5 +63,5 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          # Deploy the 'dist' folder to project 'pic-v6-prod-web'
+          # Deploy the 'dist' folder to Pages project 'pic'
           command: pages deploy apps/web/dist --project-name pic

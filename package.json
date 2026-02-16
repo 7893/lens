@@ -2,7 +2,7 @@
   "name": "pic-monorepo",
   "version": "6.0.0",
   "private": true,
-  "description": "Pic v6.0 Monorepo: Smart Image Gallery with Semantic Search",
+  "description": "Pic: Smart Image Gallery with Semantic Search",
   "workspaces": [
     "apps/*",
     "packages/*"

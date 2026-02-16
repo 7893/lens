@@ -16,7 +16,7 @@ const app = new Hono<{ Bindings: Bindings }>();
 app.use('/*', cors());
 
 // 1. Health Check
-app.get('/health', (c) => c.json({ status: 'healthy', version: 'v6.0.0' }));
+app.get('/health', (c) => c.json({ status: 'healthy', version: '6.0.0' }));
 
 // 2. Semantic Search
 app.get('/api/search', async (c) => {

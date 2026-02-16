@@ -1,4 +1,4 @@
-# Pic v6.0 System Design
+# Pic System Design
 
 ## Architecture
 
