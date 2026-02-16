@@ -5,30 +5,28 @@ import FRONTEND_HTML from './frontend.html';
 
 export { DataPipelineWorkflow };
 
-let statsCache = null;
+let statsCache: Record<string, unknown> | null = null;
 let statsCacheTime = 0;
 const CACHE_TTL = 30000;
 
-export default {
-  async fetch(request, env) {
+const worker: ExportedHandler<Env> = {
+  async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
 
-    // Frontend: home page
     if (url.pathname === '/' || url.pathname === '/index.html') {
       return new Response(FRONTEND_HTML, {
         headers: { 'Content-Type': 'text/html' }
       });
     }
 
-    // Frontend: photo list
     if (url.pathname === '/api/photos') {
-      const page = parseInt(url.searchParams.get('page')) || 1;
-      const limit = parseInt(url.searchParams.get('limit')) || 30;
+      const page = parseInt(url.searchParams.get('page') || '1') || 1;
+      const limit = parseInt(url.searchParams.get('limit') || '30') || 30;
       const category = url.searchParams.get('category');
       const offset = (page - 1) * limit;
 
       let query = 'SELECT * FROM Photos';
-      let params = [];
+      const params: unknown[] = [];
 
       if (category) {
         query += ' WHERE ai_category = ?';
@@ -43,7 +41,6 @@ export default {
       return Response.json({ photos: photos.results, page, limit });
     }
 
-    // Stats (merged: frontend detailed + scheduler simple)
     if (url.pathname === '/api/stats') {
       const now = Date.now();
 
@@ -69,7 +66,6 @@ export default {
       return Response.json(statsCache);
     }
 
-    // Frontend: image proxy from R2
     if (url.pathname.startsWith('/image/')) {
       const key = url.pathname.slice(7);
       const object = await env.R2.get(key);
@@ -84,7 +80,6 @@ export default {
       });
     }
 
-    // Scheduler: health check
     if (url.pathname === '/health') {
       return Response.json({
         status: 'healthy',
@@ -92,7 +87,6 @@ export default {
       });
     }
 
-    // Scheduler: manual trigger
     if (url.pathname === '/api/trigger' && request.method === 'POST') {
       try {
         const analytics = new Analytics(env.AE);
@@ -103,7 +97,7 @@ export default {
           endPage: 3
         });
 
-        const workflowInstance = await env.PHOTO_WORKFLOW.create({ payload: {} });
+        const workflowInstance = await env.PHOTO_WORKFLOW.create();
 
         await analytics.logEvent('trigger', { status: 'success' });
 
@@ -119,7 +113,7 @@ export default {
       } catch (error) {
         return Response.json({
           success: false,
-          error: error.message
+          error: (error as Error).message
         }, { status: 500 });
       }
     }
@@ -127,7 +121,7 @@ export default {
     return new Response('Not Found', { status: 404 });
   },
 
-  async scheduled(event, env, ctx) {
+  async scheduled(event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
     console.log('Cron triggered');
 
     try {
@@ -144,9 +138,9 @@ export default {
         endPage: 1
       });
 
-      const workflowInstance = await env.PHOTO_WORKFLOW.create({ payload: {} });
+      const workflowInstance = await env.PHOTO_WORKFLOW.create();
 
-      ctx.waitUntil(this.cleanupOldData(env));
+      ctx.waitUntil(cleanupOldData(env));
 
       await analytics.logEvent('cron', {
         status: 'success',
@@ -157,64 +151,68 @@ export default {
     } catch (error) {
       console.error('Failed to enqueue and start workflow:', error);
     }
-  },
-
-  async cleanupOldData(env) {
-    try {
-      const retentionConfig = await env.DB.prepare(
-        'SELECT key, value FROM State WHERE key IN (?, ?)'
-      ).bind('retention_days', 'max_photos').all();
-
-      const config = Object.fromEntries(
-        retentionConfig.results.map(r => [r.key, parseInt(r.value)])
-      );
-
-      const maxPhotos = config.max_photos || 4000;
-
-      const { total } = await env.DB.prepare(
-        'SELECT COUNT(*) as total FROM Photos'
-      ).first();
-
-      if (total <= maxPhotos) {
-        console.log(`Photo count (${total}) within limit (${maxPhotos})`);
-        return;
-      }
-
-      const toDelete = total - maxPhotos;
-      const oldPhotos = await env.DB.prepare(`
-        SELECT unsplash_id, r2_key FROM Photos 
-        ORDER BY downloaded_at ASC 
-        LIMIT ?
-      `).bind(toDelete).all();
-
-      let deletedFiles = 0;
-      for (const photo of oldPhotos.results) {
-        try {
-          await env.R2.delete(photo.r2_key);
-          deletedFiles++;
-        } catch (err) {
-          console.error(`Failed to delete R2 file ${photo.r2_key}:`, err);
-        }
-      }
-
-      const photoIds = oldPhotos.results.map(p => p.unsplash_id);
-      await env.DB.prepare(`
-        DELETE FROM Photos WHERE unsplash_id IN (${photoIds.map(() => '?').join(',')})
-      `).bind(...photoIds).run();
-
-      await env.DB.prepare(`
-        INSERT INTO CleanupLog (photos_deleted, r2_files_deleted, cleanup_reason, executed_at)
-        VALUES (?, ?, ?, ?)
-      `).bind(
-        photoIds.length,
-        deletedFiles,
-        `Exceeded max_photos limit (${maxPhotos})`,
-        new Date().toISOString()
-      ).run();
-
-      console.log(`Cleanup: deleted ${photoIds.length} photos, ${deletedFiles} R2 files`);
-    } catch (error) {
-      console.error('Cleanup failed:', error);
-    }
   }
 };
+
+async function cleanupOldData(env: Env): Promise<void> {
+  try {
+    const retentionConfig = await env.DB.prepare(
+      'SELECT key, value FROM State WHERE key IN (?, ?)'
+    ).bind('retention_days', 'max_photos').all<{ key: string; value: string }>();
+
+    const config = Object.fromEntries(
+      retentionConfig.results.map(r => [r.key, parseInt(r.value)])
+    );
+
+    const maxPhotos = config.max_photos || 4000;
+
+    const row = await env.DB.prepare(
+      'SELECT COUNT(*) as total FROM Photos'
+    ).first<{ total: number }>();
+
+    const total = row?.total || 0;
+
+    if (total <= maxPhotos) {
+      console.log(`Photo count (${total}) within limit (${maxPhotos})`);
+      return;
+    }
+
+    const toDelete = total - maxPhotos;
+    const oldPhotos = await env.DB.prepare(`
+      SELECT unsplash_id, r2_key FROM Photos 
+      ORDER BY downloaded_at ASC 
+      LIMIT ?
+    `).bind(toDelete).all<{ unsplash_id: string; r2_key: string }>();
+
+    let deletedFiles = 0;
+    for (const photo of oldPhotos.results) {
+      try {
+        await env.R2.delete(photo.r2_key);
+        deletedFiles++;
+      } catch (err) {
+        console.error(`Failed to delete R2 file ${photo.r2_key}:`, err);
+      }
+    }
+
+    const photoIds = oldPhotos.results.map(p => p.unsplash_id);
+    await env.DB.prepare(`
+      DELETE FROM Photos WHERE unsplash_id IN (${photoIds.map(() => '?').join(',')})
+    `).bind(...photoIds).run();
+
+    await env.DB.prepare(`
+      INSERT INTO CleanupLog (photos_deleted, r2_files_deleted, cleanup_reason, executed_at)
+      VALUES (?, ?, ?, ?)
+    `).bind(
+      photoIds.length,
+      deletedFiles,
+      `Exceeded max_photos limit (${maxPhotos})`,
+      new Date().toISOString()
+    ).run();
+
+    console.log(`Cleanup: deleted ${photoIds.length} photos, ${deletedFiles} R2 files`);
+  } catch (error) {
+    console.error('Cleanup failed:', error);
+  }
+}
+
+export default worker;
