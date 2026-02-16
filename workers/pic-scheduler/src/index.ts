@@ -1,6 +1,5 @@
-import { DataPipelineWorkflow } from './workflows/data-pipeline.js';
-import { EnqueuePhotosTask } from './tasks/enqueue-photos.js';
-import { Analytics } from './utils/analytics.js';
+import { DataPipelineWorkflow } from './workflows/data-pipeline';
+import { EnqueuePhotosTask } from './tasks/enqueue-photos';
 import FRONTEND_HTML from './frontend.html';
 
 export { DataPipelineWorkflow };
@@ -89,8 +88,6 @@ const worker: ExportedHandler<Env> = {
 
     if (url.pathname === '/api/trigger' && request.method === 'POST') {
       try {
-        const analytics = new Analytics(env.AE);
-
         const enqueueTask = new EnqueuePhotosTask();
         const enqueueResult = await enqueueTask.run(env, {
           startPage: 1,
@@ -98,8 +95,6 @@ const worker: ExportedHandler<Env> = {
         });
 
         const workflowInstance = await env.PHOTO_WORKFLOW.create();
-
-        await analytics.logEvent('trigger', { status: 'success' });
 
         return Response.json({
           success: true,
@@ -130,8 +125,6 @@ const worker: ExportedHandler<Env> = {
         return;
       }
 
-      const analytics = new Analytics(env.AE);
-
       const enqueueTask = new EnqueuePhotosTask();
       const enqueueResult = await enqueueTask.run(env, {
         startPage: 1,
@@ -141,11 +134,6 @@ const worker: ExportedHandler<Env> = {
       const workflowInstance = await env.PHOTO_WORKFLOW.create();
 
       ctx.waitUntil(cleanupOldData(env));
-
-      await analytics.logEvent('cron', {
-        status: 'success',
-        enqueued: enqueueResult.enqueued
-      });
 
       console.log(`Enqueued ${enqueueResult.enqueued} photos, workflow: ${workflowInstance.id}`);
     } catch (error) {
