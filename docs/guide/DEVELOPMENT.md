@@ -1,6 +1,6 @@
 # Development Guide
 
-Pic uses npm workspaces monorepo.
+Lens uses npm workspaces monorepo.
 
 ## Structure
 

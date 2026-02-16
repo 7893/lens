@@ -1,4 +1,4 @@
-# Pic System Design
+# Lens System Design
 
 ## Architecture
 
@@ -33,7 +33,7 @@ Cron (hourly) → Processor scheduled handler
   → Workflow steps:
       1. download-and-store: raw + display images → R2
       2. analyze-vision: Llama 3.2 Vision generates caption
-      3. generate-embedding: BGE generates 768-dim vector
+      3. generate-embedding: BGE Large generates 1024-dim vector
       4. persist-d1: metadata + embedding → D1
   → Cron also syncs all D1 embeddings → Vectorize (idempotent upsert)
 ```
@@ -42,10 +42,11 @@ Cron (hourly) → Processor scheduled handler
 
 ```
 User query → lens Worker (Hono)
-  → BGE embedding of query text
+  → Llama 3.2 expands short queries (query expansion)
+  → BGE Large embedding of expanded query text
   → Vectorize.query(vector, topK)
   → D1 lookup by matched IDs
-  → return results with scores
+  → return results with scores + full metadata
 ```
 
 Frontend is bundled as static assets in the same Worker.
@@ -58,10 +59,10 @@ Frontend is bundled as static assets in the same Worker.
 | Processor Worker | Queue/Workflow | `lens-processor` |
 | Database | D1 (SQLite) | `lens-db` |
 | Object Storage | R2 | `lens-r2` |
-| Vector Index | Vectorize (768d, cosine) | `lens-vectors` |
+| Vector Index | Vectorize (1024d, cosine) | `lens-vectors-v2` |
 | Task Queue | Queues | `lens-queue` |
 | Vision AI | `@cf/meta/llama-3.2-11b-vision-instruct` | — |
-| Embedding AI | `@cf/baai/bge-base-en-v1.5` | — |
+| Embedding AI | `@cf/baai/bge-large-en-v1.5` | — |
 
 ## D1 Schema
 

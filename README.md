@@ -17,7 +17,8 @@
 
 - 每小时自动从 Unsplash 采集新图
 - Llama 3.2 Vision 理解每张图的内容
-- BGE 模型生成 768 维语义向量
+- BGE Large 模型生成 1024 维语义向量
+- 搜索时 AI 自动扩展查询词，提升语义匹配精度
 - 支持任意自然语言搜索
 
 没有服务器，没有容器，没有 GPU，月账单趋近于零。
@@ -61,9 +62,9 @@
 | 采集引擎 | Workflows + Queues + Cron | 持久化执行，自动重试 |
 | 图片存储 | R2 | 零出口流量费 |
 | 元数据 | D1 (SQLite at Edge) | 关系查询，边缘就近访问 |
-| 语义搜索 | Vectorize (768d, cosine) | 毫秒级向量相似度 |
+| 语义搜索 | Vectorize (1024d, cosine) | 毫秒级向量相似度 |
 | 视觉 AI | Llama 3.2 11B Vision | 边缘推理，结构化输出 |
-| 向量化 | BGE Base EN v1.5 | 文本转向量 |
+| 向量化 | BGE Large EN v1.5 | 文本转 1024 维向量 |
 | 基础设施 | Terraform | 声明式资源管理 |
 | CI/CD | GitHub Actions | 55 秒推送到生产 |
 
@@ -72,7 +73,7 @@
 - 🔍 搜索框居中，输入后平滑上移
 - 🎨 BlurHash 模糊占位图，图片渐显加载
 - 💀 搜索时骨架屏动画
-- 🖼️ 点击查看大图 + 完整元数据（EXIF / AI 描述 / 统计 / 地点）
+- 🖼️ 点击查看大图 + 完整元数据（摄影师 / EXIF / AI 描述 / 地点 / 统计 / 分类）
 - ♾️ 无限滚动，客户端渐进渲染
 - 🔤 Inter 字体，干净排版
 
@@ -86,6 +87,8 @@
 - **基础设施即代码** — D1、Queue、Vectorize 由 Terraform 管理
 - **55 秒 CI/CD** — `git push` → 构建 → 部署两个 Worker → 上线
 - **边缘原生 AI** — 模型跑在 Cloudflare 边缘节点，无外部 API 调用
+- **Query Expansion** — 搜索时 LLM 自动扩展查询词，提升语义召回率
+- **丰富向量文本** — caption + tags + 描述 + 地点 + 摄影师 + 分类全部参与 embedding
 - **极简架构** — 两个 Worker 撑起整个系统，零微服务开销
 
 ## 文档
