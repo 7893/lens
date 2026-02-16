@@ -214,28 +214,30 @@ export default function Home() {
   }, [handleObserver]);
 
   return (
-    <div className="min-h-screen bg-gray-50 p-8">
-      <div className="max-w-4xl mx-auto mb-12 text-center">
-        <h1 className="text-4xl font-bold text-gray-900 mb-4">Pic Gallery</h1>
-        <p className="text-gray-500 mb-8">AI-Powered Semantic Search</p>
+    <div className="min-h-screen bg-gray-50">
+      <div className={`transition-all duration-500 ease-out ${results.length > 0 || isLoading ? 'pt-8' : 'pt-[30vh]'}`}>
+        <div className="max-w-4xl mx-auto mb-12 text-center px-8">
+          <h1 className="text-4xl font-bold text-gray-900 mb-4">Pic Gallery</h1>
+          <p className="text-gray-500 mb-8">AI-Powered Semantic Search</p>
 
-        <div className="relative max-w-xl mx-auto">
-          <input
-            type="text"
-            className="w-full pl-12 pr-4 py-3 rounded-full border border-gray-200 shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
-            placeholder="Search for 'sad rainy day' or 'cyberpunk city'..."
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-          />
-          <Search className="absolute left-4 top-3.5 text-gray-400 w-5 h-5" />
+          <div className="relative max-w-xl mx-auto">
+            <input
+              type="text"
+              className="w-full pl-12 pr-4 py-3 rounded-full border border-gray-200 shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
+              placeholder="Search for 'sad rainy day' or 'cyberpunk city'..."
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+            <Search className="absolute left-4 top-3.5 text-gray-400 w-5 h-5" />
+          </div>
+
+          {took !== undefined && isSearching && (
+            <p className="text-xs text-gray-400 mt-2">Found {total} results in {took}ms</p>
+          )}
         </div>
-
-        {took !== undefined && isSearching && (
-          <p className="text-xs text-gray-400 mt-2">Found {total} results in {took}ms</p>
-        )}
       </div>
 
-      <div className="max-w-7xl mx-auto columns-1 sm:columns-2 md:columns-3 lg:columns-4 gap-4 space-y-4">
+      <div className="max-w-7xl mx-auto columns-1 sm:columns-2 md:columns-3 lg:columns-4 gap-4 space-y-4 px-8">
         {isLoading ? <Skeleton /> : results.map((img) => (
           <ImageCard key={img.id} image={img} onClick={() => setSelected(img)} />
         ))}
