@@ -1,93 +1,69 @@
-# Pic v6.0 API 参考 (OpenAPI)
+# Pic v6.0 API Reference
 
-所有 API 路径均以 `/api` 为前缀。
+Base URL: `https://pic-api.53.workers.dev`
 
-基础 URL: `https://<your-worker-subdomain>.workers.dev`
+## Endpoints
 
-## 接口列表 (Endpoints)
+### 1. Health Check
 
-### 1. 语义搜图 (Search Images)
+- **GET** `/health`
+- **Response** `200`:
+  ```json
+  { "status": "healthy", "version": "v6.0.0" }
+  ```
 
-使用自然语言查询进行语义图像搜索。
+### 2. Semantic Search
 
-- **方法**: `GET /api/search`
-- **查询参数**:
-  - `q` (string, 必填): 搜索关键词 (例如 "sad rainy day", "cyberpunk city")。
-  - `limit` (integer, 可选): 返回结果数量 (默认: 20)。
-  - `page` (integer, 可选): 分页页码 (默认: 1)。
-- **响应**:
-  - **Status 200 OK**:
-    ```json
-    {
-      "results": [
-        {
-          "id": "abc-123",
-          "url": "https://r2.pic.app/display/abc-123.jpg",
-          "width": 1920,
-          "height": 1080,
-          "caption": "A futuristic city street at night...",
-          "score": 0.85
-        }
-      ],
-      "total": 120,
-      "page": 1
-    }
-    ```
-
-### 2. 获取图片详情 (Get Image Details)
-
-获取指定图片的详细元数据。
-
-- **方法**: `GET /api/images/:id`
-- **路径参数**:
-  - `id` (string, 必填): 图片 ID (Unsplash ID)。
-- **响应**:
-  - **Status 200 OK**:
-    ```json
-    {
-      "id": "abc-123",
-      "urls": {
-        "raw": "https://r2.pic.app/raw/abc-123.jpg",
-        "display": "https://r2.pic.app/display/abc-123.jpg"
-      },
-      "metadata": {
-        "photographer": "John Doe",
-        "location": "New York, USA",
-        "exif": { "camera": "Sony A7III", "iso": 100 }
-      },
-      "ai_analysis": {
-        "tags": ["city", "night", "rain"],
-        "caption": "A futuristic city street at night..."
+- **GET** `/api/search?q={query}&limit={limit}`
+- **Parameters**:
+  - `q` (string, required): natural language query
+  - `limit` (integer, optional, default: 20): max results
+- **Response** `200`:
+  ```json
+  {
+    "results": [
+      {
+        "id": "pRFX1RbTsfU",
+        "url": "/image/display/pRFX1RbTsfU.jpg",
+        "width": 4093,
+        "height": 2729,
+        "caption": "A bustling city street at night...",
+        "tags": [],
+        "score": 0.69,
+        "photographer": "Tsuyoshi Kozu"
       }
+    ],
+    "total": 3,
+    "page": 1,
+    "took": 794
+  }
+  ```
+
+### 3. Image Details
+
+- **GET** `/api/images/:id`
+- **Response** `200`:
+  ```json
+  {
+    "id": "pRFX1RbTsfU",
+    "urls": {
+      "raw": "/image/raw/pRFX1RbTsfU.jpg",
+      "display": "/image/display/pRFX1RbTsfU.jpg"
+    },
+    "metadata": {
+      "photographer": "Tsuyoshi Kozu",
+      "location": "Tokyo, Japan",
+      "exif": { "make": "Sony", "model": "A7III" }
+    },
+    "ai": {
+      "caption": "A bustling city street at night...",
+      "tags": []
     }
-    ```
+  }
+  ```
 
-### 3. 手动触发采集 (Trigger Ingestion)
+### 4. Image Proxy
 
-手动触发数据采集流水线（需要管理员权限）。
-
-- **方法**: `POST /api/admin/trigger`
-- **Header**:
-  - `Authorization`: `Bearer <ADMIN_SECRET>`
-- **响应**:
-  - **Status 202 Accepted**:
-    ```json
-    {
-      "message": "Ingestion triggered successfully",
-      "job_id": "job-456"
-    }
-    ```
-
-### 4. 健康检查 (Health Check)
-
-检查系统运行状态。
-
-- **方法**: `GET /health`
-- **响应**:
-  - **Status 200 OK**:
-    ```json
-    {
-      "status": "healthy",
-      "version": "v6.0.0"
-    }
-    ```
+- **GET** `/image/:type/:filename`
+- `type`: `raw` or `display`
+- Returns image binary with `cache-control: public, max-age=31536000`
