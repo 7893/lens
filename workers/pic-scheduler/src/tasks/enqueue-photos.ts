@@ -1,32 +1,45 @@
+interface EnqueueResult {
+  enqueued: number;
+  skipped: number;
+  pages: number;
+  cursor: string;
+  error?: string;
+  quotaReset?: string;
+}
+
+interface UnsplashPhoto {
+  id: string;
+  created_at: string;
+  [key: string]: unknown;
+}
+
 export class EnqueuePhotosTask {
-  async run(env, { startPage = 1, endPage = 2 }) {
+  async run(env: Env, { startPage = 1, endPage = 2 }: { startPage?: number; endPage?: number }): Promise<EnqueueResult> {
     try {
-      // Check API quota before making requests
       const quotaCheck = await env.DB.prepare(
         'SELECT calls_used, quota_limit, next_reset_at FROM ApiQuota WHERE api_name = ?'
-      ).bind('unsplash').first();
+      ).bind('unsplash').first<{ calls_used: number; quota_limit: number; next_reset_at: string }>();
 
       if (quotaCheck) {
         const now = new Date();
         const resetTime = new Date(quotaCheck.next_reset_at);
 
-        // Reset counter if past reset time
         if (now >= resetTime) {
           await env.DB.prepare(`
             UPDATE ApiQuota SET calls_used = 0, next_reset_at = ?, updated_at = ?
             WHERE api_name = ?
           `).bind(
-            new Date(now.getTime() + 3600000).toISOString(), // +1 hour
+            new Date(now.getTime() + 3600000).toISOString(),
             now.toISOString(),
             'unsplash'
           ).run();
         } else if (quotaCheck.calls_used >= quotaCheck.quota_limit - 5) {
-          // Leave 5 calls buffer
           console.warn(`API quota near limit: ${quotaCheck.calls_used}/${quotaCheck.quota_limit}`);
-          return { 
-            enqueued: 0, 
-            skipped: 0, 
-            pages: 0, 
+          return {
+            enqueued: 0,
+            skipped: 0,
+            pages: 0,
+            cursor: '',
             error: 'API quota limit reached',
             quotaReset: quotaCheck.next_reset_at
           };
@@ -34,37 +47,36 @@ export class EnqueuePhotosTask {
       }
 
       const [cursorTime, cursorId] = await Promise.all([
-        env.DB.prepare('SELECT value FROM State WHERE key = ?').bind('last_cursor_time').first(),
-        env.DB.prepare('SELECT value FROM State WHERE key = ?').bind('last_cursor_id').first()
+        env.DB.prepare('SELECT value FROM State WHERE key = ?').bind('last_cursor_time').first<{ value: string }>(),
+        env.DB.prepare('SELECT value FROM State WHERE key = ?').bind('last_cursor_id').first<{ value: string }>()
       ]);
 
       const lastCursorTime = cursorTime?.value || '';
       const lastCursorId = cursorId?.value || '';
-      
+
       let enqueued = 0;
       let skipped = 0;
       let newCursorTime = lastCursorTime;
       let newCursorId = lastCursorId;
-      let allPhotos = [];
+      const allPhotos: UnsplashPhoto[] = [];
       let apiCallsMade = 0;
 
       for (let page = startPage; page <= endPage; page++) {
         const response = await fetch(
           `https://api.unsplash.com/photos?order_by=latest&per_page=30&page=${page}&client_id=${env.UNSPLASH_API_KEY}`
         );
-        
+
         apiCallsMade++;
-        
+
         if (!response.ok) {
           console.error(`Unsplash API failed: ${response.status}`);
           continue;
         }
-        
-        const photos = await response.json();
+
+        const photos = await response.json() as UnsplashPhoto[];
         allPhotos.push(...photos);
       }
 
-      // Update API quota counter
       await env.DB.prepare(`
         UPDATE ApiQuota SET calls_used = calls_used + ?, updated_at = ?
         WHERE api_name = ?
@@ -74,22 +86,20 @@ export class EnqueuePhotosTask {
         return { enqueued: 0, skipped: 0, pages: 0, cursor: lastCursorTime };
       }
 
-      // Batch query for existing photos
       const photoIds = allPhotos.map(p => p.id);
       const placeholders = photoIds.map(() => '?').join(',');
-      
+
       const [existingPhotos, queuedPhotos] = await Promise.all([
         env.DB.prepare(`SELECT unsplash_id FROM Photos WHERE unsplash_id IN (${placeholders})`)
-          .bind(...photoIds).all(),
+          .bind(...photoIds).all<{ unsplash_id: string }>(),
         env.DB.prepare(`SELECT unsplash_id FROM ProcessingQueue WHERE unsplash_id IN (${placeholders})`)
-          .bind(...photoIds).all()
+          .bind(...photoIds).all<{ unsplash_id: string }>()
       ]);
 
       const existingIds = new Set(existingPhotos.results.map(r => r.unsplash_id));
       const queuedIds = new Set(queuedPhotos.results.map(r => r.unsplash_id));
 
       for (const photo of allPhotos) {
-        // Fix: use < instead of <=
         if (lastCursorTime && photo.created_at < lastCursorTime) {
           skipped++;
           continue;
@@ -130,11 +140,11 @@ export class EnqueuePhotosTask {
 
       console.log(`Enqueued: ${enqueued}, Skipped: ${skipped}`);
 
-      return { 
-        enqueued, 
-        skipped, 
+      return {
+        enqueued,
+        skipped,
         pages: endPage - startPage + 1,
-        cursor: newCursorTime 
+        cursor: newCursorTime
       };
     } catch (error) {
       console.error('EnqueuePhotosTask error:', error);

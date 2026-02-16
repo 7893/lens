@@ -1,5 +1,19 @@
+interface ClassifyResult {
+  label: string;
+  score: number;
+}
+
+interface ClassifyOutput {
+  category: string;
+  confidence: number;
+  scores: Record<string, number>;
+}
+
 export class AIClassifier {
-  constructor(ai) {
+  private ai: Ai;
+  private models: string[];
+
+  constructor(ai: Ai) {
     this.ai = ai;
     this.models = [
       '@cf/meta/llama-3-8b-instruct',
@@ -9,7 +23,7 @@ export class AIClassifier {
     ];
   }
 
-  async classifyWithModel(description, modelName) {
+  async classifyWithModel(description: string, modelName: string): Promise<ClassifyResult | null> {
     const prompt = `Classify this image into ONE category. Return ONLY a JSON object with format: {"label": "category-name", "score": 0.95}
 
 Description: "${description}"
@@ -18,13 +32,13 @@ Return a single-word or hyphenated category (lowercase) with confidence score 0-
 Examples: {"label": "nature", "score": 0.92}, {"label": "street-photography", "score": 0.88}`;
 
     try {
-      const response = await this.ai.run(modelName, {
+      const response = await this.ai.run(modelName as any, {
         messages: [{ role: 'user', content: prompt }],
         max_tokens: 50,
         temperature: 0.1
       });
 
-      const text = response.response?.trim();
+      const text = (response as { response?: string }).response?.trim();
       if (!text) return null;
 
       const jsonMatch = text.match(/\{[^}]+\}/);
@@ -41,28 +55,26 @@ Examples: {"label": "nature", "score": 0.92}, {"label": "street-photography", "s
       }
       return null;
     } catch (error) {
-      console.error(`Model ${modelName} failed:`, error.message);
+      console.error(`Model ${modelName} failed:`, (error as Error).message);
       return null;
     }
   }
 
-  async classifyImage(description) {
+  async classifyImage(description: string): Promise<ClassifyOutput> {
     const results = await Promise.all(
       this.models.map(model => this.classifyWithModel(description, model))
     );
 
-    const validResults = results.filter(r => r !== null);
+    const validResults = results.filter((r): r is ClassifyResult => r !== null);
     if (validResults.length === 0) {
       return { category: 'uncategorized', confidence: 0, scores: {} };
     }
 
-    // 置信度加权：汇总相同标签的分数
-    const scoreMap = {};
+    const scoreMap: Record<string, number> = {};
     validResults.forEach(({ label, score }) => {
       scoreMap[label] = (scoreMap[label] || 0) + score;
     });
 
-    // 找出总分最高的标签
     let bestLabel = 'uncategorized';
     let bestScore = 0;
     for (const [label, totalScore] of Object.entries(scoreMap)) {
@@ -74,7 +86,7 @@ Examples: {"label": "nature", "score": 0.92}, {"label": "street-photography", "s
 
     return {
       category: bestLabel,
-      confidence: bestScore / this.models.length, // 归一化
+      confidence: bestScore / this.models.length,
       scores: scoreMap
     };
   }

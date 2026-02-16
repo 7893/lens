@@ -2,7 +2,7 @@
   "name": "pic-scheduler",
   "version": "2.0.0",
   "description": "AI-powered image classification system on Cloudflare Workers",
-  "main": "src/index.js",
+  "main": "src/index.ts",
   "type": "module",
   "engines": {
     "node": ">=22.19.0",
@@ -13,7 +13,8 @@
     "deploy": "wrangler deploy",
     "tail": "wrangler tail",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "type-check": "tsc --noEmit"
   },
   "keywords": [
     "cloudflare",
@@ -25,6 +26,8 @@
   "author": "",
   "license": "MIT",
   "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260214.0",
+    "typescript": "^5.9.3",
     "vitest": "^4.0.18",
     "wrangler": "^4.62.0"
   }

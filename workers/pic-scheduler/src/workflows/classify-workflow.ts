@@ -1,12 +1,24 @@
-import { WorkflowEntrypoint } from 'cloudflare:workers';
+import { WorkflowEntrypoint, WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 import { ClassifyWithModelTask } from '../tasks/classify-with-model.js';
 import { SaveMetadataTask } from '../tasks/save-metadata.js';
 
-export class ClassifyWorkflow extends WorkflowEntrypoint {
-  async run(event, step) {
+interface QueueRow {
+  unsplash_id: string;
+  photo_data: string;
+}
+
+interface StepResult {
+  success: boolean;
+  photoId: string;
+  category?: string;
+  error?: string;
+}
+
+export class ClassifyWorkflow extends WorkflowEntrypoint<Env> {
+  async run(event: WorkflowEvent<unknown>, step: WorkflowStep): Promise<Record<string, unknown>> {
     const workflowId = `cl-${Date.now()}`;
     const batchSize = 30;
-    
+
     const tasks = await step.do('dequeue-classify-tasks', async () => {
       const downloaded = await this.env.DB.prepare(`
         SELECT * FROM ProcessingQueue 
@@ -20,14 +32,12 @@ export class ClassifyWorkflow extends WorkflowEntrypoint {
           END,
           created_at ASC
         LIMIT ?
-      `).bind(batchSize).all();
+      `).bind(batchSize).all<QueueRow>();
 
-      if (downloaded.results.length === 0) {
-        return [];
-      }
+      if (downloaded.results.length === 0) return [];
 
       const taskIds = downloaded.results.map(t => t.unsplash_id);
-      
+
       await this.env.DB.prepare(`
         UPDATE ProcessingQueue 
         SET status = 'classifying', updated_at = datetime('now')
@@ -41,13 +51,13 @@ export class ClassifyWorkflow extends WorkflowEntrypoint {
       return { message: 'No classify tasks', total: 0 };
     }
 
-    const results = [];
+    const results: StepResult[] = [];
 
     for (let i = 0; i < tasks.length; i++) {
       const task = tasks[i];
       const photoDetail = JSON.parse(task.photo_data);
-      
-      const result = await step.do(`classify-${task.unsplash_id}`, async () => {
+
+      const result = await step.do(`classify-${task.unsplash_id}`, async (): Promise<StepResult> => {
         try {
           const models = [
             '@cf/meta/llama-3.2-3b-instruct',
@@ -55,21 +65,22 @@ export class ClassifyWorkflow extends WorkflowEntrypoint {
           ];
 
           const classifyTask = new ClassifyWithModelTask();
-          const description = photoDetail.alt_description || photoDetail.description || 'No description';
-          
+          const description: string = photoDetail.alt_description || photoDetail.description || 'No description';
+
           const classifyResults = await Promise.all(
             models.map(modelName => classifyTask.run(this.env, { description, modelName }))
           );
 
-          let bestCategory;
-          let confidence;
+          const validResults = classifyResults.filter((r): r is NonNullable<typeof r> => r !== null);
 
-          const validResults = classifyResults.filter(r => r !== null);
+          let bestCategory: string;
+          let confidence: number;
+
           if (validResults.length === 0) {
             bestCategory = 'uncategorized';
             confidence = 0.5;
           } else {
-            const scoreMap = {};
+            const scoreMap: Record<string, number> = {};
             validResults.forEach(({ label, score }) => {
               scoreMap[label] = (scoreMap[label] || 0) + score;
             });
@@ -82,9 +93,9 @@ export class ClassifyWorkflow extends WorkflowEntrypoint {
                 bestCategory = label;
               }
             }
-
             confidence = bestScore / models.length;
           }
+
           const tempKey = `temp/${task.unsplash_id}.jpg`;
           const finalKey = `${bestCategory}/${task.unsplash_id}.jpg`;
 
@@ -117,12 +128,12 @@ export class ClassifyWorkflow extends WorkflowEntrypoint {
                 status = 'failed', 
                 updated_at = datetime('now')
             WHERE unsplash_id = ?
-          `).bind(error.message, task.unsplash_id).run();
+          `).bind((error as Error).message, task.unsplash_id).run();
 
-          return { success: false, photoId: task.unsplash_id, error: error.message };
+          return { success: false, photoId: task.unsplash_id, error: (error as Error).message };
         }
       });
-      
+
       results.push(result);
     }
 
@@ -130,7 +141,6 @@ export class ClassifyWorkflow extends WorkflowEntrypoint {
     const failed = results.filter(r => !r.success).length;
 
     await step.do('update-stats', async () => {
-      // Ensure GlobalStats row exists
       await this.env.DB.prepare(`
         INSERT OR IGNORE INTO GlobalStats 
         (id, total_workflows, successful_workflows, total_downloads, successful_downloads, updated_at) 
@@ -148,11 +158,6 @@ export class ClassifyWorkflow extends WorkflowEntrypoint {
       `).bind(results.length, successful, new Date().toISOString()).run();
     });
 
-    return { 
-      workflowId,
-      successful, 
-      failed, 
-      total: results.length
-    };
+    return { workflowId, successful, failed, total: results.length };
   }
 }

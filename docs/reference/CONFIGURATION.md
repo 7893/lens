@@ -14,6 +14,14 @@
 
 位于 `workers/pic-scheduler/wrangler.toml`。
 
+### 核心配置
+
+```toml
+name = "pic"
+main = "src/index.ts"
+compatibility_date = "2024-10-01"
+```
+
 ### 核心绑定 (Bindings)
 
 | 绑定名称 | 类型 | 说明 |

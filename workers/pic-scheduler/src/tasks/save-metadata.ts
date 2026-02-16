@@ -1,7 +1,34 @@
+interface SaveParams {
+  photoDetail: Record<string, unknown> & {
+    id: string;
+    slug?: string;
+    description?: string;
+    alt_description?: string;
+    blur_hash?: string;
+    width?: number;
+    height?: number;
+    color?: string;
+    likes?: number;
+    views?: number;
+    downloads?: number;
+    created_at?: string;
+    updated_at?: string;
+    promoted_at?: string;
+    user?: { id?: string; username?: string; name?: string; bio?: string; location?: string; portfolio_url?: string; instagram_username?: string; twitter_username?: string };
+    location?: { name?: string; city?: string; country?: string; position?: { latitude?: number; longitude?: number } };
+    exif?: { make?: string; model?: string; name?: string; exposure_time?: string; aperture?: string; focal_length?: string; iso?: number };
+    tags?: { title: string }[];
+    topics?: { title: string }[];
+  };
+  category: string;
+  confidence: number;
+  r2Key: string;
+}
+
 export class SaveMetadataTask {
-  async run(env, { photoDetail, category, confidence, r2Key }) {
+  async run(env: Env, { photoDetail, category, confidence, r2Key }: SaveParams): Promise<{ success: boolean }> {
     const imageSize = (photoDetail.width || 0) * (photoDetail.height || 0) * 3;
-    
+
     await env.DB.prepare(`
       INSERT INTO Photos (
         unsplash_id, slug, r2_key, downloaded_at,
@@ -76,8 +103,8 @@ export class SaveMetadataTask {
         updated_at = ?
     `).bind(category, new Date().toISOString(), new Date().toISOString()).run();
 
-    const categories = await env.DB.prepare('SELECT COUNT(DISTINCT ai_category) as count FROM Photos').first();
-    await env.DB.prepare('UPDATE GlobalStats SET total_categories = ? WHERE id = 1').bind(categories.count || 0).run();
+    const categories = await env.DB.prepare('SELECT COUNT(DISTINCT ai_category) as count FROM Photos').first<{ count: number }>();
+    await env.DB.prepare('UPDATE GlobalStats SET total_categories = ? WHERE id = 1').bind(categories?.count || 0).run();
 
     return { success: true };
   }

@@ -1,15 +1,36 @@
 import { ClassifyWithModelTask } from './classify-with-model.js';
 import { SaveMetadataTask } from './save-metadata.js';
 
+interface QueueItem {
+  unsplash_id: string;
+  photo_data: string;
+  retry_count?: number;
+  download_success?: number;
+  ai_success?: number;
+  metadata_success?: number;
+  page?: number;
+}
+
+interface ProcessResult {
+  success: boolean;
+  photoId: string;
+  skipped?: boolean;
+  category?: string;
+  confidence?: number;
+  error?: string;
+  willRetry?: boolean;
+  abandoned?: boolean;
+}
+
 export class ProcessPhotoTask {
-  async run(env, { queueItem }) {
+  async run(env: Env, { queueItem }: { queueItem: QueueItem }): Promise<ProcessResult> {
     const photoId = queueItem.unsplash_id;
     const photoDetail = JSON.parse(queueItem.photo_data);
-    
+
     const existing = await env.DB.prepare(
       'SELECT unsplash_id FROM Photos WHERE unsplash_id = ?'
     ).bind(photoId).first();
-    
+
     if (existing) {
       await env.DB.prepare('DELETE FROM ProcessingQueue WHERE unsplash_id=?').bind(photoId).run();
       return { success: true, skipped: true, photoId };
@@ -30,23 +51,25 @@ export class ProcessPhotoTask {
     let downloadSuccess = queueItem.download_success || 0;
     let aiSuccess = queueItem.ai_success || 0;
     let metadataSuccess = queueItem.metadata_success || 0;
-    let imageBuffer, bestCategory, confidence, r2Key;
+    let imageBuffer: ArrayBuffer;
+    let bestCategory: string;
+    let confidence: number;
+    let r2Key: string;
 
     try {
       if (!downloadSuccess) {
         const imgController = new AbortController();
         const imgTimeoutId = setTimeout(() => imgController.abort(), timeout);
 
-        // Use regular quality instead of raw to save storage
         const imgRes = await fetch(photoDetail.urls.regular, { signal: imgController.signal });
-        
+
         clearTimeout(imgTimeoutId);
 
         if (!imgRes.ok) throw new Error('Download failed');
         imageBuffer = await imgRes.arrayBuffer();
 
         downloadSuccess = 1;
-        
+
         await env.DB.prepare(`
           UPDATE ProcessingQueue SET download_success=1, updated_at=datetime('now')
           WHERE unsplash_id=?
@@ -64,19 +87,19 @@ export class ProcessPhotoTask {
 
         const classifyTask = new ClassifyWithModelTask();
         const description = photoDetail.alt_description || photoDetail.description || 'No description';
-        
+
         const classifyResults = await Promise.all(
-          models.map(modelName => 
+          models.map(modelName =>
             classifyTask.run(env, { description, modelName })
           )
         );
 
-        const validResults = classifyResults.filter(r => r !== null);
+        const validResults = classifyResults.filter((r): r is NonNullable<typeof r> => r !== null);
         if (validResults.length === 0) {
           throw new Error('All AI models failed');
         }
 
-        const scoreMap = {};
+        const scoreMap: Record<string, number> = {};
         validResults.forEach(({ label, score }) => {
           scoreMap[label] = (scoreMap[label] || 0) + score;
         });
@@ -94,7 +117,7 @@ export class ProcessPhotoTask {
         r2Key = `${bestCategory}/${photoDetail.id}.jpg`;
 
         aiSuccess = 1;
-        
+
         await env.DB.prepare(`
           UPDATE ProcessingQueue SET ai_success=1, updated_at=datetime('now')
           WHERE unsplash_id=?
@@ -106,13 +129,13 @@ export class ProcessPhotoTask {
           '@cf/meta/llama-3.2-3b-instruct',
           '@cf/mistral/mistral-7b-instruct-v0.1'
         ];
-        
+
         const classifyResults = await Promise.all(
           models.map(modelName => classifyTask.run(env, { description, modelName }))
         );
 
-        const validResults = classifyResults.filter(r => r !== null);
-        const scoreMap = {};
+        const validResults = classifyResults.filter((r): r is NonNullable<typeof r> => r !== null);
+        const scoreMap: Record<string, number> = {};
         validResults.forEach(({ label, score }) => {
           scoreMap[label] = (scoreMap[label] || 0) + score;
         });
@@ -131,7 +154,7 @@ export class ProcessPhotoTask {
       }
 
       if (!metadataSuccess) {
-        await env.R2.put(r2Key, imageBuffer, {
+        await env.R2.put(r2Key, imageBuffer!, {
           httpMetadata: { contentType: 'image/jpeg' }
         });
 
@@ -148,9 +171,9 @@ export class ProcessPhotoTask {
 
       await env.DB.prepare('DELETE FROM ProcessingQueue WHERE unsplash_id=?').bind(photoId).run();
 
-      return { 
-        success: true, 
-        photoId, 
+      return {
+        success: true,
+        photoId,
         category: bestCategory,
         confidence
       };
@@ -167,15 +190,15 @@ export class ProcessPhotoTask {
           updated_at=datetime('now')
         WHERE unsplash_id=?
       `).bind(
-        downloadSuccess, aiSuccess, metadataSuccess, error.message, photoId
+        downloadSuccess, aiSuccess, metadataSuccess, (error as Error).message, photoId
       ).run();
 
-      console.error(`Failed to process photo ${photoId} (attempt ${retryCount + 1}):`, error.message);
-      
-      return { 
-        success: false, 
-        photoId, 
-        error: error.message,
+      console.error(`Failed to process photo ${photoId} (attempt ${retryCount + 1}):`, (error as Error).message);
+
+      return {
+        success: false,
+        photoId,
+        error: (error as Error).message,
         willRetry: retryCount + 1 < maxRetries
       };
     }

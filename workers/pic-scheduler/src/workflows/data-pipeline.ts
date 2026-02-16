@@ -1,12 +1,31 @@
-import { WorkflowEntrypoint } from 'cloudflare:workers';
+import { WorkflowEntrypoint, WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 import { ProcessPhotoTask } from '../tasks/process-photo.js';
 
-export class DataPipelineWorkflow extends WorkflowEntrypoint {
-  async run(event, step) {
+interface ProcessResult {
+  success: boolean;
+  photoId: string;
+  skipped?: boolean;
+  category?: string;
+  confidence?: number;
+  error?: string;
+}
+
+interface QueueRow {
+  unsplash_id: string;
+  page: number;
+  photo_data: string;
+  retry_count: number;
+  download_success: number;
+  ai_success: number;
+  metadata_success: number;
+}
+
+export class DataPipelineWorkflow extends WorkflowEntrypoint<Env> {
+  async run(event: WorkflowEvent<unknown>, step: WorkflowStep): Promise<Record<string, unknown>> {
     const workflowId = `wf-${Date.now()}`;
     const batchSize = 30;
     const maxRetries = 3;
-    
+
     const tasks = await step.do('dequeue-tasks', async () => {
       const pending = await this.env.DB.prepare(`
         SELECT * FROM ProcessingQueue 
@@ -19,7 +38,7 @@ export class DataPipelineWorkflow extends WorkflowEntrypoint {
           END,
           created_at ASC
         LIMIT ?
-      `).bind(maxRetries, batchSize).all();
+      `).bind(maxRetries, batchSize).all<QueueRow>();
 
       if (pending.results.length === 0) {
         console.log('No tasks in queue');
@@ -27,7 +46,7 @@ export class DataPipelineWorkflow extends WorkflowEntrypoint {
       }
 
       const taskIds = pending.results.map(t => t.unsplash_id);
-      
+
       await this.env.DB.prepare(`
         UPDATE ProcessingQueue 
         SET status = 'processing', 
@@ -44,19 +63,16 @@ export class DataPipelineWorkflow extends WorkflowEntrypoint {
       return { message: 'No tasks to process', total: 0 };
     }
 
-    const results = [];
+    const results: ProcessResult[] = [];
 
     for (let i = 0; i < tasks.length; i++) {
       const task = tasks[i];
-      
+
       const result = await step.do(`process-photo-${task.unsplash_id}`, async () => {
         const processTask = new ProcessPhotoTask();
-        return await processTask.run(this.env, { 
-          queueItem: task,
-          apiKey: this.env.UNSPLASH_API_KEY
-        });
+        return await processTask.run(this.env, { queueItem: task });
       });
-      
+
       results.push(result);
     }
 
@@ -64,7 +80,7 @@ export class DataPipelineWorkflow extends WorkflowEntrypoint {
       const successful = results.filter(r => r.success && !r.skipped).length;
       const skipped = results.filter(r => r.skipped).length;
       const failed = results.filter(r => !r.success).length;
-      
+
       await this.env.DB.prepare(`
         INSERT INTO WorkflowRuns (id, page, status, photos_success, photos_failed, photos_skipped, started_at, completed_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -105,11 +121,6 @@ export class DataPipelineWorkflow extends WorkflowEntrypoint {
     const skipped = results.filter(r => r.skipped).length;
     const failed = results.filter(r => !r.success).length;
 
-    return { 
-      successful, 
-      skipped, 
-      failed, 
-      total: results.length
-    };
+    return { successful, skipped, failed, total: results.length };
   }
 }
