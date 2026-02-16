@@ -23,3 +23,6 @@ terraform/.terraform/
 terraform/*.tfstate
 terraform/*.tfstate.*
 terraform/*.tfvars
+
+# API static assets (built from web)
+apps/api/public/
