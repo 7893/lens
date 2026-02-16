@@ -159,36 +159,4 @@ app.get('/image/:type/:filename', async (c) => {
   return new Response(object.body, { headers });
 });
 
-// Temporary: regenerate all embeddings with enriched text
-app.post('/api/backfill', async (c) => {
-  const offset = Number(c.req.query('offset') || '0');
-  const limit = Number(c.req.query('limit') || '5');
-  const { results } = await c.env.DB.prepare(
-    'SELECT id, ai_caption, ai_tags, meta_json FROM images WHERE ai_caption IS NOT NULL ORDER BY id LIMIT ? OFFSET ?'
-  ).bind(limit, offset).all<DBImage>();
-
-  let done = 0;
-  for (const img of results) {
-    const meta = JSON.parse(img.meta_json || '{}');
-    const tags = JSON.parse(img.ai_tags || '[]');
-    const parts = [img.ai_caption || ''];
-    if (tags.length) parts.push(`Tags: ${tags.join(', ')}`);
-    if (meta.alt_description) parts.push(meta.alt_description);
-    if (meta.description) parts.push(meta.description);
-    if (meta.user?.name) parts.push(`Photographer: ${meta.user.name}`);
-    if (meta.location?.name) parts.push(`Location: ${meta.location.name}`);
-    const topics = Object.keys(meta.topic_submissions || {});
-    if (topics.length) parts.push(`Topics: ${topics.join(', ')}`);
-
-    const text = parts.join(' | ');
-    const resp = await c.env.AI.run('@cf/baai/bge-base-en-v1.5', { text: [text] }) as { data: number[][] };
-    const embedding = resp.data[0];
-    await c.env.DB.prepare('UPDATE images SET ai_embedding = ? WHERE id = ?')
-      .bind(JSON.stringify(embedding), img.id).run();
-    await c.env.VECTORIZE.upsert([{ id: img.id, values: embedding }]);
-    done++;
-  }
-  return c.json({ offset, limit, done, hasMore: results.length === limit });
-});
-
 export default app;
