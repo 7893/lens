@@ -83,17 +83,23 @@
 
 大部分"AI 图库"项目到 `npm start` 就结束了。我们不一样：
 
-🔒 **类型安全到牙齿** — 纯 TypeScript，strict mode，零 `any`。前后端共享类型包（`@pic/shared`），API 返回什么、前端收到什么，编译期就锁死。改了接口忘改前端？`tsc` 直接拦住你。
+🔒 **端到端类型安全** — 纯 TypeScript，strict mode，零 `any`。`@pic/shared` 共享类型包锁死前后端契约 — API 返回什么、前端收到什么，编译期就确定。接口改了忘改前端？`tsc` 直接拦住你，不是等到线上 500 才发现。
 
-🧱 **Monorepo 原子提交** — API、前端、类型定义在同一个仓库。一次 commit 同时改三个包，不存在"后端上了新接口但前端还没跟上"的窗口期。
+📐 **单一部署产物** — 前端构建后打包进 Worker assets，API + 前端 + 图片代理同源同 Worker。不是分开部署三个服务再配 CORS、再搞 API Gateway。一个 `wrangler deploy`，完事。
 
-🏭 **基础设施即代码** — D1、Queue、Vectorize 全部 Terraform 管理。新环境？`terraform apply`，30 秒拉起整套系统。不是手动在 Dashboard 上点点点。
+🧱 **Monorepo 原子提交** — npm workspaces 管理 API、前端、类型定义、采集引擎。一次 commit 同时改四个包，不存在"后端上了新接口但前端还没跟上"的版本漂移窗口。
 
-🚀 **55 秒从 `git push` 到生产** — GitHub Actions 自动构建 shared → web → 打包进 Worker → 部署。没有手动步骤，没有审批流程，推了就上。
+♻️ **幂等全链路** — D1 写入用 `ON CONFLICT DO UPDATE`，Vectorize 用 `upsert`，Cron 每轮全量同步。同一张图跑一百遍结果都一样。不怕重复消费，不怕 Workflow 重试，不怕网络抖动。
 
-🔄 **自愈式采集管道** — Workflow 每一步独立重试。AI 模型超时？重试。R2 写入失败？重试。Vectorize 没同步？下一轮 Cron 自动补上。不需要人工干预，不需要告警群里 @all。
+🔄 **事件驱动 + 自愈** — Cron → Queue → Workflow，完全异步解耦。采集管道和搜索管道互不干扰 — 搜索永远快，采集慢慢来。每一步独立重试，Vectorize 没同步？下一轮 Cron 自动补上。不需要人工干预，不需要告警群里 @all。
 
-📐 **两个 Worker 撑起整个系统** — `pic` 一个 Worker 同时提供 API + 前端 + 图片代理（同源零跨域），`pic-processor` 负责后台采集。没有微服务地狱，没有 sidecar，没有 service mesh。简单到离谱，但它就是能跑。
+🏭 **基础设施即代码** — D1、Queue、Vectorize 全部 Terraform 声明式管理。新环境？`terraform apply`，30 秒拉起整套系统。不是手动在 Dashboard 上点点点，也不是一个谁也不敢动的 shell 脚本。
+
+🚀 **55 秒 `git push` 到生产** — GitHub Actions：build shared → build web → copy assets → deploy Worker × 2。没有手动步骤，没有审批流程，没有"我本地能跑"。推了就上，挂了就回滚。
+
+🧠 **边缘原生 AI** — 不是调 OpenAI API 等半天，是直接在 Cloudflare 边缘节点跑 LLaVA 视觉模型和 BGE 嵌入模型。模型离用户近，数据不出边缘网络。也不用自己管 GPU、装 CUDA、搞模型服务。
+
+🪶 **极简架构** — 两个 Worker 撑起整个系统。没有微服务地狱，没有 sidecar，没有 service mesh，没有 Kubernetes。简单到离谱，但它就是能跑，而且跑得很好。
 
 ## 文档
 
