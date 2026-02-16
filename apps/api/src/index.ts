@@ -158,4 +158,23 @@ app.get('/image/:type/:filename', async (c) => {
   return new Response(object.body, { headers });
 });
 
+// Temporary: backfill missing embeddings
+app.post('/api/backfill', async (c) => {
+  const { results } = await c.env.DB.prepare(
+    'SELECT id, ai_caption, ai_tags FROM images WHERE ai_embedding IS NULL AND ai_caption IS NOT NULL'
+  ).all<DBImage>();
+
+  let done = 0;
+  for (const img of results) {
+    const text = (img.ai_caption || '') + ' ' + (JSON.parse(img.ai_tags || '[]')).join(' ');
+    const resp = await c.env.AI.run('@cf/baai/bge-base-en-v1.5', { text: [text] }) as { data: number[][] };
+    const embedding = resp.data[0];
+    await c.env.DB.prepare('UPDATE images SET ai_embedding = ? WHERE id = ?')
+      .bind(JSON.stringify(embedding), img.id).run();
+    await c.env.VECTORIZE.upsert([{ id: img.id, values: embedding }]);
+    done++;
+  }
+  return c.json({ total: results.length, done });
+});
+
 export default app;
