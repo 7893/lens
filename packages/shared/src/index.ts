@@ -55,6 +55,8 @@ export interface ImageResult {
   tags: string[];
   score?: number; // Vector search score
   photographer?: string;
+  blurHash?: string;
+  color?: string | null;
 }
 
 export interface SearchResponse {

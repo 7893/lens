@@ -18,7 +18,31 @@ app.use('/*', cors());
 // 1. Health Check
 app.get('/health', (c) => c.json({ status: 'healthy', version: '6.0.0' }));
 
-// 2. Semantic Search
+// 2. Latest images (default gallery)
+app.get('/api/latest', async (c) => {
+  const { results } = await c.env.DB.prepare(
+    'SELECT * FROM images WHERE ai_caption IS NOT NULL ORDER BY created_at DESC LIMIT 100'
+  ).all<DBImage>();
+
+  const images: ImageResult[] = results.map(img => {
+    const meta = JSON.parse(img.meta_json || '{}');
+    return {
+      id: img.id,
+      url: `/image/display/${img.id}.jpg`,
+      width: img.width,
+      height: img.height,
+      caption: img.ai_caption,
+      tags: JSON.parse(img.ai_tags || '[]'),
+      photographer: meta.user?.name,
+      blurHash: meta.blur_hash,
+      color: img.color,
+    };
+  });
+
+  return c.json({ results: images, total: images.length });
+});
+
+// 3. Semantic Search
 app.get('/api/search', async (c) => {
   const q = c.req.query('q');
   if (!q) return c.json({ error: 'Missing query param "q"' }, 400);
@@ -46,6 +70,7 @@ app.get('/api/search', async (c) => {
     const images: ImageResult[] = vecResults.matches.map(match => {
       const dbImage = results.find(r => r.id === match.id);
       if (!dbImage) return null;
+      const meta = JSON.parse(dbImage.meta_json || '{}');
       return {
         id: dbImage.id,
         url: `/image/display/${dbImage.id}.jpg`,
@@ -54,7 +79,9 @@ app.get('/api/search', async (c) => {
         caption: dbImage.ai_caption,
         tags: JSON.parse(dbImage.ai_tags || '[]'),
         score: match.score,
-        photographer: JSON.parse(dbImage.meta_json || '{}').user?.name
+        photographer: meta.user?.name,
+        blurHash: meta.blur_hash,
+        color: dbImage.color,
       };
     }).filter(Boolean) as ImageResult[];
 

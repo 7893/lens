@@ -17,11 +17,11 @@ export function useSearch() {
 
   useEffect(() => { setVisible(PAGE_SIZE); }, [debouncedQuery]);
 
-  const { data, isLoading } = useSWR<SearchResponse>(
-    debouncedQuery ? `/api/search?q=${encodeURIComponent(debouncedQuery)}` : null,
-    fetcher,
-    { keepPreviousData: true }
-  );
+  const searchUrl = debouncedQuery
+    ? `/api/search?q=${encodeURIComponent(debouncedQuery)}`
+    : '/api/latest';
+
+  const { data, isLoading } = useSWR<SearchResponse>(searchUrl, fetcher, { keepPreviousData: true });
 
   const all = data?.results || [];
   const results = all.slice(0, visible);
@@ -33,6 +33,7 @@ export function useSearch() {
     results,
     total: all.length,
     isLoading,
+    isSearching: !!debouncedQuery,
     hasMore,
     loadMore: useCallback(() => setVisible(v => v + PAGE_SIZE), []),
     took: data?.took
