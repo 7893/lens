@@ -23,17 +23,17 @@ terraform apply
 
 ```bash
 # D1
-wrangler d1 create pic-v6-prod-db
-wrangler d1 execute pic-v6-prod-db --remote --file=apps/processor/schema.sql
+wrangler d1 create pic-db
+wrangler d1 execute pic-db --remote --file=apps/processor/schema.sql
 
 # R2
-wrangler r2 bucket create pic-v6-prod-assets
+wrangler r2 bucket create pic-r2
 
 # Vectorize (768 dims = bge-base-en-v1.5)
-wrangler vectorize create pic-v6-prod-vectors --dimensions=768 --metric=cosine
+wrangler vectorize create pic-vectors --dimensions=768 --metric=cosine
 
 # Queue
-wrangler queues create pic-v6-prod-ingestion
+wrangler queues create pic-ingestion
 ```
 
 Update resource IDs in `apps/api/wrangler.toml` and `apps/processor/wrangler.toml`.
@@ -52,14 +52,14 @@ CI/CD via GitHub Actions (`.github/workflows/`). On push to `main`:
 1. Builds shared package
 2. Deploys API Worker (`pic-api`)
 3. Deploys Processor Worker (`pic-processor`)
-4. Builds and deploys Web to Cloudflare Pages (`pic-v6-prod-web`)
+4. Builds and deploys Web to Cloudflare Pages (`pic`)
 
 Manual deploy:
 ```bash
 npm run build --workspace=@pic/shared
 npm run deploy --workspace=apps/api
 npm run deploy --workspace=apps/processor
-npm run build --workspace=@pic/web && npx wrangler pages deploy apps/web/dist --project-name=pic-v6-prod-web
+npm run build --workspace=@pic/web && npx wrangler pages deploy apps/web/dist --project-name=pic
 ```
 
 ## Verify

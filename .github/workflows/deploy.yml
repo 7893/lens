@@ -1,4 +1,4 @@
-name: Deploy Pic v6.0
+name: Deploy Pic
 
 on:
   push:
@@ -64,4 +64,4 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           # Deploy the 'dist' folder to project 'pic-v6-prod-web'
-          command: pages deploy apps/web/dist --project-name pic-v6-prod-web
+          command: pages deploy apps/web/dist --project-name pic

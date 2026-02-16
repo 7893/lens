@@ -2,7 +2,7 @@
 
 **Stack**: React 18 + Vite + Tailwind CSS + SWR + Lucide Icons
 
-Deployed on Cloudflare Pages (`pic-v6-prod-web`).
+Deployed on Cloudflare Pages (`pic`).
 
 ## Structure
 
