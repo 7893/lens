@@ -218,7 +218,7 @@ export default function Home() {
       <div className={`transition-all duration-500 ease-out ${results.length > 0 || isLoading ? 'pt-8' : 'pt-[30vh]'}`}>
         <div className="max-w-4xl mx-auto mb-12 text-center px-8">
           <h1 className="text-4xl font-bold text-gray-900 mb-4">Iris</h1>
-          <p className="text-gray-500 mb-8">AI-Powered Semantic Image Search</p>
+          <p className="text-gray-500 mb-8">AI-Powered Semantic Image Search on Cloudflare Edge</p>
 
           <div className="relative max-w-xl mx-auto">
             <input
