@@ -26,56 +26,23 @@
 ## 搜索管道
 
 ```
-  "日落"
-    │
-    ▼
-╔═══════════════════════════════════════════╗
-║  ① Query Expansion                       ║
-║  Llama 3.2 翻译 + 扩展                   ║
-║  → "sunset, golden hour, warm sky, dusk"  ║
-╚═══════════════════╤═══════════════════════╝
-                    ▼
-╔═══════════════════════════════════════════╗
-║  ② Vector Search                         ║
-║  BGE Large 1024d → Vectorize cosine      ║
-║  → top 100 候选                           ║
-╚═══════════════════╤═══════════════════════╝
-                    ▼
-╔═══════════════════════════════════════════╗
-║  ③ LLM Re-ranking                        ║
-║  Llama 3.2 语义重排 top 50               ║
-║  → 最终排序结果                           ║
-╚═══════════════════╤═══════════════════════╝
-                    ▼
-              D1 元数据补全
-                    │
-                    ▼
-               搜索结果 🎯
+Query ─→ LLM Expansion ─→ BGE Embedding ─→ Vectorize ─→ LLM Re-rank ─→ Results
+ "日落"    "sunset,          1024d vec        top 100       语义重排        🎯
+            golden hour,                      候选          top 50
+            warm sky..."
 ```
+
+三级管道：**扩展查询 → 向量检索 → 语义重排**。中英文通吃，Llama 自动翻译。
 
 ## 采集管道
 
 ```
-  ⏰ Cron (每小时整点)
-    │
-    ▼
-  Unsplash API ──→ 30 张随机图
-    │
-    ▼
-  Queue ──→ LensIngestWorkflow × 30 (并行)
-              │
-              ├── 📥 下载原图 + 展示图 ──→ R2
-              │
-              ├── 🧠 Llama 3.2 Vision ──→ 结构化描述 + 5 标签
-              │
-              ├── 📐 BGE Large ──→ 1024d 向量
-              │         (caption + tags + 描述 + 地点 + 摄影师 + 分类)
-              │
-              └── 💾 写入 D1 ──→ 元数据 + 向量
-    │
-    ▼
-  Vectorize 同步 (D1 全量 upsert，幂等)
+Cron ─→ Unsplash API ─→ Queue ─→ Workflow ─→ R2 + D1 ─→ Vectorize
+每小时    30 张随机图     并行      Vision AI    存储+元数据   向量同步
+                                   BGE 1024d
 ```
+
+全自动，每步独立重试，自动自愈。图库每小时增长，永不停歇。
 
 两条管道完全解耦。搜索永远快，采集慢慢来。每一步独立重试，自动自愈。
 
