@@ -138,13 +138,13 @@ function ImageModal({ image, score, onClose }: { image: ImageResult; score?: num
 }
 
 export default function Home() {
-  const { query, setQuery, results, isLoading, isLoadingMore, hasMore, loadMore, took } = useSearch();
+  const { query, setQuery, results, isLoading, hasMore, loadMore, took } = useSearch();
   const [selected, setSelected] = useState<ImageResult | null>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
 
   const handleObserver = useCallback((entries: IntersectionObserverEntry[]) => {
-    if (entries[0].isIntersecting && hasMore && !isLoadingMore) loadMore();
-  }, [hasMore, isLoadingMore, loadMore]);
+    if (entries[0].isIntersecting && hasMore) loadMore();
+  }, [hasMore, loadMore]);
 
   useEffect(() => {
     const el = sentinelRef.current;
@@ -199,7 +199,6 @@ export default function Home() {
 
       <div ref={sentinelRef} className="h-4" />
 
-      {isLoadingMore && <div className="text-center py-8 text-blue-500">Loading more...</div>}
       {!isLoading && results.length === 0 && query && <div className="text-center py-20 text-gray-400">No results found. Try a different query.</div>}
       {isLoading && <div className="text-center py-20 text-blue-500">Searching...</div>}
 
