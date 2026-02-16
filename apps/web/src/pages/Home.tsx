@@ -31,7 +31,7 @@ export default function Home() {
           <div key={img.id} className="break-inside-avoid bg-white rounded-xl shadow-sm overflow-hidden hover:shadow-md transition-shadow group">
             <div className="relative">
               <img 
-                src={img.url} 
+                src={`https://pic-api.53.workers.dev${img.url}`} 
                 alt={img.caption || 'Image'} 
                 className="w-full h-auto object-cover"
                 loading="lazy"
