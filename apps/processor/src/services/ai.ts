@@ -1,23 +1,22 @@
 export async function analyzeImage(ai: Ai, imageStream: ReadableStream): Promise<{ caption: string; tags: string[] }> {
-  // Need to convert stream to array buffer for current AI bindings
-  // Note: This limits us to Worker memory limits. For huge files, we might need a workaround,
-  // but for analysis, we can use the 'display' (smaller) version of the image!
-  const inputs = {
-    image: [...new Uint8Array(await new Response(imageStream).arrayBuffer())],
-    prompt: "Describe this image in detail and list 5 key tags.",
-    max_tokens: 256,
-  };
+  const imageArray = [...new Uint8Array(await new Response(imageStream).arrayBuffer())];
 
-  const response = await ai.run('@cf/llava-hf/llava-1.5-7b-hf', inputs) as { description: string };
-  
-  // Simple parsing (LLaVA output is free text)
-  // In a real app, we might want structured output or use regex
-  const text = response.description || "";
-  
-  return {
-    caption: text,
-    tags: [] // LLaVA extraction needs more prompt engineering, keeping simple for now
-  };
+  const response = await ai.run('@cf/meta/llama-3.2-11b-vision-instruct', {
+    image: imageArray,
+    prompt: "Describe this photo in 2-3 sentences. Then list exactly 5 tags as comma-separated words. Format:\nDescription: <description>\nTags: <tag1>, <tag2>, <tag3>, <tag4>, <tag5>",
+    max_tokens: 256,
+  }) as { description?: string; response?: string };
+
+  const text = response.response || response.description || "";
+
+  // Parse structured output
+  const descMatch = text.match(/Description:\s*(.+?)(?:\n|Tags:|$)/is);
+  const tagsMatch = text.match(/Tags:\s*(.+)/i);
+
+  const caption = descMatch?.[1]?.trim() || text.split('\n')[0].trim();
+  const tags = tagsMatch?.[1]?.split(',').map(t => t.trim().toLowerCase()).filter(Boolean).slice(0, 5) || [];
+
+  return { caption, tags };
 }
 
 export async function generateEmbedding(ai: Ai, text: string): Promise<number[]> {
