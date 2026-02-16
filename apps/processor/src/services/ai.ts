@@ -1,6 +1,9 @@
 export async function analyzeImage(ai: Ai, imageStream: ReadableStream): Promise<{ caption: string; tags: string[] }> {
   const imageArray = [...new Uint8Array(await new Response(imageStream).arrayBuffer())];
 
+  // Accept Llama license
+  await ai.run('@cf/meta/llama-3.2-11b-vision-instruct' as any, { prompt: 'agree', max_tokens: 1 }).catch(() => {});
+
   const response = await ai.run('@cf/meta/llama-3.2-11b-vision-instruct', {
     image: imageArray,
     prompt: "Describe this photo in 2-3 sentences. Then list exactly 5 tags as comma-separated words. Format:\nDescription: <description>\nTags: <tag1>, <tag2>, <tag3>, <tag4>, <tag5>",

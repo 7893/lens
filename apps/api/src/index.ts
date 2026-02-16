@@ -170,6 +170,9 @@ app.post('/api/reanalyze', async (c) => {
   let done = 0;
   const errors: string[] = [];
 
+  // Accept Llama license
+  await c.env.AI.run('@cf/meta/llama-3.2-11b-vision-instruct' as any, { prompt: 'agree', max_tokens: 1 }).catch(() => {});
+
   for (const img of results) {
     try {
       const obj = await c.env.R2.get(img.display_key);
