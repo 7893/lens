@@ -23,7 +23,7 @@ export function useSearch() {
 
   const { data, isLoading } = useSWR<SearchResponse>(searchUrl, fetcher, { keepPreviousData: true });
 
-  const all = data?.results || [];
+  const all = debouncedQuery ? (data?.results || []) : [];
   const results = all.slice(0, visible);
   const hasMore = visible < all.length;
 
