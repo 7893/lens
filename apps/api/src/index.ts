@@ -158,4 +158,52 @@ app.get('/image/:type/:filename', async (c) => {
   return new Response(object.body, { headers });
 });
 
+// Temporary: reanalyze all images with new vision model
+app.post('/api/reanalyze', async (c) => {
+  const { results } = await c.env.DB.prepare('SELECT id, display_key FROM images ORDER BY created_at').all<DBImage>();
+
+  let done = 0;
+  const errors: string[] = [];
+
+  for (const img of results) {
+    try {
+      const obj = await c.env.R2.get(img.display_key);
+      if (!obj) { errors.push(`${img.id}: no R2 object`); continue; }
+
+      const imageArray = [...new Uint8Array(await obj.arrayBuffer())];
+
+      // Vision
+      const visionResp = await c.env.AI.run('@cf/meta/llama-3.2-11b-vision-instruct' as any, {
+        image: imageArray,
+        prompt: "Describe this photo in 2-3 sentences. Then list exactly 5 tags as comma-separated words. Format:\nDescription: <description>\nTags: <tag1>, <tag2>, <tag3>, <tag4>, <tag5>",
+        max_tokens: 256,
+      }) as { response?: string; description?: string };
+
+      const text = visionResp.response || visionResp.description || "";
+      const descMatch = text.match(/Description:\s*(.+?)(?:\n|Tags:|$)/is);
+      const tagsMatch = text.match(/Tags:\s*(.+)/i);
+      const caption = descMatch?.[1]?.trim() || text.split('\n')[0].trim();
+      const tags = tagsMatch?.[1]?.split(',').map((t: string) => t.trim().toLowerCase()).filter(Boolean).slice(0, 5) || [];
+
+      // Embedding
+      const embResp = await c.env.AI.run('@cf/baai/bge-base-en-v1.5', { text: [caption + ' ' + tags.join(' ')] }) as { data: number[][] };
+      const embedding = embResp.data[0];
+
+      // Update D1
+      await c.env.DB.prepare('UPDATE images SET ai_caption = ?, ai_tags = ? WHERE id = ?')
+        .bind(caption, JSON.stringify(tags), img.id).run();
+
+      // Upsert Vectorize
+      await c.env.VECTORIZE.upsert([{ id: img.id, values: embedding }]);
+
+      done++;
+      if (done % 10 === 0) console.log(`Reanalyzed ${done}/${results.length}`);
+    } catch (e: any) {
+      errors.push(`${img.id}: ${e.message}`);
+    }
+  }
+
+  return c.json({ total: results.length, done, errors });
+});
+
 export default app;
