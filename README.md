@@ -1,38 +1,37 @@
-# Pic - Semantic Image Gallery
+# Pic - 智能语义图库
 
 [![Cloudflare Workers](https://img.shields.io/badge/Cloudflare-Workers-orange)](https://workers.cloudflare.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-**Pic** is an AI-powered photo gallery built on Cloudflare's serverless ecosystem, featuring semantic search via Vectorize and automated ingestion via Workflows.
+基于 Cloudflare Serverless 生态构建的 AI 图库系统，支持自然语言语义搜索。
 
-## Features
+## 特性
 
-- **Semantic Search**: search with natural language like "sad rainy day" or "cyberpunk city"
-- **Dual Pipeline**: async ingestion (download → AI vision → embedding → index) + fast search API
-- **Dual Storage**: raw originals + optimized display images on R2
-- **Full AI**: LLaVA for image understanding, BGE for vector embeddings
+- **语义搜索**：用自然语言搜图，如"忧郁的雨天"、"赛博朋克城市"
+- **双管道架构**：异步采集（下载 → AI 视觉分析 → 向量化 → 索引）+ 极速搜索 API
+- **双流存储**：原始大图 + 优化展示图，均存储在 R2
+- **全栈 AI**：LLaVA 理解图片内容，BGE 生成向量索引
 
-## Architecture
+## 架构
 
 ```mermaid
 graph TD
-    User((User)) -->|Search Query| API[Search API]
-    API -->|Vector Search| Vectorize[(Vector DB)]
-    API -->|Metadata| D1[(D1 DB)]
+    User((用户)) -->|搜索| API[Search API]
+    API -->|向量搜索| Vectorize[(Vector DB)]
+    API -->|元数据| D1[(D1 DB)]
     
-    subgraph IngestionPipeline [Ingestion Pipeline Async]
-        Cron[Cron Trigger] -->|Fetch Tasks| Queue[Cloudflare Queue]
-        Queue -->|Process| Workflow[PicIngestWorkflow]
-        
-        Workflow -->|1. Download| R2[(R2 Bucket)]
-        Workflow -->|2. Analyze| AI_Vision[Vision Model]
-        Workflow -->|3. Embed| AI_Embed[Embedding Model]
-        Workflow -->|4. Persist| D1
-        Workflow -->|5. Index| Vectorize
+    subgraph 采集管道
+        Cron[定时触发] -->|获取任务| Queue[Queue]
+        Queue -->|处理| Workflow[PicIngestWorkflow]
+        Workflow -->|1. 下载| R2[(R2)]
+        Workflow -->|2. AI 分析| AI_Vision[Vision Model]
+        Workflow -->|3. 向量化| AI_Embed[Embedding Model]
+        Workflow -->|4. 写入| D1
+        Workflow -->|5. 索引| Vectorize
     end
 ```
 
-## Quick Start
+## 快速开始
 
 ```bash
 git clone https://github.com/7893/pic.git
@@ -41,16 +40,16 @@ npm install
 npm run dev
 ```
 
-See [Setup Guide](docs/guide/SETUP.md) for full deployment instructions.
+完整部署指南见 [Setup Guide](docs/guide/SETUP.md)。
 
-## Docs
+## 文档
 
-- [System Design](docs/architecture/DESIGN.md)
-- [Frontend Architecture](docs/architecture/FRONTEND_DESIGN.md)
-- [API Reference](docs/api/OPENAPI.md)
-- [Development Guide](docs/guide/DEVELOPMENT.md)
-- [Architecture Decisions](docs/ADR/001-architecture-decisions.md)
+- [系统设计](docs/architecture/DESIGN.md)
+- [前端架构](docs/architecture/FRONTEND_DESIGN.md)
+- [API 参考](docs/api/OPENAPI.md)
+- [开发指南](docs/guide/DEVELOPMENT.md)
+- [架构决策记录](docs/ADR/001-architecture-decisions.md)
 
-## License
+## 许可证
 
 MIT
