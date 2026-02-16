@@ -1,6 +1,7 @@
 import { DataPipelineWorkflow } from './workflows/data-pipeline.js';
 import { EnqueuePhotosTask } from './tasks/enqueue-photos.js';
 import { Analytics } from './utils/analytics.js';
+import FRONTEND_HTML from './frontend.html';
 
 export { DataPipelineWorkflow };
 
@@ -11,44 +12,94 @@ const CACHE_TTL = 30000;
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-    
-    if (url.pathname === '/health') {
-      return Response.json({ 
-        status: 'healthy', 
-        timestamp: new Date().toISOString() 
+
+    // Frontend: home page
+    if (url.pathname === '/' || url.pathname === '/index.html') {
+      return new Response(FRONTEND_HTML, {
+        headers: { 'Content-Type': 'text/html' }
       });
     }
 
+    // Frontend: photo list
+    if (url.pathname === '/api/photos') {
+      const page = parseInt(url.searchParams.get('page')) || 1;
+      const limit = parseInt(url.searchParams.get('limit')) || 30;
+      const category = url.searchParams.get('category');
+      const offset = (page - 1) * limit;
+
+      let query = 'SELECT * FROM Photos';
+      let params = [];
+
+      if (category) {
+        query += ' WHERE ai_category = ?';
+        params.push(category);
+      }
+
+      query += ' ORDER BY downloaded_at DESC LIMIT ? OFFSET ?';
+      params.push(limit, offset);
+
+      const photos = await env.DB.prepare(query).bind(...params).all();
+
+      return Response.json({ photos: photos.results, page, limit });
+    }
+
+    // Stats (merged: frontend detailed + scheduler simple)
     if (url.pathname === '/api/stats') {
       const now = Date.now();
-      
+
       if (statsCache && (now - statsCacheTime) < CACHE_TTL) {
         return Response.json(statsCache);
       }
 
-      const [total, queueStats] = await Promise.all([
-        env.DB.prepare('SELECT COUNT(*) as total FROM Photos').first(),
-        env.DB.prepare('SELECT status, COUNT(*) as count FROM ProcessingQueue GROUP BY status').all()
+      const [globalStats, apiQuota, categoryStats, recentWorkflows] = await Promise.all([
+        env.DB.prepare('SELECT * FROM GlobalStats WHERE id = 1').first(),
+        env.DB.prepare('SELECT * FROM ApiQuota ORDER BY api_name').all(),
+        env.DB.prepare('SELECT * FROM CategoryStats ORDER BY photo_count DESC LIMIT 10').all(),
+        env.DB.prepare('SELECT * FROM WorkflowRuns ORDER BY started_at DESC LIMIT 5').all()
       ]);
 
       statsCache = {
-        total: total?.total || 0,
-        queue: queueStats.results || [],
-        cached: true,
-        cacheAge: 0
+        global: globalStats || {},
+        apiQuota: apiQuota.results || [],
+        categories: categoryStats.results || [],
+        recentWorkflows: recentWorkflows.results || []
       };
       statsCacheTime = now;
 
       return Response.json(statsCache);
     }
 
+    // Frontend: image proxy from R2
+    if (url.pathname.startsWith('/image/')) {
+      const key = url.pathname.slice(7);
+      const object = await env.R2.get(key);
+      if (!object) {
+        return new Response('Image not found', { status: 404 });
+      }
+      return new Response(object.body, {
+        headers: {
+          'Content-Type': 'image/jpeg',
+          'Cache-Control': 'public, max-age=31536000'
+        }
+      });
+    }
+
+    // Scheduler: health check
+    if (url.pathname === '/health') {
+      return Response.json({
+        status: 'healthy',
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    // Scheduler: manual trigger
     if (url.pathname === '/api/trigger' && request.method === 'POST') {
       try {
         const analytics = new Analytics(env.AE);
-        
+
         const enqueueTask = new EnqueuePhotosTask();
-        const enqueueResult = await enqueueTask.run(env, { 
-          startPage: 1, 
+        const enqueueResult = await enqueueTask.run(env, {
+          startPage: 1,
           endPage: 3
         });
 
@@ -72,45 +123,34 @@ export default {
         }, { status: 500 });
       }
     }
-    
-    return Response.json({ 
-      message: 'Pic Scheduler API',
-      endpoints: {
-        health: 'GET /health',
-        stats: 'GET /api/stats',
-        trigger: 'POST /api/trigger'
-      }
-    });
+
+    return new Response('Not Found', { status: 404 });
   },
 
   async scheduled(event, env, ctx) {
-    console.log('Cron triggered (every 10 minutes)');
+    console.log('Cron triggered');
 
     try {
-      // Check if UNSPLASH_API_KEY is set
       if (!env.UNSPLASH_API_KEY) {
         console.error('UNSPLASH_API_KEY not set');
         return;
       }
 
       const analytics = new Analytics(env.AE);
-      
-      // Step 1: Enqueue new photos
+
       const enqueueTask = new EnqueuePhotosTask();
-      const enqueueResult = await enqueueTask.run(env, { 
-        startPage: 1, 
+      const enqueueResult = await enqueueTask.run(env, {
+        startPage: 1,
         endPage: 1
       });
 
-      // Step 2: Start workflow to process queue
       const workflowInstance = await env.PHOTO_WORKFLOW.create({ payload: {} });
 
-      // Step 3: Cleanup old data (async)
       ctx.waitUntil(this.cleanupOldData(env));
 
-      await analytics.logEvent('cron', { 
+      await analytics.logEvent('cron', {
         status: 'success',
-        enqueued: enqueueResult.enqueued 
+        enqueued: enqueueResult.enqueued
       });
 
       console.log(`Enqueued ${enqueueResult.enqueued} photos, workflow: ${workflowInstance.id}`);
@@ -131,7 +171,6 @@ export default {
 
       const maxPhotos = config.max_photos || 4000;
 
-      // Check current photo count
       const { total } = await env.DB.prepare(
         'SELECT COUNT(*) as total FROM Photos'
       ).first();
@@ -141,7 +180,6 @@ export default {
         return;
       }
 
-      // Delete oldest photos beyond limit
       const toDelete = total - maxPhotos;
       const oldPhotos = await env.DB.prepare(`
         SELECT unsplash_id, r2_key FROM Photos 
@@ -159,13 +197,11 @@ export default {
         }
       }
 
-      // Delete from database
       const photoIds = oldPhotos.results.map(p => p.unsplash_id);
       await env.DB.prepare(`
         DELETE FROM Photos WHERE unsplash_id IN (${photoIds.map(() => '?').join(',')})
       `).bind(...photoIds).run();
 
-      // Log cleanup
       await env.DB.prepare(`
         INSERT INTO CleanupLog (photos_deleted, r2_files_deleted, cleanup_reason, executed_at)
         VALUES (?, ?, ?, ?)
