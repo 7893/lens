@@ -21,9 +21,6 @@ app.get('/health', (c) => c.json({ status: 'healthy', version: '6.0.0' }));
 // 2. Semantic Search
 app.get('/api/search', async (c) => {
   const q = c.req.query('q');
-  const limit = parseInt(c.req.query('limit') || '20');
-  const page = parseInt(c.req.query('page') || '1');
-  
   if (!q) return c.json({ error: 'Missing query param "q"' }, 400);
 
   const start = Date.now();
@@ -34,25 +31,19 @@ app.get('/api/search', async (c) => {
     }) as { data: number[][] };
     const vector = embeddingResp.data[0];
 
-    const topK = Math.min(limit * page, 100);
-    const vecResults = await c.env.VECTORIZE.query(vector, {
-      topK,
-      returnMetadata: true
-    });
+    const vecResults = await c.env.VECTORIZE.query(vector, { topK: 100, returnMetadata: true });
 
-    const sliced = vecResults.matches.slice((page - 1) * limit, page * limit);
-
-    if (sliced.length === 0) {
-      return c.json<SearchResponse>({ results: [], total: vecResults.matches.length, page, took: Date.now() - start });
+    if (vecResults.matches.length === 0) {
+      return c.json<SearchResponse>({ results: [], total: 0, took: Date.now() - start });
     }
 
-    const ids = sliced.map(m => m.id);
+    const ids = vecResults.matches.map(m => m.id);
     const placeholders = ids.map(() => '?').join(',');
     const { results } = await c.env.DB.prepare(
       `SELECT * FROM images WHERE id IN (${placeholders})`
     ).bind(...ids).all<DBImage>();
 
-    const images: ImageResult[] = sliced.map(match => {
+    const images: ImageResult[] = vecResults.matches.map(match => {
       const dbImage = results.find(r => r.id === match.id);
       if (!dbImage) return null;
       return {
@@ -67,13 +58,7 @@ app.get('/api/search', async (c) => {
       };
     }).filter(Boolean) as ImageResult[];
 
-    return c.json<SearchResponse>({
-      results: images,
-      total: vecResults.matches.length,
-      page,
-      took: Date.now() - start
-    });
-
+    return c.json<SearchResponse>({ results: images, total: images.length, took: Date.now() - start });
   } catch (err) {
     console.error('Search error:', err);
     return c.json({ error: 'Internal Server Error' }, 500);
