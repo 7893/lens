@@ -134,4 +134,25 @@ app.get('/image/:type/:filename', async (c) => {
   return new Response(object.body, { headers });
 });
 
+// Backfill: index all D1 embeddings into Vectorize
+app.post('/api/admin/backfill-vectors', async (c) => {
+  const rows = await c.env.DB.prepare(
+    'SELECT id, ai_caption, ai_embedding FROM images WHERE ai_embedding IS NOT NULL'
+  ).all<{ id: string; ai_caption: string; ai_embedding: string }>();
+
+  const vectors = rows.results
+    .map(r => {
+      try {
+        return { id: r.id, values: JSON.parse(r.ai_embedding), metadata: { url: `display/${r.id}.jpg`, caption: r.ai_caption || '' } };
+      } catch { return null; }
+    })
+    .filter(Boolean) as { id: string; values: number[]; metadata: Record<string, string> }[];
+
+  for (let i = 0; i < vectors.length; i += 100) {
+    await c.env.VECTORIZE.upsert(vectors.slice(i, i + 100));
+  }
+
+  return c.json({ indexed: vectors.length });
+});
+
 export default app;
