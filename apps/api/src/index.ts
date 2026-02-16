@@ -78,7 +78,7 @@ app.get('/api/search', async (c) => {
     }) as { data: number[][] };
     const vector = embeddingResp.data[0];
 
-    const vecResults = await c.env.VECTORIZE.query(vector, { topK: 200 });
+    const vecResults = await c.env.VECTORIZE.query(vector, { topK: 100 });
 
     if (vecResults.matches.length === 0) {
       return c.json<SearchResponse>({ results: [], total: 0, took: Date.now() - start });
