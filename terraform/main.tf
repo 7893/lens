@@ -15,10 +15,10 @@ resource "cloudflare_queue" "ingestion" {
 # Vectorize Index (not natively supported by Terraform, use local-exec)
 resource "null_resource" "vectorize_index" {
   triggers = {
-    index_name = "lens-vectors"
+    index_name = "lens-vectors-v2"
   }
 
   provisioner "local-exec" {
-    command = "npx wrangler vectorize create ${self.triggers.index_name} --dimensions=768 --metric=cosine || echo 'Index already exists'"
+    command = "npx wrangler vectorize create ${self.triggers.index_name} --dimensions=1024 --metric=cosine || echo 'Index already exists'"
   }
 }
