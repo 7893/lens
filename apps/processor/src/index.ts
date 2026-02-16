@@ -4,21 +4,12 @@ import { fetchRandomPhotos } from './utils/unsplash';
 import { streamToR2 } from './services/downloader';
 import { analyzeImage, generateEmbedding } from './services/ai';
 
-interface VectorTask {
-  type: 'index-vector';
-  photoId: string;
-  vector: number[];
-  caption: string;
-}
-
-type QueueMessage = IngestionTask | VectorTask;
-
 export interface Env {
   DB: D1Database;
   R2: R2Bucket;
   VECTORIZE: VectorizeIndex;
   AI: Ai;
-  PHOTO_QUEUE: Queue<QueueMessage>;
+  PHOTO_QUEUE: Queue<IngestionTask>;
   PHOTO_WORKFLOW: Workflow;
   UNSPLASH_API_KEY: string;
 }
@@ -29,6 +20,7 @@ export default {
     if (!env.UNSPLASH_API_KEY) return;
 
     try {
+      // 1. Fetch and enqueue new photos
       const photos = await fetchRandomPhotos(env.UNSPLASH_API_KEY, 30);
       const tasks: IngestionTask[] = photos.map(photo => ({
         type: 'process-photo' as const,
@@ -42,31 +34,39 @@ export default {
 
       await env.PHOTO_QUEUE.sendBatch(tasks.map(task => ({ body: task, contentType: 'json' })));
       console.log(`✅ Enqueued ${tasks.length} tasks`);
+
+      // 2. Sync D1 embeddings → Vectorize (idempotent)
+      const rows = await env.DB.prepare(
+        'SELECT id, ai_caption, ai_embedding FROM images WHERE ai_embedding IS NOT NULL'
+      ).all<{ id: string; ai_caption: string; ai_embedding: string }>();
+
+      const vectors = rows.results
+        .map(r => {
+          try {
+            return { id: r.id, values: JSON.parse(r.ai_embedding), metadata: { url: `display/${r.id}.jpg`, caption: r.ai_caption || '' } };
+          } catch { return null; }
+        })
+        .filter(Boolean) as VectorizeVector[];
+
+      for (let i = 0; i < vectors.length; i += 100) {
+        await env.VECTORIZE.upsert(vectors.slice(i, i + 100));
+      }
+      console.log(`✅ Synced ${vectors.length} vectors to Vectorize`);
     } catch (error) {
       console.error('Scheduler error:', error);
     }
   },
 
-  async queue(batch: MessageBatch<QueueMessage>, env: Env): Promise<void> {
+  async queue(batch: MessageBatch<IngestionTask>, env: Env): Promise<void> {
     for (const msg of batch.messages) {
       try {
-        if (msg.body.type === 'process-photo') {
-          await env.PHOTO_WORKFLOW.create({
-            id: msg.body.photoId,
-            params: msg.body
-          });
-        } else if (msg.body.type === 'index-vector') {
-          const { photoId, vector, caption } = msg.body;
-          await env.VECTORIZE.upsert([{
-            id: photoId,
-            values: vector,
-            metadata: { url: `display/${photoId}.jpg`, caption }
-          }]);
-          console.log(`✅ Indexed vector for ${photoId}`);
-        }
+        await env.PHOTO_WORKFLOW.create({
+          id: msg.body.photoId,
+          params: msg.body
+        });
         msg.ack();
       } catch (error) {
-        console.error(`Queue error for ${msg.body.type}:`, error);
+        console.error(`Queue error:`, error);
         msg.retry();
       }
     }
@@ -76,8 +76,7 @@ export default {
 export class PicIngestWorkflow extends WorkflowEntrypoint<Env, IngestionTask> {
   async run(event: WorkflowEvent<IngestionTask>, step: WorkflowStep) {
     const task = event.payload;
-    const { photoId } = task;
-    const { displayUrl, meta } = task;
+    const { photoId, displayUrl, meta } = task;
 
     await step.do('download-and-store', async () => {
       await streamToR2(task.downloadUrl, `raw/${photoId}.jpg`, this.env.R2);
@@ -113,16 +112,6 @@ export class PicIngestWorkflow extends WorkflowEntrypoint<Env, IngestionTask> {
         JSON.stringify(meta ?? {}), JSON.stringify(analysis.tags),
         analysis.caption, JSON.stringify(vector), Date.now()
       ).run();
-    });
-
-    // Send vector indexing to queue (queue handler has VECTORIZE binding)
-    await step.do('enqueue-vector-index', async () => {
-      await this.env.PHOTO_QUEUE.send({
-        type: 'index-vector',
-        photoId,
-        vector,
-        caption: analysis.caption
-      } as VectorTask);
     });
   }
 }
