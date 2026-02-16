@@ -3,27 +3,43 @@ main = "src/index.ts"
 compatibility_date = "2024-10-01"
 compatibility_flags = ["nodejs_compat"]
 
+# D1 Database (Metadata)
 [[d1_databases]]
 binding = "DB"
 database_name = "pic-v6-db"
-database_id = "pic-v6-db-placeholder"
+database_id = "pic-v6-db-placeholder" # TODO: Replace with real ID
 
+# Workflow (Orchestration)
 [[workflows]]
 binding = "PHOTO_WORKFLOW"
 name = "pic-photo-ingest"
 class_name = "PicIngestWorkflow"
 
+# Workers AI (Vision & Embedding)
 [ai]
 binding = "AI"
 
-[queues.producers]
+# Queue Producer (From Cron -> Queue)
+[[queues.producers]]
 binding = "PHOTO_QUEUE"
 queue = "pic-v6-ingestion"
 
-[queues.consumers]
+# Queue Consumer (From Queue -> Workflow)
+[[queues.consumers]]
 queue = "pic-v6-ingestion"
 max_batch_size = 10
 max_batch_timeout = 30
 
+# R2 Bucket (Storage)
+[[r2_buckets]]
+binding = "R2"
+bucket_name = "pic-v6-assets"
+
+# Vectorize Index (Semantic Search)
+[[vectorize_indexes]]
+binding = "VECTORIZE"
+index_name = "pic-v6-vectors"
+
+# Cron Trigger (Scheduler)
 [triggers]
-crons = ["0 * * * *"]
+crons = ["0 * * * *"] # Every hour

@@ -12,6 +12,7 @@ pic/
 │   └── web/          # React + Vite (前端展示, shadcn/ui, SWR)
 ├── packages/
 │   └── shared/       # 共享的 TypeScript 类型定义与配置
+├── terraform/        # 基础设施即代码 (IaC) - 可选
 ├── package.json      # 工作区根配置
 ```
 
@@ -20,6 +21,7 @@ pic/
 - Node.js 20+
 - Cloudflare Wrangler CLI (`npm i -g wrangler`)
 - Git
+- (可选) Terraform 1.5+
 
 ## 安装依赖 (Installation)
 
@@ -32,8 +34,9 @@ npm install
 
 ### 1. 初始化基础设施 (Setup Local DB/R2)
 
+你可以使用 `npm run setup:local-db` 快速创建本地 D1 数据库模拟，或者在 `terraform/` 目录下初始化生产环境资源。
+
 ```bash
-# 创建本地 D1 数据库模拟
 npm run setup:local-db
 ```
 
@@ -69,8 +72,13 @@ npm test
 
 ## 部署 (Deployment)
 
+推荐使用 Terraform 管理资源，使用 Wrangler 部署代码。
+
 ```bash
-# 部署所有 Workers
+# 部署基础设施 (Terraform)
+cd terraform && terraform apply
+
+# 部署所有 Workers (Wrangler)
 npm run deploy
 
 # 仅部署前端到 Pages
