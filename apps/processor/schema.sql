@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS images (
   meta_json TEXT,
   ai_tags TEXT,
   ai_caption TEXT,
+  ai_embedding TEXT,
   created_at INTEGER NOT NULL
 );
 
