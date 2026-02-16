@@ -18,7 +18,7 @@ database_id = "4b1414c1-7800-4ccf-af7b-90d63720b6aa"
 # Vectorize Index (Semantic Search)
 [[vectorize]]
 binding = "VECTORIZE"
-index_name = "lens-vectors"
+index_name = "lens-vectors-v2"
 
 # Workers AI (Embedding)
 [ai]
