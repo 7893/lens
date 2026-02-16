@@ -22,48 +22,42 @@ app.get('/health', (c) => c.json({ status: 'healthy', version: '6.0.0' }));
 app.get('/api/search', async (c) => {
   const q = c.req.query('q');
   const limit = parseInt(c.req.query('limit') || '20');
+  const page = parseInt(c.req.query('page') || '1');
   
   if (!q) return c.json({ error: 'Missing query param "q"' }, 400);
 
   const start = Date.now();
 
   try {
-    // A. Generate Embedding for Query
     const embeddingResp = await c.env.AI.run('@cf/baai/bge-base-en-v1.5', {
       text: [q]
     }) as { data: number[][] };
     const vector = embeddingResp.data[0];
 
-    // B. Search Vector Index
+    const topK = Math.min(limit * page, 100);
     const vecResults = await c.env.VECTORIZE.query(vector, {
-      topK: limit,
+      topK,
       returnMetadata: true
     });
 
-    if (vecResults.matches.length === 0) {
-      return c.json<SearchResponse>({ results: [], total: 0, page: 1, took: Date.now() - start });
+    const sliced = vecResults.matches.slice((page - 1) * limit, page * limit);
+
+    if (sliced.length === 0) {
+      return c.json<SearchResponse>({ results: [], total: vecResults.matches.length, page, took: Date.now() - start });
     }
 
-    // C. Fetch Metadata from D1
-    // Extract IDs
-    const ids = vecResults.matches.map(m => m.id);
+    const ids = sliced.map(m => m.id);
     const placeholders = ids.map(() => '?').join(',');
-    
-    // Query D1 (Order by FIELD to maintain vector relevance order)
-    // Note: D1/SQLite doesn't support "ORDER BY FIELD" natively easily, so we sort in JS
     const { results } = await c.env.DB.prepare(
       `SELECT * FROM images WHERE id IN (${placeholders})`
     ).bind(...ids).all<DBImage>();
 
-    // D. Assemble Response
-    // Map D1 results back to Vector order and format
-    const images: ImageResult[] = vecResults.matches.map(match => {
+    const images: ImageResult[] = sliced.map(match => {
       const dbImage = results.find(r => r.id === match.id);
       if (!dbImage) return null;
-
       return {
         id: dbImage.id,
-        url: `/image/display/${dbImage.id}.jpg`, // Or public R2 URL if configured
+        url: `/image/display/${dbImage.id}.jpg`,
         width: dbImage.width,
         height: dbImage.height,
         caption: dbImage.ai_caption,
@@ -75,8 +69,8 @@ app.get('/api/search', async (c) => {
 
     return c.json<SearchResponse>({
       results: images,
-      total: images.length, // Vector search is approximate, total is usually topK
-      page: 1,
+      total: vecResults.matches.length,
+      page,
       took: Date.now() - start
     });
 
