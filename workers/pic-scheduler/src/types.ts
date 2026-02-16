@@ -16,8 +16,15 @@ export interface PhotoRow {
 export interface GlobalStatsRow {
   id: number;
   total_photos: number;
+  total_storage_bytes: number;
+  total_categories: number;
   total_workflows: number;
-  last_updated: string;
+  successful_workflows: number;
+  failed_workflows: number;
+  total_downloads: number;
+  successful_downloads: number;
+  skipped_downloads: number;
+  updated_at: string;
 }
 
 export interface CleanupLogRow {
