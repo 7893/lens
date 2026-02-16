@@ -1,70 +1,50 @@
 # Lens
 
-**AI 语义图片搜索，跑在 Cloudflare 边缘网络上。**
-
-> 你搜"孤独感"，它给你一条雪夜独行的小巷。
-> 不是关键词匹配 — 是 AI 真的看懂了每一张图。
-
 [![Live](https://img.shields.io/badge/Live-lens.53.workers.dev-F38020?logo=cloudflare&logoColor=white)](https://lens.53.workers.dev)
-[![TypeScript](https://img.shields.io/badge/100%25-TypeScript-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![MIT](https://img.shields.io/badge/MIT-blue.svg)](LICENSE)
+
+Search images by meaning, not keywords.
+
+Type "loneliness" and get a figure walking through a snowy alley at night. Type "warmth" and get a fireplace. The AI actually understands what's in every photo.
 
 ---
 
-## 它做了什么
+### Three-Stage Search Pipeline
 
-每小时自动从 Unsplash 采集新图，Llama 3.2 Vision 看懂图片内容，BGE Large 生成 1024 维语义向量。图库持续增长，永不停歇。
+```
+Query → LLM Expansion → Vector Retrieval → LLM Re-ranking → Results
+```
 
-搜索时走三级管道：
+**Stage 1 — Query Expansion.** Llama 3.2 translates and enriches the query. Supports any language.
 
-1. **Query Expansion** — Llama 自动翻译 + 扩展查询词，中英文通吃
-2. **Vector Search** — 1024 维余弦相似度检索，毫秒级召回
-3. **LLM Re-ranking** — Llama 对候选结果语义重排，精度拉满
+**Stage 2 — Vector Retrieval.** BGE Large encodes the expanded query into a 1024-dim vector. Vectorize returns the top 100 candidates by cosine similarity.
 
-两个 Worker 撑起整个系统。没有服务器，没有容器，没有 GPU 实例。
+**Stage 3 — LLM Re-ranking.** Llama 3.2 re-scores the top 50 candidates by semantic relevance. Fixes what vector search gets wrong.
 
-## 技术栈
+### Autonomous Ingestion
 
-| 层 | 技术 |
-|----|------|
-| API + 前端 | Hono + React + Vite + Tailwind |
-| 采集引擎 | Workflows + Queues + Cron |
-| 图片存储 | R2 |
-| 元数据 | D1 (SQLite at Edge) |
-| 语义搜索 | Vectorize (1024d, cosine) |
-| AI | Llama 3.2 11B Vision + BGE Large EN v1.5 |
-| 基础设施 | Terraform |
-| CI/CD | GitHub Actions (55s) |
+Every hour, a cron job pulls 30 random photos from Unsplash. Each one goes through a Workflow pipeline:
 
-## 前端
+**Download → Llama 3.2 Vision → BGE Large Embedding → D1 + Vectorize**
 
-- 搜索框居中，输入后平滑上移
-- BlurHash 模糊占位 + 图片渐显
-- 骨架屏 + 无限滚动
-- 点击查看完整详情：摄影师、EXIF、AI 描述、地点、统计、分类
-- 缩略图卡片展示描述、地点、分类标签
+The embedding fuses AI caption, tags, alt description, photographer, location, and topic metadata. Every step retries independently. The gallery grows on its own, forever.
 
-## 工程亮点
+### Stack
 
-- 三级搜索：Expansion → Vector → Re-ranking
-- 中英文搜索，LLM 自动翻译
-- 全元数据 embedding：caption + tags + 描述 + 地点 + 摄影师 + 分类
-- Unsplash 全字段存储 → API 全字段返回 → 前端全字段展示
-- `@lens/shared` 端到端类型安全
-- Monorepo 原子提交，零版本漂移
-- 幂等全链路，无限重试也安全
-- 事件驱动自愈：Cron → Queue → Workflow
-- 基础设施即代码，Terraform 管理
-- `git push` 55 秒上线
+Hono · React · Vite · Tailwind · D1 · R2 · Vectorize · Queues · Workflows · Llama 3.2 11B Vision · BGE Large 1024d · Terraform · GitHub Actions
 
-## 文档
+Two Workers. Zero servers. 55-second deploys.
 
-- [系统设计](docs/architecture/DESIGN.md)
-- [前端架构](docs/architecture/FRONTEND_DESIGN.md)
-- [API 参考](docs/api/OPENAPI.md)
-- [开发指南](docs/guide/DEVELOPMENT.md)
-- [部署指南](docs/guide/SETUP.md)
-- [架构决策](docs/ADR/001-architecture-decisions.md)
+### What Makes This Different
 
-## License
+- **Three-stage search** — most vector search apps stop at retrieval. Lens adds LLM expansion before and LLM re-ranking after.
+- **Full metadata embedding** — vectors encode not just AI captions, but location, photographer, topics, and Unsplash descriptions. Search "Dubai" and it matches by geography, not just visual similarity.
+- **Multilingual** — query in Chinese, Japanese, or any language. The LLM translates before embedding.
+- **Complete data pipeline** — every Unsplash field is stored, served via API, and rendered in the frontend. Nothing is thrown away.
+- **Edge-native AI** — three AI tasks (vision, expansion, re-ranking) all run on Cloudflare's edge. No external API calls. No GPU instances.
+- **Self-healing** — Cron → Queue → Workflow. Each step is durable and retries on failure. The system runs unattended.
 
-MIT
+### Docs
+
+[System Design](docs/architecture/DESIGN.md) · [Frontend](docs/architecture/FRONTEND_DESIGN.md) · [API Reference](docs/api/OPENAPI.md) · [Development](docs/guide/DEVELOPMENT.md) · [Deployment](docs/guide/SETUP.md) · [ADR](docs/ADR/001-architecture-decisions.md)
