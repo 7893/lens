@@ -23,10 +23,6 @@ database_id = "6e19bd43-7d51-474c-bcd7-de00cadde82e"
 [ai]
 binding = "AI"
 
-[[analytics_engine_datasets]]
-binding = "AE"
-dataset = "pic-ae"
-
 [[workflows]]
 binding = "PHOTO_WORKFLOW"
 name = "pic-photo-wf"

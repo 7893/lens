@@ -5,7 +5,6 @@ interface Env {
   DB: D1Database;
   R2: R2Bucket;
   AI: Ai;
-  AE: AnalyticsEngineDataset;
   PHOTO_WORKFLOW: Workflow;
   
   // Secrets
