@@ -16,11 +16,7 @@
 查询 → LLM 扩展 → 向量检索 → LLM 重排 → 结果
 ```
 
-**第一级 — 查询扩展。** Llama 3.2 自动翻译 + 扩展查询词。中日英随便搜。
-
-**第二级 — 向量检索。** BGE Large 把扩展后的查询编码为 1024 维向量，Vectorize 余弦相似度召回 top 100。
-
-**第三级 — 语义重排。** Llama 3.2 对 top 50 候选重新打分排序。向量搜错的，这一步纠正。
+LLM 先翻译扩展查询词，BGE Large 1024 维向量召回候选，LLM 再对候选语义重排。中日英随便搜。
 
 ### 自动采集
 
@@ -34,7 +30,7 @@
 
 Hono · React · Vite · Tailwind · D1 · R2 · Vectorize · Queues · Workflows · Llama 3.2 11B Vision · BGE Large 1024d · Terraform · GitHub Actions
 
-两个 Worker。零服务器。`git push` 55 秒上线。
+两个 Worker。零服务器。`git push` 自动部署。
 
 ### 凭什么不一样
 
