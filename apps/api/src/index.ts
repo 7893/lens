@@ -160,8 +160,13 @@ app.get('/image/:type/:filename', async (c) => {
 
 // Temporary: reanalyze all images with new vision model
 app.post('/api/reanalyze', async (c) => {
-  const { results } = await c.env.DB.prepare('SELECT id, display_key FROM images ORDER BY created_at').all<DBImage>();
+  const offset = parseInt(c.req.query('offset') || '0');
+  const limit = parseInt(c.req.query('limit') || '5');
 
+  const { results } = await c.env.DB.prepare('SELECT id, display_key FROM images ORDER BY created_at LIMIT ? OFFSET ?')
+    .bind(limit, offset).all<DBImage>();
+
+  const total = (await c.env.DB.prepare('SELECT COUNT(*) as cnt FROM images').first<{cnt:number}>())!.cnt;
   let done = 0;
   const errors: string[] = [];
 
@@ -172,7 +177,6 @@ app.post('/api/reanalyze', async (c) => {
 
       const imageArray = [...new Uint8Array(await obj.arrayBuffer())];
 
-      // Vision
       const visionResp = await c.env.AI.run('@cf/meta/llama-3.2-11b-vision-instruct' as any, {
         image: imageArray,
         prompt: "Describe this photo in 2-3 sentences. Then list exactly 5 tags as comma-separated words. Format:\nDescription: <description>\nTags: <tag1>, <tag2>, <tag3>, <tag4>, <tag5>",
@@ -185,25 +189,20 @@ app.post('/api/reanalyze', async (c) => {
       const caption = descMatch?.[1]?.trim() || text.split('\n')[0].trim();
       const tags = tagsMatch?.[1]?.split(',').map((t: string) => t.trim().toLowerCase()).filter(Boolean).slice(0, 5) || [];
 
-      // Embedding
       const embResp = await c.env.AI.run('@cf/baai/bge-base-en-v1.5', { text: [caption + ' ' + tags.join(' ')] }) as { data: number[][] };
-      const embedding = embResp.data[0];
 
-      // Update D1
       await c.env.DB.prepare('UPDATE images SET ai_caption = ?, ai_tags = ? WHERE id = ?')
         .bind(caption, JSON.stringify(tags), img.id).run();
 
-      // Upsert Vectorize
-      await c.env.VECTORIZE.upsert([{ id: img.id, values: embedding }]);
+      await c.env.VECTORIZE.upsert([{ id: img.id, values: embResp.data[0] }]);
 
       done++;
-      if (done % 10 === 0) console.log(`Reanalyzed ${done}/${results.length}`);
     } catch (e: any) {
       errors.push(`${img.id}: ${e.message}`);
     }
   }
 
-  return c.json({ total: results.length, done, errors });
+  return c.json({ total, offset, done, errors, next: offset + limit < total ? offset + limit : null });
 });
 
 export default app;
