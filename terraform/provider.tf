@@ -8,5 +8,5 @@ terraform {
 }
 
 provider "cloudflare" {
-  api_token = var.cloudflare_api_token
+  # api_token is automatically read from CLOUDFLARE_API_TOKEN environment variable
 }
