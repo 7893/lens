@@ -57,6 +57,16 @@ export interface ImageResult {
   photographer?: string;
   blurHash?: string;
   color?: string | null;
+  location?: string | null;
+  description?: string | null;
+  exif?: {
+    camera: string | null;
+    aperture: string | null;
+    exposure: string | null;
+    focalLength: string | null;
+    iso: number | null;
+  } | null;
+  topics?: string[];
 }
 
 export interface SearchResponse {
