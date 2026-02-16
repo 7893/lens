@@ -50,20 +50,21 @@ wrangler secret put UNSPLASH_API_KEY
 CI/CD via GitHub Actions (`.github/workflows/`). On push to `main`:
 
 1. Builds shared package
-2. Deploys API Worker (`pic-api`)
-3. Deploys Processor Worker (`pic-processor`)
-4. Builds and deploys Web to Cloudflare Pages (`pic`)
+2. Builds web frontend → copies to `apps/api/public`
+3. Deploys `pic` Worker (API + frontend)
+4. Deploys `pic-processor` Worker
 
 Manual deploy:
 ```bash
 npm run build --workspace=@pic/shared
-npm run deploy --workspace=apps/api
-npm run deploy --workspace=apps/processor
-npm run build --workspace=@pic/web && npx wrangler pages deploy apps/web/dist --project-name=pic
+npm run build --workspace=@pic/web
+cp -r apps/web/dist apps/api/public
+cd apps/api && npx wrangler deploy
+cd ../processor && npx wrangler deploy
 ```
 
 ## Verify
 
-1. Health: `curl https://pic-api.53.workers.dev/health`
-2. Wait for cron (hourly) or trigger manually in Cloudflare Dashboard
-3. Search: `curl "https://pic-api.53.workers.dev/api/search?q=sunset&limit=3"`
+1. Open: `https://pic.53.workers.dev/`
+2. Health: `curl https://pic.53.workers.dev/health`
+3. Search: `curl "https://pic.53.workers.dev/api/search?q=sunset&limit=3"`
