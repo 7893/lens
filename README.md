@@ -55,7 +55,7 @@
   │ pic-processor │ ──▶ │ Queue │ ──▶ │    PicIngestWorkflow        │
   └───────────────┘     └───────┘     │                             │
                                       │  📥 下载原图 + 展示图 → R2  │
-                                      │  👁️ LLaVA 看图说话          │
+                                      │  👁️ Llama 3.2 Vision 看图说话  │
                                       │  🧮 BGE 生成 768 维向量     │
                                       │  💾 写入 D1                 │
                                       └─────────────────────────────┘
@@ -74,7 +74,7 @@
 | 图片存储 | R2 | 零出口费，存原图不心疼 |
 | 元数据 | D1 (SQLite at Edge) | 关系查询，免费额度大 |
 | 语义搜索 | Vectorize (768d, cosine) | 原生集成，毫秒级 |
-| 看图 | LLaVA 1.5 7B | 边缘推理，不用自己部署 GPU |
+| 看图 | Llama 3.2 11B Vision | 边缘推理，不用自己部署 GPU |
 | 向量化 | BGE Base EN v1.5 | 768 维，够用且快 |
 | 基础设施 | Terraform | 声明式，一键拉起 |
 | 部署 | GitHub Actions | `git push` = 上线 |
@@ -97,7 +97,7 @@
 
 🚀 **55 秒 `git push` 到生产** — GitHub Actions：build shared → build web → copy assets → deploy Worker × 2。没有手动步骤，没有审批流程，没有"我本地能跑"。推了就上，挂了就回滚。
 
-🧠 **边缘原生 AI** — 不是调 OpenAI API 等半天，是直接在 Cloudflare 边缘节点跑 LLaVA 视觉模型和 BGE 嵌入模型。模型离用户近，数据不出边缘网络。也不用自己管 GPU、装 CUDA、搞模型服务。
+🧠 **边缘原生 AI** — 不是调 OpenAI API 等半天，是直接在 Cloudflare 边缘节点跑 Llama 3.2 Vision 视觉模型和 BGE 嵌入模型。模型离用户近，数据不出边缘网络。也不用自己管 GPU、装 CUDA、搞模型服务。
 
 🪶 **极简架构** — 两个 Worker 撑起整个系统。没有微服务地狱，没有 sidecar，没有 service mesh，没有 Kubernetes。简单到离谱，但它就是能跑，而且跑得很好。
 
