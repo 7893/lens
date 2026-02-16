@@ -21,20 +21,19 @@ npm install
 
 ### 3. 本地配置 (wrangler.toml)
 
-项目依赖本地 D1 数据库和 R2 存储桶。`wrangler` 会自动为你处理大部分模拟工作。
+项目使用 `wrangler` 管理配置，并依赖 `tsconfig.json` 进行 TypeScript 编译。
 
-你可能需要在 `workers/pic-scheduler/wrangler.toml` 中取消部分注释，以便在本地连接远程资源（**如果需要的话**），但通常我们建议完全使用本地模拟。
+**核心依赖 (Core Dependencies):**
+- `typescript`: 编译器
+- `@cloudflare/workers-types`: Worker 环境的类型定义
 
-**本地数据库初始化：**
+**类型检查 (Type Checking):**
+在开发过程中，你可以随时运行类型检查以确保代码质量：
 
 ```bash
-# 本地执行 Schema 文件
-wrangler d1 execute pic-d1 --local --file=workers/pic-scheduler/schema.sql
+npm run type-check
 ```
-
-**本地存储桶创建：**
-
-`wrangler dev` 启动时会自动创建本地 R2 bucket。
+这会执行 `tsc --noEmit`，仅检查类型错误而不生成输出文件。
 
 ---
 
@@ -45,7 +44,7 @@ wrangler d1 execute pic-d1 --local --file=workers/pic-scheduler/schema.sql
 ```bash
 npm run dev
 ```
-这将启动 `wrangler dev`，默认监听 `http://localhost:8787`。
+这将启动 `wrangler dev`，它可以直接运行 `.ts` 文件，无需手动编译。
 
 ### 模拟触发 (Simulating Triggers)
 

@@ -6,9 +6,12 @@
 基于 Cloudflare 全家桶（Workers + D1 + R2 + AI + Workflows + Analytics）构建的一体化智能相册系统。
 它能够全自动地从 Unsplash 收集高质量图片，使用 AI 进行分类，并对外提供极速的图片展示服务。
 
+本项目完全使用 **TypeScript** 编写，利用静态类型检查确保系统的健壮性和可维护性，特别是在处理复杂的 Workflow 状态和数据库查询时。
+
 ## ✨ 核心特性
 
 - 🏗️ **单体架构 (Monolith)**：仅需部署一个 Worker，即可同时处理前端展示、API 服务、定时调度和后台工作流。
+- 🛡️ **类型安全 (Type-Safe)**：全链路 TypeScript 开发，提供极致的开发体验和代码可靠性。
 - 🤖 **全自动采集**：通过 Cron Trigger 每小时触发，自动从 Unsplash 获取最新图片。
 - 🧠 **AI 智能分类**：集成 Cloudflare AI 模型，对每张图片进行内容识别和打标签。
 - 📦 **Serverless 存储**：图片原图存入 R2，元数据存入 D1，事件日志存入 Analytics Engine。

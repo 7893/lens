@@ -96,7 +96,9 @@ graph TD
 
 ## 4. 数据与存储设计
 
-### 4.1 D1 Schema (SQLite)
+### 4.1 数据模型 (Data Models)
+
+#### D1 SQL Schema
 
 ```sql
 CREATE TABLE Photos (
@@ -126,6 +128,41 @@ CREATE TABLE CleanupLog (
     cleanup_reason TEXT,
     executed_at DATETIME
 );
+```
+
+#### TypeScript Interfaces
+
+```typescript
+// src/types.ts
+
+export interface PhotoRow {
+  unsplash_id: string;
+  r2_key: string;
+  ai_category: string | null;
+  ai_confidence: number | null;
+  width: number;
+  height: number;
+  color: string;
+  likes: number;
+  photographer_name: string;
+  downloaded_at: string; // ISO 8601
+}
+
+export interface GlobalStatsRow {
+  id: number;
+  total_photos: number;
+  total_workflows: number;
+  last_updated: string;
+}
+
+export interface Env {
+  DB: D1Database;
+  R2: R2Bucket;
+  AI: Ai;
+  AE: AnalyticsEngineDataset;
+  PHOTO_WORKFLOW: Workflow;
+  UNSPLASH_API_KEY: string;
+}
 ```
 
 ### 4.2 R2 Key Strategy
