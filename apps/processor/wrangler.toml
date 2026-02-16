@@ -36,7 +36,7 @@ binding = "R2"
 bucket_name = "pic-v6-prod-assets"
 
 # Vectorize Index (Semantic Search)
-[[vectorize_indexes]]
+[[vectorize]]
 binding = "VECTORIZE"
 index_name = "pic-v6-prod-vectors"
 
