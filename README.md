@@ -2,7 +2,6 @@
 
 [![Cloudflare Workers](https://img.shields.io/badge/Cloudflare-Workers-orange)](https://workers.cloudflare.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Status: Concept](https://img.shields.io/badge/Status-Concept-lightgrey.svg)]()
 
 **Pic** 是一个基于 Cloudflare Serverless 生态构建的现代化智能图库系统。
 v6.0 版本彻底重构了架构，引入了 **Vectorize** 和 **Workflows**，实现了真正的 **AI 语义搜索** 和 **双流存储**。
@@ -28,7 +27,7 @@ graph TD
     API -->|Vector Search| Vectorize[(Vector DB)]
     API -->|Metadata| D1[(D1 DB)]
     
-    subgraph "Ingestion Pipeline (Async)"
+    subgraph Ingestion [Ingestion Pipeline (Async)]
         Cron[Cron Trigger] -->|Fetch Tasks| Queue[Cloudflare Queue]
         Queue -->|Process| Workflow[PicIngestWorkflow]
         

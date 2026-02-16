@@ -1,78 +1,78 @@
-# Development Guide (Monorepo)
+# 开发指南 (Monorepo Development)
 
-Pic v6.0 uses a Monorepo structure managed by npm workspaces.
+Pic v6.0 采用基于 npm workspaces 管理的 Monorepo 结构。
 
-## Structure
+## 项目结构 (Structure)
 
 ```
 pic/
 ├── apps/
-│   ├── api/          # Hono Worker (Search & API)
-│   ├── processor/    # Queue Worker (Ingestion Pipeline)
-│   └── web/          # React + Vite (Frontend)
+│   ├── api/          # Hono Worker (搜索与API后端)
+│   ├── processor/    # Queue Worker (采集与处理流水线)
+│   └── web/          # React + Vite (前端展示)
 ├── packages/
-│   └── shared/       # Shared TypeScript types & configs
-├── package.json      # Workspace root
+│   └── shared/       # 共享的 TypeScript 类型定义与配置
+├── package.json      # 工作区根配置
 ```
 
-## Prerequisites
+## 前置要求 (Prerequisites)
 
 - Node.js 20+
-- Cloudflare Wrangler (`npm i -g wrangler`)
+- Cloudflare Wrangler CLI (`npm i -g wrangler`)
 - Git
 
-## Installation
+## 安装依赖 (Installation)
 
 ```bash
-# Install dependencies for all workspaces
+# 在根目录安装所有工作区的依赖
 npm install
 ```
 
-## Running Locally
+## 本地运行 (Running Locally)
 
-### 1. Initialize Infrastructure (Local D1/R2/Vectorize)
+### 1. 初始化基础设施 (Setup Local DB/R2)
 
 ```bash
-# Create local D1 database
+# 创建本地 D1 数据库模拟
 npm run setup:local-db
 ```
 
-### 2. Start Services
+### 2. 启动服务 (Start Services)
 
-You can run services independently:
+你可以单独启动某个服务：
 
 ```bash
-# Start API Worker
+# 启动 API Worker
 npm run dev --workspace=apps/api
 
-# Start Processor Worker (Simulates Queue/Cron)
+# 启动 Processor Worker (模拟 Queue/Cron)
 npm run dev --workspace=apps/processor
 
-# Start Frontend
+# 启动前端 (Frontend)
 npm run dev --workspace=apps/web
 ```
 
-Or run all backend services together (recommended):
+或者（推荐）同时启动所有后端服务：
 
 ```bash
 npm run dev:backend
 ```
 
-## Testing
+## 测试 (Testing)
 
-We use Vitest for unit testing.
+我们使用 Vitest 进行单元测试。
 
 ```bash
-# Run tests for all packages
+# 运行所有包的测试
 npm test
 ```
 
-## Deployment
+## 部署 (Deployment)
 
 ```bash
-# Deploy all workers
+# 部署所有 Workers
 npm run deploy
 
-# Deploy frontend only
+# 仅部署前端到 Pages
 npm run deploy:web
 ```

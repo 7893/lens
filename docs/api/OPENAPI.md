@@ -1,21 +1,21 @@
-# Pic v6.0 API Reference (OpenAPI)
+# Pic v6.0 API 参考 (OpenAPI)
 
-All APIs are prefixed with `/api`.
+所有 API 路径均以 `/api` 为前缀。
 
-Base URL: `https://<your-worker-subdomain>.workers.dev`
+基础 URL: `https://<your-worker-subdomain>.workers.dev`
 
-## Endpoints
+## 接口列表 (Endpoints)
 
-### 1. Search Images
+### 1. 语义搜图 (Search Images)
 
-Semantic search for images using natural language queries.
+使用自然语言查询进行语义图像搜索。
 
-- **Method**: `GET /api/search`
-- **Query Parameters**:
-  - `q` (string, required): The search query (e.g., "sad rainy day", "cyberpunk city").
-  - `limit` (integer, optional): Number of results to return (default: 20).
-  - `page` (integer, optional): Pagination offset (default: 1).
-- **Response**:
+- **方法**: `GET /api/search`
+- **查询参数**:
+  - `q` (string, 必填): 搜索关键词 (例如 "sad rainy day", "cyberpunk city")。
+  - `limit` (integer, 可选): 返回结果数量 (默认: 20)。
+  - `page` (integer, 可选): 分页页码 (默认: 1)。
+- **响应**:
   - **Status 200 OK**:
     ```json
     {
@@ -34,14 +34,14 @@ Semantic search for images using natural language queries.
     }
     ```
 
-### 2. Get Image Details
+### 2. 获取图片详情 (Get Image Details)
 
-Retrieve detailed metadata for a specific image.
+获取指定图片的详细元数据。
 
-- **Method**: `GET /api/images/:id`
-- **Path Parameters**:
-  - `id` (string, required): The image ID (Unsplash ID).
-- **Response**:
+- **方法**: `GET /api/images/:id`
+- **路径参数**:
+  - `id` (string, 必填): 图片 ID (Unsplash ID)。
+- **响应**:
   - **Status 200 OK**:
     ```json
     {
@@ -62,14 +62,14 @@ Retrieve detailed metadata for a specific image.
     }
     ```
 
-### 3. Trigger Ingestion (Manual)
+### 3. 手动触发采集 (Trigger Ingestion)
 
-Manually trigger the ingestion pipeline (requires admin authentication).
+手动触发数据采集流水线（需要管理员权限）。
 
-- **Method**: `POST /api/admin/trigger`
-- **Headers**:
+- **方法**: `POST /api/admin/trigger`
+- **Header**:
   - `Authorization`: `Bearer <ADMIN_SECRET>`
-- **Response**:
+- **响应**:
   - **Status 202 Accepted**:
     ```json
     {
@@ -78,12 +78,12 @@ Manually trigger the ingestion pipeline (requires admin authentication).
     }
     ```
 
-### 4. Health Check
+### 4. 健康检查 (Health Check)
 
-Check system status.
+检查系统运行状态。
 
-- **Method**: `GET /health`
-- **Response**:
+- **方法**: `GET /health`
+- **响应**:
   - **Status 200 OK**:
     ```json
     {
