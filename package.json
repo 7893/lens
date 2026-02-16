@@ -14,9 +14,9 @@
   "scripts": {
     "dev": "npm run dev --workspace=pic-scheduler",
     "deploy": "npx wrangler deploy --config workers/pic-scheduler/wrangler.toml",
-    "lint": "eslint . --ext .js",
-    "lint:fix": "eslint . --ext .js --fix",
-    "format": "prettier --write \"**/*.{js,json,md}\"",
+    "lint": "cd workers/pic-scheduler && npx tsc --noEmit",
+    "lint:fix": "cd workers/pic-scheduler && npx tsc --noEmit",
+    "format": "prettier --write \"**/*.{ts,json,md}\"",
     "test": "npm run test --workspaces",
     "audit": "npm audit --workspaces",
     "prepare": "husky install"
@@ -32,7 +32,6 @@
   "author": "",
   "license": "MIT",
   "devDependencies": {
-    "eslint": "^10.0.0",
     "husky": "^9.1.7",
     "lint-staged": "^16.2.3",
     "prettier": "^3.6.2",
