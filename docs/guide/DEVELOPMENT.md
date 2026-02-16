@@ -1,15 +1,15 @@
 # Development Guide
 
-Pic v6.0 uses npm workspaces monorepo.
+Pic uses npm workspaces monorepo.
 
 ## Structure
 
 ```
 pic/
 ├── apps/
-│   ├── api/          # Hono Worker (search, image proxy)
+│   ├── api/          # Hono Worker (API + static frontend)
 │   ├── processor/    # Queue/Workflow Worker (ingestion)
-│   └── web/          # React + Vite + Tailwind (Pages)
+│   └── web/          # React + Vite + Tailwind (source)
 ├── packages/
 │   └── shared/       # Shared TypeScript types
 ├── terraform/        # IaC (optional)
@@ -25,14 +25,15 @@ npm install
 ## Local Dev
 
 ```bash
-# API Worker
+# Build web and copy to api
+npm run build --workspace=@pic/web
+cp -r apps/web/dist apps/api/public
+
+# Start main Worker (API + frontend)
 npm run dev --workspace=apps/api
 
-# Processor Worker
+# Start Processor Worker
 npm run dev --workspace=apps/processor
-
-# Frontend
-npm run dev --workspace=apps/web
 ```
 
 ## Type Check
