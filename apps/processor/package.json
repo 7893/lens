@@ -1,5 +1,5 @@
 {
-  "name": "@iris/processor",
+  "name": "@lens/processor",
   "version": "6.0.0",
   "private": true,
   "type": "module",
@@ -9,7 +9,7 @@
     "setup:local-db": "echo 'Run d1 creation command for processor'"
   },
   "dependencies": {
-    "@iris/shared": "^1.0.0"
+    "@lens/shared": "^1.0.0"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20241022.0",

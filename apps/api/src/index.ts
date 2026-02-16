@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import { SearchResponse, ImageDetailResponse, DBImage, ImageResult } from '@iris/shared';
+import { SearchResponse, ImageDetailResponse, DBImage, ImageResult } from '@lens/shared';
 
 // Define Bindings
 type Bindings = {
@@ -16,7 +16,7 @@ const app = new Hono<{ Bindings: Bindings }>();
 app.use('/*', cors());
 
 // 1. Health Check
-app.get('/health', (c) => c.json({ status: 'healthy', name: 'iris' }));
+app.get('/health', (c) => c.json({ status: 'healthy', name: 'lens' }));
 
 // 2. Latest images (default gallery)
 app.get('/api/latest', async (c) => {

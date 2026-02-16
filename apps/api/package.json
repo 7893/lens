@@ -1,5 +1,5 @@
 {
-  "name": "@iris/api",
+  "name": "@lens/api",
   "version": "6.0.0",
   "private": true,
   "type": "module",
@@ -9,7 +9,7 @@
     "setup:local-db": "echo 'Run d1 creation command here for api workspace if needed or shared'"
   },
   "dependencies": {
-    "@iris/shared": "^1.0.0",
+    "@lens/shared": "^1.0.0",
     "hono": "^4.6.0"
   },
   "devDependencies": {
