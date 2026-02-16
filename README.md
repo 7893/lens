@@ -23,11 +23,11 @@ v6.0 版本彻底重构了架构，引入了 **Vectorize** 和 **Workflows**，�
 
 ```mermaid
 graph TD
-    User((User)) -->|Search Query| API[Search API (Hono)]
+    User((User)) -->|Search Query| API[Search API]
     API -->|Vector Search| Vectorize[(Vector DB)]
     API -->|Metadata| D1[(D1 DB)]
     
-    subgraph Ingestion [Ingestion Pipeline (Async)]
+    subgraph IngestionPipeline [Ingestion Pipeline Async]
         Cron[Cron Trigger] -->|Fetch Tasks| Queue[Cloudflare Queue]
         Queue -->|Process| Workflow[PicIngestWorkflow]
         
@@ -71,6 +71,7 @@ npm run dev
 ## 📚 文档索引
 
 *   [**系统设计 (System Design)**](docs/architecture/DESIGN.md): 深入了解 v6.0 架构决策与数据流。
+*   [**前端架构设计 (Frontend Design)**](docs/architecture/FRONTEND_DESIGN.md): 深入了解 Web 端技术选型与组件架构。
 *   [**API 参考 (API Reference)**](docs/api/OPENAPI.md): 后端接口定义。
 *   [**开发指南 (Development)**](docs/guide/DEVELOPMENT.md): 如何在 Monorepo 结构下开发与测试。
 *   [**架构决策记录 (ADR)**](docs/ADR/001-architecture-decisions.md): 为什么我们选择 D1 而不是 KV？为什么选 Queue？
