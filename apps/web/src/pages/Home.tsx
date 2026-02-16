@@ -96,14 +96,29 @@ interface ImageDetail {
   width: number;
   height: number;
   color: string | null;
+  blurHash: string | null;
   description: string | null;
-  photographer: { name: string; username: string; location: string | null; profile: string | null };
-  exif: { camera: string | null; aperture: string | null; exposure: string | null; focalLength: string | null; iso: number | null } | null;
-  location: string | null;
+  altDescription: string | null;
+  createdAt: string | null;
+  promotedAt: string | null;
+  photographer: {
+    name: string; username: string; bio: string | null; location: string | null;
+    profile: string | null; profileImage: string | null;
+    instagram: string | null; twitter: string | null; portfolio: string | null;
+    totalPhotos: number | null;
+  };
+  exif: {
+    make: string | null; model: string | null; camera: string | null;
+    aperture: string | null; exposure: string | null; focalLength: string | null; iso: number | null;
+  } | null;
+  location: {
+    name: string | null; city: string | null; country: string | null;
+    latitude: number | null; longitude: number | null;
+  } | null;
+  topics: string[];
   stats: { views: number | null; downloads: number | null; likes: number | null };
   ai: { caption: string | null; tags: string[] };
   source: string | null;
-  createdAt: string | null;
 }
 
 function Stat({ icon: Icon, label, value }: { icon: typeof Eye; label: string; value: string | number | null }) {
@@ -140,19 +155,44 @@ function ImageModal({ image, score, onClose }: { image: ImageResult; score?: num
 
         <div className="md:w-1/3 p-6 overflow-y-auto space-y-5 max-h-[90vh]">
           {detail?.photographer?.name && (
-            <div>
-              <div className="flex items-center gap-2">
-                <Camera className="w-4 h-4 text-gray-400" />
-                <span className="font-medium text-gray-800">{detail.photographer.name}</span>
+            <div className="flex items-start gap-3">
+              {detail.photographer.profileImage && (
+                <img src={detail.photographer.profileImage} alt="" className="w-10 h-10 rounded-full" />
+              )}
+              <div>
+                <a href={detail.photographer.profile || '#'} target="_blank" rel="noopener noreferrer" className="font-medium text-gray-800 hover:text-blue-600 transition-colors">
+                  {detail.photographer.name}
+                </a>
+                {detail.photographer.location && <p className="text-xs text-gray-400">{detail.photographer.location}</p>}
+                {detail.photographer.bio && <p className="text-xs text-gray-500 mt-0.5">{detail.photographer.bio}</p>}
+                <div className="flex gap-2 mt-1 text-[10px] text-gray-400">
+                  {detail.photographer.totalPhotos && <span>{detail.photographer.totalPhotos} photos</span>}
+                  {detail.photographer.instagram && <span>IG: @{detail.photographer.instagram}</span>}
+                  {detail.photographer.twitter && <span>X: @{detail.photographer.twitter}</span>}
+                </div>
               </div>
-              {detail.photographer.location && <p className="text-xs text-gray-400 ml-6">{detail.photographer.location}</p>}
             </div>
           )}
 
-          {detail?.location && (
+          {detail?.altDescription && (
+            <p className="text-sm text-gray-600 italic">{detail.altDescription}</p>
+          )}
+
+          {detail?.description && detail.description !== detail.altDescription && (
+            <p className="text-sm text-gray-600">{detail.description}</p>
+          )}
+
+          {detail?.location?.name && (
             <div className="flex items-center gap-2 text-sm text-gray-600">
-              <MapPin className="w-4 h-4 text-gray-400" />
-              <span>{detail.location}</span>
+              <MapPin className="w-4 h-4 text-gray-400 shrink-0" />
+              <div>
+                <span>{detail.location.name}</span>
+                {detail.location.latitude && detail.location.longitude && (
+                  <span className="text-[10px] text-gray-400 ml-2">
+                    {detail.location.latitude.toFixed(2)}°, {detail.location.longitude.toFixed(2)}°
+                  </span>
+                )}
+              </div>
             </div>
           )}
 
@@ -162,13 +202,28 @@ function ImageModal({ image, score, onClose }: { image: ImageResult; score?: num
                 <Sparkles className="w-3.5 h-3.5" /><span>AI Description</span>
               </div>
               <p className="text-sm text-gray-700 leading-relaxed">{detail.ai.caption}</p>
+              {detail.ai.tags.length > 0 && (
+                <div className="flex flex-wrap gap-1 mt-2">
+                  {detail.ai.tags.map(t => (
+                    <span key={t} className="text-[10px] px-1.5 py-0.5 bg-blue-50 text-blue-500 rounded-full">{t}</span>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {detail?.topics && detail.topics.length > 0 && (
+            <div className="flex flex-wrap gap-1">
+              {detail.topics.map(t => (
+                <span key={t} className="text-[10px] px-2 py-0.5 bg-green-50 text-green-600 rounded-full">{t}</span>
+              ))}
             </div>
           )}
 
           {detail?.exif && (
             <div className="space-y-1.5">
               <div className="flex items-center gap-1.5 text-xs text-gray-400 mb-1">
-                <Aperture className="w-3.5 h-3.5" /><span>Camera Info</span>
+                <Aperture className="w-3.5 h-3.5" /><span>Camera</span>
               </div>
               {detail.exif.camera && <p className="text-sm text-gray-700 font-medium">{detail.exif.camera}</p>}
               <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-gray-500">
