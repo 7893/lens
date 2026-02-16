@@ -1,5 +1,5 @@
 import { useSearch } from '../hooks/use-search';
-import { ImageResult } from '@iris/shared';
+import { ImageResult } from '@lens/shared';
 import { Search, X, Camera, Sparkles, MapPin, Eye, Download, Heart, Aperture, Clock, ExternalLink } from 'lucide-react';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { decode } from 'blurhash';

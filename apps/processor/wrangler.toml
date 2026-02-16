@@ -1,4 +1,4 @@
-name = "iris-processor"
+name = "lens-processor"
 main = "src/index.ts"
 compatibility_date = "2024-10-01"
 compatibility_flags = ["nodejs_compat"]
@@ -6,14 +6,14 @@ compatibility_flags = ["nodejs_compat"]
 # D1 Database (Metadata)
 [[d1_databases]]
 binding = "DB"
-database_name = "iris-db"
-database_id = "c8739df0-a736-46ee-9504-faf50911c750"
+database_name = "lens-db"
+database_id = "4b1414c1-7800-4ccf-af7b-90d63720b6aa"
 
 # Workflow (Orchestration)
 [[workflows]]
 binding = "PHOTO_WORKFLOW"
-name = "iris-ingest"
-class_name = "IrisIngestWorkflow"
+name = "lens-ingest"
+class_name = "LensIngestWorkflow"
 
 # Workers AI (Vision & Embedding)
 [ai]
@@ -22,23 +22,23 @@ binding = "AI"
 # Queue Producer (From Cron -> Queue)
 [[queues.producers]]
 binding = "PHOTO_QUEUE"
-queue = "iris-queue"
+queue = "lens-queue"
 
 # Queue Consumer (From Queue -> Workflow)
 [[queues.consumers]]
-queue = "iris-queue"
+queue = "lens-queue"
 max_batch_size = 10
 max_batch_timeout = 30
 
 # R2 Bucket (Storage)
 [[r2_buckets]]
 binding = "R2"
-bucket_name = "iris-r2"
+bucket_name = "lens-r2"
 
 # Vectorize Index (Semantic Search)
 [[vectorize]]
 binding = "VECTORIZE"
-index_name = "iris-vectors"
+index_name = "lens-vectors"
 
 # Cron Trigger (Scheduler)
 [triggers]

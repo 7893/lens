@@ -5,7 +5,7 @@
 > 你搜"孤独感"，它给你一条空旷的街道。你搜"温暖"，它给你壁炉旁的猫。
 > 不是关键词匹配 — 是 AI 真的看懂了每一张图。
 
-[![Live Demo](https://img.shields.io/badge/Live-iris.53.workers.dev-F38020?logo=cloudflare&logoColor=white)](https://iris.53.workers.dev)
+[![Live Demo](https://img.shields.io/badge/Live-lens.53.workers.dev-F38020?logo=cloudflare&logoColor=white)](https://lens.53.workers.dev)
 [![TypeScript](https://img.shields.io/badge/100%25-TypeScript-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
@@ -27,7 +27,7 @@
 ```
 ┌─────────────────── Search Pipeline ───────────────────┐
 │                                                       │
-│  User ──▶ iris Worker ──▶ BGE Embedding ──▶ Vectorize │
+│  User ──▶ lens Worker ──▶ BGE Embedding ──▶ Vectorize │
 │               │                                │      │
 │               │◀──── D1 (metadata) ◀───────────┘      │
 │               │                                       │
@@ -40,7 +40,7 @@
 │  Cron (hourly)                                        │
 │    │                                                  │
 │    ▼                                                  │
-│  iris-processor ──▶ Queue ──▶ IrisIngestWorkflow      │
+│  lens-processor ──▶ Queue ──▶ LensIngestWorkflow      │
 │                                  │                    │
 │                                  ├─ Download → R2     │
 │                                  ├─ Llama Vision → AI │
@@ -78,7 +78,7 @@
 
 ## 工程亮点
 
-- **端到端类型安全** — `@iris/shared` 在编译期锁定 API 契约
+- **端到端类型安全** — `@lens/shared` 在编译期锁定 API 契约
 - **单一部署产物** — 前端打包进 Worker assets，一次 `wrangler deploy` 搞定
 - **Monorepo 原子提交** — API、前端、类型、采集引擎同仓库，零版本漂移
 - **幂等全链路** — `ON CONFLICT DO UPDATE` + `upsert`，无限重试也安全
@@ -91,13 +91,13 @@
 ## 项目结构
 
 ```
-iris/
+lens/
 ├── apps/
 │   ├── api/          # Hono Worker：API + 静态前端
 │   ├── processor/    # Cron + Queue + Workflow 采集引擎
 │   └── web/          # React + Vite + Tailwind（构建后复制到 api/public）
 ├── packages/
-│   └── shared/       # @iris/shared — TypeScript 类型定义
+│   └── shared/       # @lens/shared — TypeScript 类型定义
 ├── terraform/        # 基础设施定义
 ├── docs/             # 架构、API、开发指南
 └── .github/workflows # CI/CD

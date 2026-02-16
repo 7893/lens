@@ -1,4 +1,4 @@
-name: Deploy Iris
+name: Deploy Lens
 
 on:
   push:
@@ -23,15 +23,15 @@ jobs:
         run: npm ci
 
       - name: Build Shared Package
-        run: npm run build --workspace=@iris/shared
+        run: npm run build --workspace=@lens/shared
 
       - name: Build Web Frontend
-        run: npm run build --workspace=@iris/web
+        run: npm run build --workspace=@lens/web
 
       - name: Copy Web Assets to API
         run: cp -r apps/web/dist apps/api/public
 
-      - name: Deploy Iris Worker
+      - name: Deploy Lens Worker
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
