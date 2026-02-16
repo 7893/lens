@@ -4,6 +4,23 @@
 
 Two pipelines: **Ingestion** (write) and **Search** (read).
 
+```mermaid
+graph TD
+    User((用户)) -->|搜索| API[Search API]
+    API -->|向量搜索| Vectorize[(Vector DB)]
+    API -->|元数据| D1[(D1 DB)]
+    
+    subgraph 采集管道
+        Cron[定时触发] -->|获取任务| Queue[Queue]
+        Queue -->|处理| Workflow[PicIngestWorkflow]
+        Workflow -->|1. 下载| R2[(R2)]
+        Workflow -->|2. AI 分析| AI_Vision[Vision Model]
+        Workflow -->|3. 向量化| AI_Embed[Embedding Model]
+        Workflow -->|4. 写入| D1
+        Workflow -->|5. 索引| Vectorize
+    end
+```
+
 ### Ingestion Pipeline
 
 ```

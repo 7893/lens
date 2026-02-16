@@ -19,24 +19,39 @@
 
 📦 **纯 TypeScript 项目** — 不只是代码用 TypeScript，连项目配置都是。共享类型包确保前后端接口契约一致，编译期就能发现问题。
 
-## 架构
+## 架构一览
 
-```mermaid
-graph TD
-    User((用户)) -->|搜索| API[Search API]
-    API -->|向量搜索| Vectorize[(Vector DB)]
-    API -->|元数据| D1[(D1 DB)]
-    
-    subgraph 采集管道
-        Cron[定时触发] -->|获取任务| Queue[Queue]
-        Queue -->|处理| Workflow[PicIngestWorkflow]
-        Workflow -->|1. 下载| R2[(R2)]
-        Workflow -->|2. AI 分析| AI_Vision[Vision Model]
-        Workflow -->|3. 向量化| AI_Embed[Embedding Model]
-        Workflow -->|4. 写入| D1
-        Workflow -->|5. 索引| Vectorize
-    end
 ```
+  用户搜索 "sunset over ocean"
+       │
+       ▼
+  ┌─────────┐  embedding   ┌───────────┐  top-K   ┌────┐
+  │ pic-api │ ──────────▶  │ Vectorize │ ───────▶ │ D1 │ ──▶ 返回结果
+  └─────────┘              └───────────┘          └────┘
+       │
+       │ 图片代理
+       ▼
+  ┌────┐
+  │ R2 │
+  └────┘
+
+  ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─
+
+  每小时自动采集
+       │
+       ▼
+  ┌───────────────┐      ┌───────┐      ┌──────────────────────────┐
+  │ pic-processor │ ───▶ │ Queue │ ───▶ │     PicIngestWorkflow    │
+  │  (cron)       │      └───────┘      │                          │
+  └───────────────┘                     │  1. 下载原图+展示图 → R2 │
+                                        │  2. LLaVA 视觉分析       │
+                                        │  3. BGE 向量化           │
+                                        │  4. 元数据写入 D1        │
+                                        │  5. 向量索引 Vectorize   │
+                                        └──────────────────────────┘
+```
+
+详细架构设计见 [系统设计文档](docs/architecture/DESIGN.md)。
 
 ## 技术栈
 
