@@ -1,126 +1,99 @@
-# 🛠️ 开发指南 (Development Guide)
+# 🛠️ Development Guide
 
-欢迎加入 Pic 项目的开发！本指南将帮助你搭建本地开发环境，并介绍如何高效地进行代码贡献。
-
-## 开发环境搭建 (Local Setup)
-
-### 1. 克隆代码
+## Local Setup
 
 ```bash
 git clone https://github.com/your-username/pic.git
 cd pic
-```
-
-### 2. 安装依赖
-
-推荐使用 `npm` 或 `pnpm`。
-
-```bash
 npm install
 ```
 
-### 3. 本地配置 (wrangler.toml)
+## TypeScript
 
-项目使用 `wrangler` 管理配置，并依赖 `tsconfig.json` 进行 TypeScript 编译。
+The project is fully written in TypeScript with `strict: true`.
 
-**核心依赖 (Core Dependencies):**
-- `typescript`: 编译器
-- `@cloudflare/workers-types`: Worker 环境的类型定义
+- Compiler: `typescript`
+- Type definitions: `@cloudflare/workers-types`
+- Type check: `npm run lint` (runs `tsc --noEmit`)
 
-**类型检查 (Type Checking):**
-在开发过程中，你可以随时运行类型检查以确保代码质量：
+Wrangler natively resolves `.ts` files — no manual compilation needed.
 
-```bash
-npm run type-check
-```
-这会执行 `tsc --noEmit`，仅检查类型错误而不生成输出文件。
+## Running & Debugging
 
----
-
-## 运行与调试 (Running & Debugging)
-
-### 启动开发服务器
+### Dev server
 
 ```bash
 npm run dev
 ```
-这将启动 `wrangler dev`，它可以直接运行 `.ts` 文件，无需手动编译。
 
-### 模拟触发 (Simulating Triggers)
-
-由于 Cron Trigger 仅在生产环境自动运行，我们需要手动模拟：
-
-**方式 1: 使用 curl (推荐)**
+### Simulate triggers
 
 ```bash
+# Trigger the data pipeline manually
 curl -X POST http://localhost:8787/api/trigger
-```
-这将触发 `DataPipelineWorkflow`。你可以在终端看到详细的日志输出。
 
-**方式 2: 使用 wrangler cli**
-
-```bash
+# Check local D1
 wrangler d1 execute pic-d1 --local --command "SELECT * FROM Photos"
 ```
-这将检查你的本地数据库状态。
 
-### 调试 Workflows
+### Workflow notes
 
-Cloudflare Workflows 在本地运行时，实际上是直接执行步骤逻辑（没有真正的分布式状态机）。
+- `step.do` executes immediately in local dev.
+- `step.sleep` may skip or resolve quickly.
+- Check console output for stack traces on errors.
 
-**注意点：**
-- `step.do` 中的逻辑会立即执行。
-- `step.sleep` 在本地可能会直接跳过或快速等待。
-- 如果遇到 `Error: Workflow execution failed`，通常是代码逻辑错误，请检查控制台输出的堆栈信息。
+## Project Structure
 
----
+All source code is in `workers/pic-scheduler/src/`:
 
-## 代码风格与规范 (Style & Standards)
-
-### 1. 目录结构
-
-所有核心逻辑都位于 `workers/pic-scheduler/src/` 下：
-- `index.js`: 入口文件 (Router & Cron Handler)。
-- `workflows/`: 工作流定义 (DataPipeline)。
-- `tasks/`: 独立任务逻辑 (Unsplash Fetch, Cleanup)。
-- `utils/`: 通用工具 (Date, String, AI Helper)。
-
-### 2. Linting
-
-项目集成了 ESLint 和 Prettier。
-
-```bash
-# 检查代码风格
-npm run lint
-
-# 自动修复
-npm run lint:fix
 ```
-在提交代码前，请务必运行一次 lint 检查。
+src/
+├── index.ts              # Entry: fetch router + scheduled handler
+├── config.ts             # Runtime constants
+├── env.d.ts              # Env interface & module declarations
+├── types.ts              # Data model interfaces
+├── services/
+│   ├── ai-classifier.ts  # AI model invocation
+│   ├── downloader.ts     # Image download from Unsplash
+│   └── unsplash.ts       # Unsplash API client
+├── tasks/
+│   ├── enqueue-photos.ts # Fetch & deduplicate new photos
+│   ├── fetch-photos.ts   # Photo list fetching
+│   ├── process-photo.ts  # Single photo processing
+│   ├── classify-with-model.ts
+│   ├── extract-exif.ts
+│   └── save-metadata.ts
+├── workflows/
+│   ├── data-pipeline.ts      # Main orchestration workflow
+│   ├── download-workflow.ts   # Batch download workflow
+│   └── classify-workflow.ts   # Batch classification workflow
+└── utils/
+    └── analytics.ts      # Analytics Engine helpers
+```
 
-### 3. 提交规范 (Commit Message)
+## Code Style
 
-建议遵循 [Conventional Commits](https://www.conventionalcommits.org/) 规范：
-- `feat: Add support for Unsplash search`
-- `fix: Resolve R2 upload timeout issue`
-- `docs: Update DEVELOPMENT.md`
-- `chore: Update dependencies`
+- Lint: `npm run lint` (runs `tsc --noEmit`)
+- Format: `npm run format` (Prettier, targets `*.ts`, `*.json`, `*.md`)
+- Pre-commit hook: husky + lint-staged runs Prettier on staged `.ts` files
 
----
+### Commit messages
 
-## 测试 (Testing)
+English, single line, concise. Follow [Conventional Commits](https://www.conventionalcommits.org/):
+- `feat: add category filter endpoint`
+- `fix: resolve R2 upload timeout`
+- `docs: update architecture diagram`
 
-目前项目主要依赖手动测试和集成测试。我们计划引入 `vitest` 进行单元测试。
+## Local Secrets
 
-如果你贡献了新功能，请确保：
-1.  本地运行 `npm run dev` 无报错。
-2.  手动触发一次 API (`curl -X POST ...`) 并验证流程完整性。
-3.  如果涉及数据库变更，请提供 SQL 迁移脚本。
+Create `.dev.vars` in `workers/pic-scheduler/` for local development:
 
-## 常见问题
+```
+UNSPLASH_API_KEY=your_key_here
+```
 
-- **Q: 本地开发时 Unsplash API 报错 403？**
-  - **A:** 检查你的环境变量 `UNSPLASH_API_KEY` 是否正确设置。你可以创建一个 `.dev.vars` 文件在本地存储密钥（但在生产环境使用 `wrangler secret put`）。
+For production, use `wrangler secret put UNSPLASH_API_KEY`.
 
-- **Q: AI 功能本地可用吗？**
-  - **A:** `wrangler dev` 默认会连接到 Cloudflare 的远程 AI 服务（需要登录）。请确保你已通过 `wrangler login` 登录且账号有 AI 权限。
+## AI
+
+`wrangler dev` connects to remote Cloudflare AI (requires `wrangler login` with AI-enabled account).
