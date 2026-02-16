@@ -67,7 +67,7 @@ app.get('/api/search', async (c) => {
     let expandedQuery = q;
     if (q.split(/\s+/).length <= 4) {
       const expansion = await c.env.AI.run('@cf/meta/llama-3.2-11b-vision-instruct' as any, {
-        prompt: `Expand this image search query with related visual terms. Reply with ONLY the expanded query, no explanation. Keep it under 30 words.\nQuery: ${q}`,
+        prompt: `Expand this image search query with related visual terms. If the query is not in English, translate it to English first, then expand. Reply with ONLY the expanded English query, no explanation. Keep it under 30 words.\nQuery: ${q}`,
         max_tokens: 50,
       }) as { response?: string };
       expandedQuery = expansion.response?.trim() || q;
