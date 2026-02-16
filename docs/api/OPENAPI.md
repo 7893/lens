@@ -1,4 +1,4 @@
-# Pic API Reference
+# Lens API Reference
 
 Base URL: `https://lens.53.workers.dev`
 
@@ -14,10 +14,9 @@ Base URL: `https://lens.53.workers.dev`
 
 ### 2. Semantic Search
 
-- **GET** `/api/search?q={query}&limit={limit}`
+- **GET** `/api/search?q={query}`
 - **Parameters**:
-  - `q` (string, required): natural language query
-  - `limit` (integer, optional, default: 20): max results
+  - `q` (string, required): natural language query (auto-expanded by LLM for short queries)
 - **Response** `200`:
   ```json
   {
@@ -28,14 +27,19 @@ Base URL: `https://lens.53.workers.dev`
         "width": 4093,
         "height": 2729,
         "caption": "A bustling city street at night...",
-        "tags": [],
+        "tags": ["city", "night", "street"],
         "score": 0.69,
-        "photographer": "Tsuyoshi Kozu"
+        "photographer": "Tsuyoshi Kozu",
+        "blurHash": "LKO2?U%2Tw=w]~RBVZRi...",
+        "color": "#262626",
+        "location": "Tokyo, Japan",
+        "description": "Busy intersection in Shibuya at night",
+        "exif": { "camera": "SONY, ILCE-7RM5", "aperture": "f/2.8", "exposure": "1/100s", "focalLength": "28.0mm", "iso": 100 },
+        "topics": ["street-photography", "travel"]
       }
     ],
-    "total": 3,
-    "page": 1,
-    "took": 794
+    "total": 100,
+    "took": 2300
   }
   ```
 
@@ -46,19 +50,39 @@ Base URL: `https://lens.53.workers.dev`
   ```json
   {
     "id": "pRFX1RbTsfU",
-    "urls": {
-      "raw": "/image/raw/pRFX1RbTsfU.jpg",
-      "display": "/image/display/pRFX1RbTsfU.jpg"
-    },
-    "metadata": {
-      "photographer": "Tsuyoshi Kozu",
+    "urls": { "raw": "/image/raw/pRFX1RbTsfU.jpg", "display": "/image/display/pRFX1RbTsfU.jpg" },
+    "width": 4093,
+    "height": 2729,
+    "color": "#262626",
+    "blurHash": "LKO2?U%2Tw=w...",
+    "description": null,
+    "altDescription": "Busy intersection in Shibuya at night",
+    "createdAt": "2026-01-15T08:10:26Z",
+    "promotedAt": "2026-01-22T00:18:00Z",
+    "photographer": {
+      "name": "Tsuyoshi Kozu",
+      "username": "tsuyoshi",
+      "bio": "Street photographer",
       "location": "Tokyo, Japan",
-      "exif": { "make": "Sony", "model": "A7III" }
+      "profile": "https://unsplash.com/@tsuyoshi",
+      "profileImage": "https://images.unsplash.com/profile-...",
+      "instagram": "tsuyoshi_photo",
+      "twitter": null,
+      "portfolio": null,
+      "totalPhotos": 352
     },
-    "ai": {
-      "caption": "A bustling city street at night...",
-      "tags": []
-    }
+    "exif": {
+      "make": "SONY", "model": "ILCE-7RM5", "camera": "SONY, ILCE-7RM5",
+      "aperture": "f/2.8", "exposure": "1/100s", "focalLength": "28.0mm", "iso": 100
+    },
+    "location": {
+      "name": "Tokyo, Japan", "city": "Tokyo", "country": "Japan",
+      "latitude": 35.6762, "longitude": 139.6503
+    },
+    "topics": ["street-photography", "travel"],
+    "stats": { "views": 416317, "downloads": 9522, "likes": 10 },
+    "ai": { "caption": "A bustling city street at night...", "tags": ["city", "night", "street", "urban", "lights"] },
+    "source": "https://unsplash.com/photos/..."
   }
   ```
 
