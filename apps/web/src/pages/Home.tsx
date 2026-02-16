@@ -47,11 +47,25 @@ function ImageCard({ image, onClick }: { image: ImageResult; onClick: () => void
         <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors" />
       </div>
       <div className="p-3">
-        <p className="text-sm text-gray-700 line-clamp-2">{image.caption}</p>
-        {image.photographer && (
-          <p className="text-xs text-gray-400 mt-1 flex items-center gap-1">
-            <Camera className="w-3 h-3" /> {image.photographer}
-          </p>
+        <p className="text-sm text-gray-700 line-clamp-2">{image.description || image.caption}</p>
+        <div className="mt-1.5 space-y-0.5">
+          {image.photographer && (
+            <p className="text-xs text-gray-400 flex items-center gap-1">
+              <Camera className="w-3 h-3" /> {image.photographer}
+            </p>
+          )}
+          {image.location && (
+            <p className="text-xs text-gray-400 flex items-center gap-1">
+              <MapPin className="w-3 h-3" /> {image.location}
+            </p>
+          )}
+        </div>
+        {image.topics && image.topics.length > 0 && (
+          <div className="mt-2 flex flex-wrap gap-1">
+            {image.topics.slice(0, 3).map(t => (
+              <span key={t} className="text-[10px] px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded-full">{t}</span>
+            ))}
+          </div>
         )}
       </div>
     </div>

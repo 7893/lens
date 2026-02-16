@@ -12,6 +12,32 @@ type Bindings = {
 
 const app = new Hono<{ Bindings: Bindings }>();
 
+function toImageResult(img: DBImage, score?: number): ImageResult {
+  const meta = JSON.parse(img.meta_json || '{}');
+  return {
+    id: img.id,
+    url: `/image/display/${img.id}.jpg`,
+    width: img.width,
+    height: img.height,
+    caption: img.ai_caption,
+    tags: JSON.parse(img.ai_tags || '[]'),
+    score,
+    photographer: meta.user?.name,
+    blurHash: meta.blur_hash,
+    color: img.color,
+    location: meta.location?.name || null,
+    description: meta.alt_description || meta.description || null,
+    exif: meta.exif ? {
+      camera: meta.exif.name || null,
+      aperture: meta.exif.aperture ? `f/${meta.exif.aperture}` : null,
+      exposure: meta.exif.exposure_time ? `${meta.exif.exposure_time}s` : null,
+      focalLength: meta.exif.focal_length ? `${meta.exif.focal_length}mm` : null,
+      iso: meta.exif.iso || null,
+    } : null,
+    topics: Object.keys(meta.topic_submissions || {}),
+  };
+}
+
 // Middleware
 app.use('/*', cors());
 
@@ -24,20 +50,7 @@ app.get('/api/latest', async (c) => {
     'SELECT * FROM images WHERE ai_caption IS NOT NULL ORDER BY created_at DESC LIMIT 100'
   ).all<DBImage>();
 
-  const images: ImageResult[] = results.map(img => {
-    const meta = JSON.parse(img.meta_json || '{}');
-    return {
-      id: img.id,
-      url: `/image/display/${img.id}.jpg`,
-      width: img.width,
-      height: img.height,
-      caption: img.ai_caption,
-      tags: JSON.parse(img.ai_tags || '[]'),
-      photographer: meta.user?.name,
-      blurHash: meta.blur_hash,
-      color: img.color,
-    };
-  });
+  const images: ImageResult[] = results.map(img => toImageResult(img));
 
   return c.json({ results: images, total: images.length });
 });
@@ -70,19 +83,7 @@ app.get('/api/search', async (c) => {
     const images: ImageResult[] = vecResults.matches.map(match => {
       const dbImage = results.find(r => r.id === match.id);
       if (!dbImage) return null;
-      const meta = JSON.parse(dbImage.meta_json || '{}');
-      return {
-        id: dbImage.id,
-        url: `/image/display/${dbImage.id}.jpg`,
-        width: dbImage.width,
-        height: dbImage.height,
-        caption: dbImage.ai_caption,
-        tags: JSON.parse(dbImage.ai_tags || '[]'),
-        score: match.score,
-        photographer: meta.user?.name,
-        blurHash: meta.blur_hash,
-        color: dbImage.color,
-      };
+      return toImageResult(dbImage, match.score);
     }).filter(Boolean) as ImageResult[];
 
     return c.json<SearchResponse>({ results: images, total: images.length, took: Date.now() - start });
@@ -156,6 +157,38 @@ app.get('/image/:type/:filename', async (c) => {
   headers.set('cache-control', 'public, max-age=31536000'); // Cache 1 year
 
   return new Response(object.body, { headers });
+});
+
+// Temporary: regenerate all embeddings with enriched text
+app.post('/api/backfill', async (c) => {
+  const offset = Number(c.req.query('offset') || '0');
+  const limit = Number(c.req.query('limit') || '5');
+  const { results } = await c.env.DB.prepare(
+    'SELECT id, ai_caption, ai_tags, meta_json FROM images WHERE ai_caption IS NOT NULL ORDER BY id LIMIT ? OFFSET ?'
+  ).bind(limit, offset).all<DBImage>();
+
+  let done = 0;
+  for (const img of results) {
+    const meta = JSON.parse(img.meta_json || '{}');
+    const tags = JSON.parse(img.ai_tags || '[]');
+    const parts = [img.ai_caption || ''];
+    if (tags.length) parts.push(`Tags: ${tags.join(', ')}`);
+    if (meta.alt_description) parts.push(meta.alt_description);
+    if (meta.description) parts.push(meta.description);
+    if (meta.user?.name) parts.push(`Photographer: ${meta.user.name}`);
+    if (meta.location?.name) parts.push(`Location: ${meta.location.name}`);
+    const topics = Object.keys(meta.topic_submissions || {});
+    if (topics.length) parts.push(`Topics: ${topics.join(', ')}`);
+
+    const text = parts.join(' | ');
+    const resp = await c.env.AI.run('@cf/baai/bge-base-en-v1.5', { text: [text] }) as { data: number[][] };
+    const embedding = resp.data[0];
+    await c.env.DB.prepare('UPDATE images SET ai_embedding = ? WHERE id = ?')
+      .bind(JSON.stringify(embedding), img.id).run();
+    await c.env.VECTORIZE.upsert([{ id: img.id, values: embedding }]);
+    done++;
+  }
+  return c.json({ offset, limit, done, hasMore: results.length === limit });
 });
 
 export default app;
