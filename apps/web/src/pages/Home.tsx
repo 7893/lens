@@ -233,9 +233,6 @@ export default function Home() {
         {took !== undefined && isSearching && (
           <p className="text-xs text-gray-400 mt-2">Found {total} results in {took}ms</p>
         )}
-        {!isSearching && !isLoading && (
-          <p className="text-xs text-gray-400 mt-2">{total} photos in gallery</p>
-        )}
       </div>
 
       <div className="max-w-7xl mx-auto columns-1 sm:columns-2 md:columns-3 lg:columns-4 gap-4 space-y-4">
