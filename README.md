@@ -81,10 +81,19 @@
 
 ## 工程亮点
 
-- **纯 TypeScript** — 代码、类型、配置，全是 TS。共享类型包让前后端契约在编译期就锁死
-- **Monorepo** — npm workspaces，一次 commit 改 API + 前端 + 类型，原子提交
-- **IaC** — Terraform 管理 D1/Queue/Vectorize，`terraform apply` 一键拉起整套基础设施
-- **CI/CD** — 推到 main 自动构建部署，55 秒上线
+大部分"AI 图库"项目到 `npm start` 就结束了。我们不一样：
+
+🔒 **类型安全到牙齿** — 纯 TypeScript，strict mode，零 `any`。前后端共享类型包（`@pic/shared`），API 返回什么、前端收到什么，编译期就锁死。改了接口忘改前端？`tsc` 直接拦住你。
+
+🧱 **Monorepo 原子提交** — API、前端、类型定义在同一个仓库。一次 commit 同时改三个包，不存在"后端上了新接口但前端还没跟上"的窗口期。
+
+🏭 **基础设施即代码** — D1、Queue、Vectorize 全部 Terraform 管理。新环境？`terraform apply`，30 秒拉起整套系统。不是手动在 Dashboard 上点点点。
+
+🚀 **55 秒从 `git push` 到生产** — GitHub Actions 自动构建 shared → web → 打包进 Worker → 部署。没有手动步骤，没有审批流程，推了就上。
+
+🔄 **自愈式采集管道** — Workflow 每一步独立重试。AI 模型超时？重试。R2 写入失败？重试。Vectorize 没同步？下一轮 Cron 自动补上。不需要人工干预，不需要告警群里 @all。
+
+📐 **两个 Worker 撑起整个系统** — `pic` 一个 Worker 同时提供 API + 前端 + 图片代理（同源零跨域），`pic-processor` 负责后台采集。没有微服务地狱，没有 sidecar，没有 service mesh。简单到离谱，但它就是能跑。
 
 ## 文档
 
