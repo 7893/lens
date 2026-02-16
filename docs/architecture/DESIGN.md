@@ -32,7 +32,7 @@ Cron (hourly) → Processor scheduled handler
   → Queue consumer creates LensIngestWorkflow per photo
   → Workflow steps:
       1. download-and-store: raw + display images → R2
-      2. analyze-vision: LLaVA generates caption
+      2. analyze-vision: Llama 3.2 Vision generates caption
       3. generate-embedding: BGE generates 768-dim vector
       4. persist-d1: metadata + embedding → D1
   → Cron also syncs all D1 embeddings → Vectorize (idempotent upsert)
