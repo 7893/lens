@@ -1,5 +1,5 @@
 import { WorkflowEntrypoint, WorkflowStep, WorkflowEvent } from 'cloudflare:workers';
-import { IngestionTask, UnsplashPhoto } from '@pic/shared';
+import { IngestionTask, UnsplashPhoto } from '@iris/shared';
 import { fetchRandomPhotos } from './utils/unsplash';
 import { streamToR2 } from './services/downloader';
 import { analyzeImage, generateEmbedding } from './services/ai';
@@ -73,7 +73,7 @@ export default {
   }
 };
 
-export class PicIngestWorkflow extends WorkflowEntrypoint<Env, IngestionTask> {
+export class IrisIngestWorkflow extends WorkflowEntrypoint<Env, IngestionTask> {
   async run(event: WorkflowEvent<IngestionTask>, step: WorkflowStep) {
     const task = event.payload;
     const { photoId, displayUrl, meta } = task;

@@ -5,7 +5,7 @@ Pic uses npm workspaces monorepo.
 ## Structure
 
 ```
-pic/
+iris/
 ├── apps/
 │   ├── api/          # Hono Worker (API + static frontend)
 │   ├── processor/    # Queue/Workflow Worker (ingestion)
@@ -26,7 +26,7 @@ npm install
 
 ```bash
 # Build web and copy to api
-npm run build --workspace=@pic/web
+npm run build --workspace=@iris/web
 cp -r apps/web/dist apps/api/public
 
 # Start main Worker (API + frontend)

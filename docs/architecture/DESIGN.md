@@ -6,14 +6,14 @@ Two pipelines: **Ingestion** (write) and **Search** (read).
 
 ```mermaid
 graph TD
-    User((用户)) -->|搜索/浏览| Worker[pic Worker]
+    User((用户)) -->|搜索/浏览| Worker[iris Worker]
     Worker -->|向量搜索| Vectorize[(Vector DB)]
     Worker -->|元数据| D1[(D1 DB)]
     Worker -->|图片| R2[(R2)]
     
     subgraph 采集管道
         Cron[定时触发] -->|获取任务| Queue[Queue]
-        Queue -->|处理| Workflow[PicIngestWorkflow]
+        Queue -->|处理| Workflow[IrisIngestWorkflow]
         Workflow -->|1. 下载| R2
         Workflow -->|2. AI 分析| AI_Vision[Vision Model]
         Workflow -->|3. 向量化| AI_Embed[Embedding Model]
@@ -29,7 +29,7 @@ graph TD
 Cron (hourly) → Processor scheduled handler
   → fetch 30 random Unsplash photos
   → send to Queue (process-photo messages)
-  → Queue consumer creates PicIngestWorkflow per photo
+  → Queue consumer creates IrisIngestWorkflow per photo
   → Workflow steps:
       1. download-and-store: raw + display images → R2
       2. analyze-vision: LLaVA generates caption
@@ -41,7 +41,7 @@ Cron (hourly) → Processor scheduled handler
 ### Search Pipeline
 
 ```
-User query → pic Worker (Hono)
+User query → iris Worker (Hono)
   → BGE embedding of query text
   → Vectorize.query(vector, topK)
   → D1 lookup by matched IDs
@@ -54,12 +54,12 @@ Frontend is bundled as static assets in the same Worker.
 
 | Component | Tech | Name |
 |-----------|------|------|
-| Main Worker | Hono (API + static frontend) | `pic` |
-| Processor Worker | Queue/Workflow | `pic-processor` |
-| Database | D1 (SQLite) | `pic-db` |
-| Object Storage | R2 | `pic-r2` |
-| Vector Index | Vectorize (768d, cosine) | `pic-vectors` |
-| Task Queue | Queues | `pic-ingestion` |
+| Main Worker | Hono (API + static frontend) | `iris` |
+| Processor Worker | Queue/Workflow | `iris-processor` |
+| Database | D1 (SQLite) | `iris-db` |
+| Object Storage | R2 | `iris-r2` |
+| Vector Index | Vectorize (768d, cosine) | `iris-vectors` |
+| Task Queue | Queues | `iris-queue` |
 | Vision AI | `@cf/meta/llama-3.2-11b-vision-instruct` | — |
 | Embedding AI | `@cf/baai/bge-base-en-v1.5` | — |
 
