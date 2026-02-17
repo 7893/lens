@@ -100,66 +100,82 @@ export default {
 
       // 4. Backfill: use remaining quota to scan for gaps
       if (remaining > 2) {
-        const scanPageConfig = await env.DB.prepare(
-          "SELECT value FROM system_config WHERE key = 'backfill_page'",
+        const backfillDoneConfig = await env.DB.prepare(
+          "SELECT value FROM system_config WHERE key = 'backfill_done'",
         ).first<{ value: string }>();
-        let scanPage = parseInt(scanPageConfig?.value || '1', 10);
-        let backfilled = 0;
-        let consecutiveEmpty = 0;
 
-        console.log(`🔄 Backfill starting at page ${scanPage}, remaining=${remaining}`);
+        if (backfillDoneConfig?.value !== 'true') {
+          const scanPageConfig = await env.DB.prepare(
+            "SELECT value FROM system_config WHERE key = 'backfill_page'",
+          ).first<{ value: string }>();
+          let scanPage = Math.max(1, parseInt(scanPageConfig?.value || '1', 10) - 5);
+          let backfilled = 0;
+          let consecutiveEmpty = 0;
 
-        while (remaining > 2) {
-          const result = await fetchLatestPhotos(env.UNSPLASH_API_KEY, scanPage, 30);
-          remaining = result.remaining;
-          if (!result.photos.length) break;
+          console.log(`🔄 Backfill starting at page ${scanPage}, remaining=${remaining}`);
 
-          // Batch check existing IDs for this page only
-          const pageIds = result.photos.map((p) => p.id);
-          const placeholders = pageIds.map(() => '?').join(',');
-          const existing = new Set(
-            (
-              await env.DB.prepare(`SELECT id FROM images WHERE id IN (${placeholders})`)
-                .bind(...pageIds)
-                .all<{ id: string }>()
-            ).results.map((r) => r.id),
-          );
+          while (remaining > 2) {
+            const result = await fetchLatestPhotos(env.UNSPLASH_API_KEY, scanPage, 30);
+            remaining = result.remaining;
 
-          const gaps = result.photos.filter((p) => !existing.has(p.id));
-          if (gaps.length > 0) {
-            consecutiveEmpty = 0;
-            const tasks: IngestionTask[] = gaps.map((photo) => ({
-              type: 'process-photo' as const,
-              photoId: photo.id,
-              downloadUrl: photo.urls.raw,
-              displayUrl: photo.urls.regular,
-              photographer: photo.user.name,
-              source: 'unsplash' as const,
-              meta: photo,
-            }));
-            await env.PHOTO_QUEUE.sendBatch(tasks.map((task) => ({ body: task, contentType: 'json' })));
-            backfilled += gaps.length;
-          } else {
-            consecutiveEmpty++;
+            if (!result.photos.length) {
+              // Reached end of Unsplash, backfill complete
+              await env.DB.prepare(
+                "INSERT INTO system_config (key, value, updated_at) VALUES ('backfill_done', 'true', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+              )
+                .bind(Date.now())
+                .run();
+              console.log(`🏁 Backfill complete, no more pages`);
+              break;
+            }
+
+            const pageIds = result.photos.map((p) => p.id);
+            const placeholders = pageIds.map(() => '?').join(',');
+            const existing = new Set(
+              (
+                await env.DB.prepare(`SELECT id FROM images WHERE id IN (${placeholders})`)
+                  .bind(...pageIds)
+                  .all<{ id: string }>()
+              ).results.map((r) => r.id),
+            );
+
+            const gaps = result.photos.filter((p) => !existing.has(p.id));
+            if (gaps.length > 0) {
+              consecutiveEmpty = 0;
+              const tasks: IngestionTask[] = gaps.map((photo) => ({
+                type: 'process-photo' as const,
+                photoId: photo.id,
+                downloadUrl: photo.urls.raw,
+                displayUrl: photo.urls.regular,
+                photographer: photo.user.name,
+                source: 'unsplash' as const,
+                meta: photo,
+              }));
+              await env.PHOTO_QUEUE.sendBatch(tasks.map((task) => ({ body: task, contentType: 'json' })));
+              backfilled += gaps.length;
+            } else {
+              consecutiveEmpty++;
+            }
+
+            console.log(`🔄 Backfill page ${scanPage}: +${gaps.length} gaps (remaining=${remaining})`);
+            scanPage++;
+
+            if (consecutiveEmpty >= 5) {
+              scanPage += 10;
+              consecutiveEmpty = 0;
+              console.log(`⏩ Skipping ahead to page ${scanPage}`);
+            }
           }
 
-          console.log(`🔄 Backfill page ${scanPage}: +${gaps.length} gaps (remaining=${remaining})`);
-          scanPage++;
-
-          // Skip ahead if too many consecutive empty pages
-          if (consecutiveEmpty >= 5) {
-            scanPage += 10;
-            consecutiveEmpty = 0;
-            console.log(`⏩ Skipping ahead to page ${scanPage}`);
-          }
+          await env.DB.prepare(
+            "INSERT INTO system_config (key, value, updated_at) VALUES ('backfill_page', ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+          )
+            .bind(String(scanPage), Date.now())
+            .run();
+          console.log(`✅ Backfill: ${backfilled} gaps filled, next page=${scanPage}`);
+        } else {
+          console.log(`⏭️ Backfill already complete, skipping`);
         }
-
-        await env.DB.prepare(
-          "INSERT INTO system_config (key, value, updated_at) VALUES ('backfill_page', ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
-        )
-          .bind(String(scanPage), Date.now())
-          .run();
-        console.log(`✅ Backfill done: ${backfilled} gaps filled, next page=${scanPage}`);
       }
 
       // 5. Catch-up sync: handle any records missed by Workflow (e.g. manual inserts)
