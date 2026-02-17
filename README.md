@@ -48,9 +48,10 @@
 │                                  ├─ Download → R2     │
 │                                  ├─ Llama Vision → AI │
 │                                  ├─ BGE → Embedding   │
-│                                  └─ Persist → D1      │
+│                                  ├─ Persist → D1      │
+│                                  └─ Sync → Vectorize  │
 │                                                       │
-│  Cron also syncs D1 embeddings → Vectorize (upsert)   │
+│  Cron catch-up sync as fallback for missed vectors    │
 └───────────────────────────────────────────────────────┘
 ```
 
@@ -88,7 +89,9 @@
 - **边缘原生 AI** — 视觉理解、查询扩展、结果重排，三个 AI 任务全跑在 Cloudflare 边缘
 - **端到端类型安全** — `@lens/shared` 在编译期锁定 API 契约
 - **Monorepo 原子提交** — API、前端、类型、采集引擎同仓库，零版本漂移
-- **高水位增量采集** — 用 Unsplash 发布时间做游标，同秒 ID 去重，每小时仅消耗 1-2 次 API 配额
+- **高水位增量采集** — 用 Unsplash 发布时间做游标，同秒 ID 去重，新图仅需 1-2 次 API 调用
+- **深度补漏** — 剩余配额自动扫历史页，逐步填补早期遗漏，配额利用率接近 100%
+- **实时向量同步** — Workflow 完成即 upsert Vectorize，Cron 兜底补漏，R2/D1/Vectorize 始终一致
 - **幂等全链路** — `ON CONFLICT DO UPDATE` + `upsert`，无限重试也安全
 - **事件驱动自愈** — Cron → Queue → Workflow，每步独立重试
 - **基础设施即代码** — D1、Queue、Vectorize 由 Terraform 管理
