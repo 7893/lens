@@ -41,6 +41,6 @@ bucket_name = "lens-r2"
 binding = "VECTORIZE"
 index_name = "lens-vectors-v2"
 
-# Cron Trigger (Scheduler) — disabled for debugging
-# [triggers]
-# crons = ["0 * * * *"]
+# Cron Trigger (Scheduler)
+[triggers]
+crons = ["0 * * * *"]
