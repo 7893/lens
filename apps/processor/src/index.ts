@@ -37,7 +37,16 @@ export default {
       const watermark = config?.value || '1970-01-01T00:00:00Z';
       console.log(`📌 High watermark: ${watermark}`);
 
-      // 2. Fetch latest photos, stop when we hit photos older than watermark
+      // 2. Collect known IDs at watermark boundary for dedup
+      const knownIds = new Set<string>();
+      if (watermark !== '1970-01-01T00:00:00Z') {
+        const rows = await env.DB.prepare(
+          "SELECT id FROM images WHERE json_extract(meta_json, '$.created_at') = ?"
+        ).bind(watermark).all<{ id: string }>();
+        for (const r of rows.results) knownIds.add(r.id);
+      }
+
+      // 3. Fetch latest photos, stop when we hit photos strictly older than watermark
       let totalEnqueued = 0;
       let newWatermark = watermark;
       const MAX_PAGES = 50;
@@ -49,7 +58,8 @@ export default {
         let hitOld = false;
         const newPhotos = [];
         for (const photo of photos) {
-          if (photo.created_at <= watermark) { hitOld = true; break; }
+          if (photo.created_at < watermark) { hitOld = true; break; }
+          if (photo.created_at === watermark && knownIds.has(photo.id)) continue;
           newPhotos.push(photo);
           if (photo.created_at > newWatermark) newWatermark = photo.created_at;
         }
