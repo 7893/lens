@@ -27,6 +27,37 @@ export interface Env {
 }
 
 export default {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    const url = new URL(request.url);
+    if (url.pathname !== '/fix-orphans') return new Response('not found', { status: 404 });
+
+    const ids = (url.searchParams.get('ids') || '').split(',').filter(Boolean);
+    if (!ids.length) return new Response('provide ?ids=a,b,c');
+
+    const results: string[] = [];
+    for (const id of ids) {
+      try {
+        const obj = await env.R2.get(`display/${id}.jpg`);
+        if (!obj) { results.push(`${id}: no R2 file`); continue; }
+
+        const analysis = await analyzeImage(env.AI, obj.body);
+        const text = buildEmbeddingText(analysis.caption, analysis.tags);
+        const vector = await generateEmbedding(env.AI, text);
+
+        await env.DB.prepare(`
+          INSERT INTO images (id, width, height, color, raw_key, display_key, meta_json, ai_tags, ai_caption, ai_embedding, created_at)
+          VALUES (?, 0, 0, null, ?, ?, '{}', ?, ?, ?, ?)
+          ON CONFLICT(id) DO UPDATE SET ai_caption = excluded.ai_caption, ai_embedding = excluded.ai_embedding, ai_tags = excluded.ai_tags
+        `).bind(id, `raw/${id}.jpg`, `display/${id}.jpg`, JSON.stringify(analysis.tags), analysis.caption, JSON.stringify(vector), Date.now()).run();
+
+        results.push(`${id}: ✅`);
+      } catch (e: any) {
+        results.push(`${id}: ❌ ${e.message}`);
+      }
+    }
+    return new Response(results.join('\n'));
+  },
+
   async scheduled(_event: ScheduledEvent, env: Env, _ctx: ExecutionContext): Promise<void> {
     console.log('⏰ Cron triggered');
     if (!env.UNSPLASH_API_KEY) return;
