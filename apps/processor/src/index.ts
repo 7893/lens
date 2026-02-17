@@ -49,15 +49,17 @@ export default {
       // 3. Fetch latest photos, stop when we hit photos strictly older than watermark
       let totalEnqueued = 0;
       let newWatermark = watermark;
+      let remaining = 50;
       const MAX_PAGES = 50;
 
       for (let page = 1; page <= MAX_PAGES; page++) {
-        const photos = await fetchLatestPhotos(env.UNSPLASH_API_KEY, page, 30);
-        if (!photos.length) break;
+        const result = await fetchLatestPhotos(env.UNSPLASH_API_KEY, page, 30);
+        remaining = result.remaining;
+        if (!result.photos.length) break;
 
         let hitOld = false;
         const newPhotos = [];
-        for (const photo of photos) {
+        for (const photo of result.photos) {
           if (photo.created_at < watermark) { hitOld = true; break; }
           if (photo.created_at === watermark && knownIds.has(photo.id)) continue;
           newPhotos.push(photo);
@@ -93,6 +95,45 @@ export default {
       }
 
       console.log(`✅ Total enqueued: ${totalEnqueued} new photos`);
+
+      // 4. Backfill: use remaining quota to scan for gaps
+      if (remaining > 2) {
+        const scanPageConfig = await env.DB.prepare("SELECT value FROM system_config WHERE key = 'backfill_page'").first<{ value: string }>();
+        let scanPage = parseInt(scanPageConfig?.value || '1', 10);
+        const allIds = new Set((await env.DB.prepare('SELECT id FROM images').all<{ id: string }>()).results.map(r => r.id));
+        let backfilled = 0;
+
+        console.log(`🔄 Backfill starting at page ${scanPage}, remaining=${remaining}`);
+
+        while (remaining > 2) {
+          const result = await fetchLatestPhotos(env.UNSPLASH_API_KEY, scanPage, 30);
+          remaining = result.remaining;
+          if (!result.photos.length) { scanPage = 1; break; }
+
+          const gaps = result.photos.filter(p => !allIds.has(p.id));
+          if (gaps.length > 0) {
+            const tasks: IngestionTask[] = gaps.map(photo => ({
+              type: 'process-photo' as const,
+              photoId: photo.id,
+              downloadUrl: photo.urls.raw,
+              displayUrl: photo.urls.regular,
+              photographer: photo.user.name,
+              source: 'unsplash' as const,
+              meta: photo
+            }));
+            await env.PHOTO_QUEUE.sendBatch(tasks.map(task => ({ body: task, contentType: 'json' })));
+            for (const p of gaps) allIds.add(p.id);
+            backfilled += gaps.length;
+          }
+
+          console.log(`🔄 Backfill page ${scanPage}: +${gaps.length} gaps (remaining=${remaining})`);
+          scanPage++;
+        }
+
+        await env.DB.prepare("INSERT INTO system_config (key, value, updated_at) VALUES ('backfill_page', ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at")
+          .bind(String(scanPage), Date.now()).run();
+        console.log(`✅ Backfill done: ${backfilled} gaps filled, next page=${scanPage}`);
+      }
 
       // 2. Sync D1 embeddings → Vectorize (idempotent)
       const rows = await env.DB.prepare(

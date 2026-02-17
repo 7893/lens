@@ -2,7 +2,12 @@ import { UnsplashPhoto } from '@lens/shared';
 
 const UNSPLASH_API_URL = 'https://api.unsplash.com';
 
-export async function fetchLatestPhotos(apiKey: string, page: number = 1, perPage: number = 30): Promise<UnsplashPhoto[]> {
+export interface FetchResult {
+  photos: UnsplashPhoto[];
+  remaining: number;
+}
+
+export async function fetchLatestPhotos(apiKey: string, page: number = 1, perPage: number = 30): Promise<FetchResult> {
   const url = `${UNSPLASH_API_URL}/photos?order_by=latest&per_page=${perPage}&page=${page}`;
   console.log(`🌐 Fetching latest photos page ${page}`);
 
@@ -17,8 +22,9 @@ export async function fetchLatestPhotos(apiKey: string, page: number = 1, perPag
     throw new Error(`Unsplash fetch failed: ${response.statusText}`);
   }
 
-  const remaining = response.headers.get('X-Ratelimit-Remaining');
+  const remaining = parseInt(response.headers.get('X-Ratelimit-Remaining') || '0', 10);
   console.log(`📊 Unsplash Quota Remaining: ${remaining}`);
 
-  return response.json() as Promise<UnsplashPhoto[]>;
+  const photos = await response.json() as UnsplashPhoto[];
+  return { photos, remaining };
 }
