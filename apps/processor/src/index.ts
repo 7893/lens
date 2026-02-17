@@ -32,30 +32,29 @@ export default {
     if (!env.UNSPLASH_API_KEY) return;
 
     try {
-      // 1. Get latest known image ID
-      const latest = await env.DB.prepare('SELECT id FROM images ORDER BY created_at DESC LIMIT 1').first<{ id: string }>();
-      const lastId = latest?.id;
-      console.log(`📌 Last synced ID: ${lastId || 'none'}`);
+      // 1. Read high watermark (latest Unsplash created_at we've seen)
+      const config = await env.DB.prepare("SELECT value FROM system_config WHERE key = 'unsplash_high_watermark'").first<{ value: string }>();
+      const watermark = config?.value || '1970-01-01T00:00:00Z';
+      console.log(`📌 High watermark: ${watermark}`);
 
-      // 2. Fetch latest photos, page by page until we hit known images
+      // 2. Fetch latest photos, stop when we hit photos older than watermark
       let totalEnqueued = 0;
-      let emptyPages = 0;
+      let newWatermark = watermark;
       const MAX_PAGES = 50;
 
       for (let page = 1; page <= MAX_PAGES; page++) {
         const photos = await fetchLatestPhotos(env.UNSPLASH_API_KEY, page, 30);
         if (!photos.length) break;
 
-        // Filter out already-known photos
-        let hitLast = false;
+        let hitOld = false;
         const newPhotos = [];
         for (const photo of photos) {
-          if (photo.id === lastId) { hitLast = true; break; }
+          if (photo.created_at <= watermark) { hitOld = true; break; }
           newPhotos.push(photo);
+          if (photo.created_at > newWatermark) newWatermark = photo.created_at;
         }
 
         if (newPhotos.length > 0) {
-          emptyPages = 0;
           const tasks: IngestionTask[] = newPhotos.map(photo => ({
             type: 'process-photo' as const,
             photoId: photo.id,
@@ -68,14 +67,19 @@ export default {
           await env.PHOTO_QUEUE.sendBatch(tasks.map(task => ({ body: task, contentType: 'json' })));
           totalEnqueued += newPhotos.length;
           console.log(`📦 Page ${page}: enqueued ${newPhotos.length} new photos`);
-        } else {
-          emptyPages++;
         }
 
-        if (hitLast || emptyPages >= 2) {
-          console.log(`🛑 Stopping at page ${page} (hitLast=${hitLast}, emptyPages=${emptyPages})`);
+        if (hitOld) {
+          console.log(`🛑 Hit old photo at page ${page}, stopping`);
           break;
         }
+      }
+
+      // 3. Update high watermark
+      if (newWatermark !== watermark) {
+        await env.DB.prepare("INSERT INTO system_config (key, value, updated_at) VALUES ('unsplash_high_watermark', ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at")
+          .bind(newWatermark, Date.now()).run();
+        console.log(`📌 Watermark updated: ${watermark} → ${newWatermark}`);
       }
 
       console.log(`✅ Total enqueued: ${totalEnqueued} new photos`);
