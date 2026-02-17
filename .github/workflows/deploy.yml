@@ -6,30 +6,35 @@ on:
   workflow_dispatch:
 
 jobs:
-  deploy:
+  quality:
     runs-on: ubuntu-latest
-    name: Deploy to Cloudflare
+    name: Quality Gate
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: 'npm'
+      - run: npm ci
+      - run: npm run build --workspace=@lens/shared
+      - run: npm run lint
+      - run: npm run test
+      - run: npm run typecheck
 
-      - name: Install Dependencies
-        run: npm ci
-
-      - name: Build Shared Package
-        run: npm run build --workspace=@lens/shared
-
-      - name: Build Web Frontend
-        run: npm run build --workspace=@lens/web
-
-      - name: Copy Web Assets to API
-        run: cp -r apps/web/dist apps/api/public
+  deploy:
+    needs: quality
+    runs-on: ubuntu-latest
+    name: Deploy to Cloudflare
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run build --workspace=@lens/shared
+      - run: npm run build --workspace=@lens/web
+      - run: cp -r apps/web/dist apps/api/public
 
       - name: Deploy Lens Worker
         uses: cloudflare/wrangler-action@v3
