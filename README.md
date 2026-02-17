@@ -15,7 +15,7 @@
 
 一个**零运维、全自动**的 AI 语义图库。
 
-- 每小时自动从 Unsplash 采集新图，图库持续增长
+- 每小时自动从 Unsplash 增量采集新图，基于高水位游标避免重复
 - Llama 3.2 Vision 理解每张图的内容
 - BGE Large 生成 1024 维语义向量，融合全部元数据
 - 三级搜索管道：LLM 查询扩展 → 向量检索 → LLM 语义重排
@@ -88,6 +88,7 @@
 - **边缘原生 AI** — 视觉理解、查询扩展、结果重排，三个 AI 任务全跑在 Cloudflare 边缘
 - **端到端类型安全** — `@lens/shared` 在编译期锁定 API 契约
 - **Monorepo 原子提交** — API、前端、类型、采集引擎同仓库，零版本漂移
+- **高水位增量采集** — 用 Unsplash 发布时间做游标，同秒 ID 去重，每小时仅消耗 1-2 次 API 配额
 - **幂等全链路** — `ON CONFLICT DO UPDATE` + `upsert`，无限重试也安全
 - **事件驱动自愈** — Cron → Queue → Workflow，每步独立重试
 - **基础设施即代码** — D1、Queue、Vectorize 由 Terraform 管理
