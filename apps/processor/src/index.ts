@@ -151,23 +151,33 @@ export default {
         console.log(`✅ Backfill done: ${backfilled} gaps filled, next page=${scanPage}`);
       }
 
-      // 2. Sync D1 embeddings → Vectorize (idempotent)
-      const rows = await env.DB.prepare(
-        'SELECT id, ai_caption, ai_embedding FROM images WHERE ai_embedding IS NOT NULL'
-      ).all<{ id: string; ai_caption: string; ai_embedding: string }>();
+      // 5. Incremental sync: D1 embeddings → Vectorize
+      const lastSyncConfig = await env.DB.prepare("SELECT value FROM system_config WHERE key = 'vectorize_last_sync'").first<{ value: string }>();
+      const lastSync = parseInt(lastSyncConfig?.value || '0', 10);
 
-      const vectors = rows.results
-        .map(r => {
-          try {
-            return { id: r.id, values: JSON.parse(r.ai_embedding), metadata: { url: `display/${r.id}.jpg`, caption: r.ai_caption || '' } };
-          } catch { return null; }
-        })
-        .filter(Boolean) as VectorizeVector[];
+      const syncRows = await env.DB.prepare(
+        'SELECT id, ai_caption, ai_embedding FROM images WHERE ai_embedding IS NOT NULL AND created_at > ?'
+      ).bind(lastSync).all<{ id: string; ai_caption: string; ai_embedding: string }>();
 
-      for (let i = 0; i < vectors.length; i += 100) {
-        await env.VECTORIZE.upsert(vectors.slice(i, i + 100));
+      if (syncRows.results.length > 0) {
+        const vectors = syncRows.results
+          .map(r => {
+            try {
+              return { id: r.id, values: JSON.parse(r.ai_embedding), metadata: { url: `display/${r.id}.jpg`, caption: r.ai_caption || '' } };
+            } catch { return null; }
+          })
+          .filter(Boolean) as VectorizeVector[];
+
+        for (let i = 0; i < vectors.length; i += 100) {
+          await env.VECTORIZE.upsert(vectors.slice(i, i + 100));
+        }
+
+        await env.DB.prepare("INSERT INTO system_config (key, value, updated_at) VALUES ('vectorize_last_sync', ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at")
+          .bind(String(Date.now()), Date.now()).run();
+        console.log(`✅ Synced ${vectors.length} new vectors to Vectorize`);
+      } else {
+        console.log(`✅ No new vectors to sync`);
       }
-      console.log(`✅ Synced ${vectors.length} vectors to Vectorize`);
     } catch (error) {
       console.error('Scheduler error:', error);
     }
