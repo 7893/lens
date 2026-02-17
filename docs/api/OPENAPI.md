@@ -34,7 +34,13 @@ Base URL: `https://lens.53.workers.dev`
         "color": "#262626",
         "location": "Tokyo, Japan",
         "description": "Busy intersection in Shibuya at night",
-        "exif": { "camera": "SONY, ILCE-7RM5", "aperture": "f/2.8", "exposure": "1/100s", "focalLength": "28.0mm", "iso": 100 },
+        "exif": {
+          "camera": "SONY, ILCE-7RM5",
+          "aperture": "f/2.8",
+          "exposure": "1/100s",
+          "focalLength": "28.0mm",
+          "iso": 100
+        },
         "topics": ["street-photography", "travel"]
       }
     ],
@@ -72,12 +78,20 @@ Base URL: `https://lens.53.workers.dev`
       "totalPhotos": 352
     },
     "exif": {
-      "make": "SONY", "model": "ILCE-7RM5", "camera": "SONY, ILCE-7RM5",
-      "aperture": "f/2.8", "exposure": "1/100s", "focalLength": "28.0mm", "iso": 100
+      "make": "SONY",
+      "model": "ILCE-7RM5",
+      "camera": "SONY, ILCE-7RM5",
+      "aperture": "f/2.8",
+      "exposure": "1/100s",
+      "focalLength": "28.0mm",
+      "iso": 100
     },
     "location": {
-      "name": "Tokyo, Japan", "city": "Tokyo", "country": "Japan",
-      "latitude": 35.6762, "longitude": 139.6503
+      "name": "Tokyo, Japan",
+      "city": "Tokyo",
+      "country": "Japan",
+      "latitude": 35.6762,
+      "longitude": 139.6503
     },
     "topics": ["street-photography", "travel"],
     "stats": { "views": 416317, "downloads": 9522, "likes": 10 },

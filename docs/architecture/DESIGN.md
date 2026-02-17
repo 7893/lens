@@ -10,7 +10,7 @@ graph TD
     Worker -->|向量搜索| Vectorize[(Vector DB)]
     Worker -->|元数据| D1[(D1 DB)]
     Worker -->|图片| R2[(R2)]
-    
+
     subgraph 采集管道
         Cron[定时触发] -->|获取任务| Queue[Queue]
         Queue -->|处理| Workflow[LensIngestWorkflow]
@@ -20,7 +20,7 @@ graph TD
         Workflow -->|4. 写入| D1
         Workflow -->|5. 同步| Vectorize
     end
-    
+
     Cron -->|兜底同步| Vectorize
 ```
 
@@ -59,16 +59,16 @@ Frontend is bundled as static assets in the same Worker.
 
 ## Components
 
-| Component | Tech | Name |
-|-----------|------|------|
-| Main Worker | Hono (API + static frontend) | `lens` |
-| Processor Worker | Queue/Workflow | `lens-processor` |
-| Database | D1 (SQLite) | `lens-db` |
-| Object Storage | R2 | `lens-r2` |
-| Vector Index | Vectorize (1024d, cosine) | `lens-vectors-v2` |
-| Task Queue | Queues | `lens-queue` |
-| Vision AI | `@cf/meta/llama-3.2-11b-vision-instruct` | — |
-| Embedding AI | `@cf/baai/bge-large-en-v1.5` | — |
+| Component        | Tech                                     | Name              |
+| ---------------- | ---------------------------------------- | ----------------- |
+| Main Worker      | Hono (API + static frontend)             | `lens`            |
+| Processor Worker | Queue/Workflow                           | `lens-processor`  |
+| Database         | D1 (SQLite)                              | `lens-db`         |
+| Object Storage   | R2                                       | `lens-r2`         |
+| Vector Index     | Vectorize (1024d, cosine)                | `lens-vectors-v2` |
+| Task Queue       | Queues                                   | `lens-queue`      |
+| Vision AI        | `@cf/meta/llama-3.2-11b-vision-instruct` | —                 |
+| Embedding AI     | `@cf/baai/bge-large-en-v1.5`             | —                 |
 
 ## D1 Schema
 

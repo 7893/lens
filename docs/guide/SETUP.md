@@ -55,6 +55,7 @@ CI/CD via GitHub Actions (`.github/workflows/`). On push to `main`:
 4. Deploys `lens-processor` Worker
 
 Manual deploy:
+
 ```bash
 npm run build --workspace=@lens/shared
 npm run build --workspace=@lens/web

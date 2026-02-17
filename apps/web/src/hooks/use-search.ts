@@ -15,15 +15,15 @@ export function useSearch() {
     return () => clearTimeout(handler);
   }, [query]);
 
-  useEffect(() => { setVisible(PAGE_SIZE); }, [debouncedQuery]);
+  useEffect(() => {
+    setVisible(PAGE_SIZE);
+  }, [debouncedQuery]);
 
-  const searchUrl = debouncedQuery
-    ? `/api/search?q=${encodeURIComponent(debouncedQuery)}`
-    : null;
+  const searchUrl = debouncedQuery ? `/api/search?q=${encodeURIComponent(debouncedQuery)}` : null;
 
   const { data, isLoading } = useSWR<SearchResponse>(searchUrl, fetcher, { keepPreviousData: true });
 
-  const all = debouncedQuery ? (data?.results || []) : [];
+  const all = debouncedQuery ? data?.results || [] : [];
   const results = all.slice(0, visible);
   const hasMore = visible < all.length;
 
@@ -35,7 +35,7 @@ export function useSearch() {
     isLoading,
     isSearching: !!debouncedQuery,
     hasMore,
-    loadMore: useCallback(() => setVisible(v => v + PAGE_SIZE), []),
-    took: data?.took
+    loadMore: useCallback(() => setVisible((v) => v + PAGE_SIZE), []),
+    took: data?.took,
   };
 }
