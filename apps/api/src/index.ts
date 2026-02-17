@@ -39,7 +39,19 @@ function toImageResult(img: DBImage, score?: number): ImageResult {
 }
 
 // Middleware
-app.use('/*', cors());
+app.use('/*', cors({ origin: ['https://lens.53.workers.dev'], allowMethods: ['GET'] }));
+
+// Rate limit: simple per-IP sliding window for search (AI-heavy)
+const searchHits = new Map<string, number[]>();
+app.use('/api/search', async (c, next) => {
+  const ip = c.req.header('cf-connecting-ip') || 'unknown';
+  const now = Date.now();
+  const hits = (searchHits.get(ip) || []).filter(t => now - t < 60_000);
+  if (hits.length >= 10) return c.json({ error: 'Rate limit exceeded, max 10 searches/min' }, 429);
+  hits.push(now);
+  searchHits.set(ip, hits);
+  await next();
+});
 
 // 1. Health Check
 app.get('/health', (c) => c.json({ status: 'healthy', name: 'lens' }));
@@ -216,8 +228,9 @@ app.get('/api/images/:id', async (c) => {
 // 4. Image Proxy (Optional: if R2 is not public)
 // GET /image/:type/:filename
 app.get('/image/:type/:filename', async (c) => {
-  const type = c.req.param('type'); // 'raw' or 'display'
+  const type = c.req.param('type');
   const filename = c.req.param('filename');
+  if (!/^[a-zA-Z0-9_-]+\.jpg$/.test(filename)) return c.text('Invalid filename', 400);
   const key = `${type === 'raw' ? 'raw' : 'display'}/${filename}`;
 
   const object = await c.env.R2.get(key);
@@ -226,7 +239,7 @@ app.get('/image/:type/:filename', async (c) => {
   const headers = new Headers();
   object.writeHttpMetadata(headers);
   headers.set('etag', object.httpEtag);
-  headers.set('cache-control', 'public, max-age=31536000'); // Cache 1 year
+  headers.set('cache-control', 'public, max-age=31536000, immutable');
 
   return new Response(object.body, { headers });
 });
