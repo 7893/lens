@@ -265,6 +265,16 @@ function ImageModal({ image, score, onClose }: { image: ImageResult; score?: num
   );
 }
 
+function Stats() {
+  const { data } = useSWR<{ total: number; recent: number }>('/api/stats', fetcher, { refreshInterval: 60000 });
+  if (!data) return null;
+  return (
+    <p className="text-center text-[11px] text-gray-300 py-6">
+      {data.total.toLocaleString()} images{data.recent > 0 ? ` · ${data.recent} added recently` : ''}
+    </p>
+  );
+}
+
 export default function Home() {
   const { query, setQuery, results, isLoading, isSearching, hasMore, loadMore, took, total } = useSearch();
   const [selected, setSelected] = useState<ImageResult | null>(null);
@@ -319,6 +329,8 @@ export default function Home() {
       )}
 
       {selected && <ImageModal image={selected} score={selected.score} onClose={() => setSelected(null)} />}
+
+      <Stats />
     </div>
   );
 }
