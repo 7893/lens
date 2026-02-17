@@ -3,18 +3,9 @@ import { IngestionTask, UnsplashPhoto } from '@lens/shared';
 import { fetchLatestPhotos } from './utils/unsplash';
 import { streamToR2 } from './services/downloader';
 import { analyzeImage, generateEmbedding } from './services/ai';
+import { buildEmbeddingText } from './utils/embedding';
 
-export function buildEmbeddingText(caption: string, tags: string[], meta?: any): string {
-  const parts = [caption];
-  if (tags.length) parts.push(`Tags: ${tags.join(', ')}`);
-  if (meta?.alt_description) parts.push(meta.alt_description);
-  if (meta?.description) parts.push(meta.description);
-  if (meta?.user?.name) parts.push(`Photographer: ${meta.user.name}`);
-  if (meta?.location?.name) parts.push(`Location: ${meta.location.name}`);
-  const topics = Object.keys(meta?.topic_submissions || {});
-  if (topics.length) parts.push(`Topics: ${topics.join(', ')}`);
-  return parts.join(' | ');
-}
+export { buildEmbeddingText };
 
 export interface Env {
   DB: D1Database;
@@ -203,7 +194,7 @@ export class LensIngestWorkflow extends WorkflowEntrypoint<Env, IngestionTask> {
     const task = event.payload;
     const { photoId, displayUrl, meta } = task;
 
-    const retryConfig = { retries: { limit: 10, delay: '30 seconds', backoff: 'constant' as const } };
+    const retryConfig = { retries: { limit: 10, delay: '30 seconds' as const, backoff: 'constant' as const } };
 
     await step.do('download-and-store', retryConfig, async () => {
       await streamToR2(task.downloadUrl, `raw/${photoId}.jpg`, this.env.R2);
