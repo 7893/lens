@@ -1,6 +1,6 @@
 import { WorkflowEntrypoint, WorkflowStep, WorkflowEvent } from 'cloudflare:workers';
 import { IngestionTask, UnsplashPhoto } from '@lens/shared';
-import { fetchRandomPhotos } from './utils/unsplash';
+import { fetchLatestPhotos } from './utils/unsplash';
 import { streamToR2 } from './services/downloader';
 import { analyzeImage, generateEmbedding } from './services/ai';
 
@@ -32,20 +32,53 @@ export default {
     if (!env.UNSPLASH_API_KEY) return;
 
     try {
-      // 1. Fetch and enqueue new photos
-      const photos = await fetchRandomPhotos(env.UNSPLASH_API_KEY, 30);
-      const tasks: IngestionTask[] = photos.map(photo => ({
-        type: 'process-photo' as const,
-        photoId: photo.id,
-        downloadUrl: photo.urls.raw,
-        displayUrl: photo.urls.regular,
-        photographer: photo.user.name,
-        source: 'unsplash' as const,
-        meta: photo
-      }));
+      // 1. Get latest known image ID
+      const latest = await env.DB.prepare('SELECT id FROM images ORDER BY created_at DESC LIMIT 1').first<{ id: string }>();
+      const lastId = latest?.id;
+      console.log(`📌 Last synced ID: ${lastId || 'none'}`);
 
-      await env.PHOTO_QUEUE.sendBatch(tasks.map(task => ({ body: task, contentType: 'json' })));
-      console.log(`✅ Enqueued ${tasks.length} tasks`);
+      // 2. Fetch latest photos, page by page until we hit known images
+      let totalEnqueued = 0;
+      let emptyPages = 0;
+      const MAX_PAGES = 50;
+
+      for (let page = 1; page <= MAX_PAGES; page++) {
+        const photos = await fetchLatestPhotos(env.UNSPLASH_API_KEY, page, 30);
+        if (!photos.length) break;
+
+        // Filter out already-known photos
+        let hitLast = false;
+        const newPhotos = [];
+        for (const photo of photos) {
+          if (photo.id === lastId) { hitLast = true; break; }
+          newPhotos.push(photo);
+        }
+
+        if (newPhotos.length > 0) {
+          emptyPages = 0;
+          const tasks: IngestionTask[] = newPhotos.map(photo => ({
+            type: 'process-photo' as const,
+            photoId: photo.id,
+            downloadUrl: photo.urls.raw,
+            displayUrl: photo.urls.regular,
+            photographer: photo.user.name,
+            source: 'unsplash' as const,
+            meta: photo
+          }));
+          await env.PHOTO_QUEUE.sendBatch(tasks.map(task => ({ body: task, contentType: 'json' })));
+          totalEnqueued += newPhotos.length;
+          console.log(`📦 Page ${page}: enqueued ${newPhotos.length} new photos`);
+        } else {
+          emptyPages++;
+        }
+
+        if (hitLast || emptyPages >= 2) {
+          console.log(`🛑 Stopping at page ${page} (hitLast=${hitLast}, emptyPages=${emptyPages})`);
+          break;
+        }
+      }
+
+      console.log(`✅ Total enqueued: ${totalEnqueued} new photos`);
 
       // 2. Sync D1 embeddings → Vectorize (idempotent)
       const rows = await env.DB.prepare(
