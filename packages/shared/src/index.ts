@@ -100,6 +100,7 @@ export interface ImageDetailResponse {
 export interface UnsplashPhoto {
   id: string;
   created_at: string;
+  promoted_at: string | null;
   width: number;
   height: number;
   color: string;
