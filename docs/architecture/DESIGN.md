@@ -18,9 +18,10 @@ graph TD
         Workflow -->|2. AI 分析| AI_Vision[Vision Model]
         Workflow -->|3. 向量化| AI_Embed[Embedding Model]
         Workflow -->|4. 写入| D1
+        Workflow -->|5. 同步| Vectorize
     end
     
-    Cron -->|同步向量| Vectorize
+    Cron -->|兜底同步| Vectorize
 ```
 
 ### Ingestion Pipeline
@@ -32,13 +33,15 @@ Cron (hourly) → Processor scheduled handler
   → stop when photo.created_at < watermark (dedup same-second by ID)
   → send new photos to Queue (process-photo messages)
   → update high watermark in system_config
+  → backfill: use remaining API quota to scan deeper pages for gaps
   → Queue consumer creates LensIngestWorkflow per photo
   → Workflow steps:
       1. download-and-store: raw + display images → R2
-      2. analyze-vision: Llama 3.2 Vision generates caption
+      2. analyze-vision: Llama 3.2 Vision generates caption + tags
       3. generate-embedding: BGE Large generates 1024-dim vector
       4. persist-d1: metadata + embedding → D1
-  → Cron also syncs all D1 embeddings → Vectorize (idempotent upsert)
+      5. sync-vectorize: upsert vector → Vectorize (real-time)
+  → Cron catch-up sync: fallback upsert for any records missed by Workflow
 ```
 
 ### Search Pipeline
