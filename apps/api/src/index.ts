@@ -100,8 +100,9 @@ app.get('/api/search', async (c) => {
     const vector = embeddingResp.data[0];
 
     const vecResults = await c.env.VECTORIZE.query(vector, { topK: 100 });
-    const MIN_SCORE = 0.6;
-    const relevantMatches = vecResults.matches.filter(m => m.score >= MIN_SCORE);
+    const topScore = vecResults.matches[0]?.score || 0;
+    const dynamicThreshold = Math.max(topScore * 0.9, 0.6);
+    const relevantMatches = vecResults.matches.filter(m => m.score >= dynamicThreshold);
 
     if (relevantMatches.length === 0) {
       return c.json<SearchResponse>({ results: [], total: 0, took: Date.now() - start });
