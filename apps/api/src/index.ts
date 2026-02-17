@@ -100,19 +100,21 @@ app.get('/api/search', async (c) => {
     const vector = embeddingResp.data[0];
 
     const vecResults = await c.env.VECTORIZE.query(vector, { topK: 100 });
+    const MIN_SCORE = 0.6;
+    const relevantMatches = vecResults.matches.filter(m => m.score >= MIN_SCORE);
 
-    if (vecResults.matches.length === 0) {
+    if (relevantMatches.length === 0) {
       return c.json<SearchResponse>({ results: [], total: 0, took: Date.now() - start });
     }
 
-    const ids = vecResults.matches.map(m => m.id);
+    const ids = relevantMatches.map(m => m.id);
     const placeholders = ids.map(() => '?').join(',');
     const { results } = await c.env.DB.prepare(
       `SELECT * FROM images WHERE id IN (${placeholders})`
     ).bind(...ids).all<DBImage>();
 
     // Re-rank: LLM scores relevance of top candidates
-    const candidates = vecResults.matches.map(match => {
+    const candidates = relevantMatches.map(match => {
       const dbImage = results.find(r => r.id === match.id);
       if (!dbImage) return null;
       return { dbImage, vecScore: match.score };
@@ -145,7 +147,7 @@ app.get('/api/search', async (c) => {
       console.error('Re-rank failed, using vector order:', e);
     }
 
-    const images: ImageResult[] = reranked.slice(0, 100).map((c, i) => {
+    const images: ImageResult[] = reranked.map((c, i) => {
       const score = i < 20 ? 1 - i * 0.01 : c.vecScore; // Re-ranked items get position-based score
       return toImageResult(c.dbImage, score);
     });
