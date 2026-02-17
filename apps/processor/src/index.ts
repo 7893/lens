@@ -123,7 +123,9 @@ export class LensIngestWorkflow extends WorkflowEntrypoint<Env, IngestionTask> {
     const task = event.payload;
     const { photoId, displayUrl, meta } = task;
 
-    await step.do('download-and-store', async () => {
+    const retryConfig = { retries: { limit: 10, delay: '30 seconds', backoff: 'constant' as const } };
+
+    await step.do('download-and-store', retryConfig, async () => {
       await streamToR2(task.downloadUrl, `raw/${photoId}.jpg`, this.env.R2);
       if (displayUrl) {
         const displayResp = await fetch(displayUrl);
@@ -135,17 +137,17 @@ export class LensIngestWorkflow extends WorkflowEntrypoint<Env, IngestionTask> {
       return { success: true };
     });
 
-    const analysis = await step.do('analyze-vision', async () => {
+    const analysis = await step.do('analyze-vision', retryConfig, async () => {
       const object = await this.env.R2.get(`display/${photoId}.jpg`);
       if (!object) throw new Error('Display image not found');
       return await analyzeImage(this.env.AI, object.body);
     });
 
-    const vector = await step.do('generate-embedding', async () => {
+    const vector = await step.do('generate-embedding', retryConfig, async () => {
       return await generateEmbedding(this.env.AI, buildEmbeddingText(analysis.caption, analysis.tags, meta));
     });
 
-    await step.do('persist-d1', async () => {
+    await step.do('persist-d1', retryConfig, async () => {
       await this.env.DB.prepare(`
         INSERT INTO images (id, width, height, color, raw_key, display_key, meta_json, ai_tags, ai_caption, ai_embedding, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)

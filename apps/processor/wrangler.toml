@@ -27,8 +27,9 @@ queue = "lens-queue"
 # Queue Consumer (From Queue -> Workflow)
 [[queues.consumers]]
 queue = "lens-queue"
-max_batch_size = 10
+max_batch_size = 5
 max_batch_timeout = 30
+max_concurrency = 5
 
 # R2 Bucket (Storage)
 [[r2_buckets]]
