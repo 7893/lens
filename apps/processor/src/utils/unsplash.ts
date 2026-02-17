@@ -12,7 +12,7 @@ export async function fetchLatestPhotos(apiKey: string, page: number = 1, perPag
   console.log(`🌐 Fetching latest photos page ${page}`);
 
   const response = await fetch(url, {
-    headers: { 'Authorization': `Client-ID ${apiKey}`, 'Accept-Version': 'v1' }
+    headers: { Authorization: `Client-ID ${apiKey}`, 'Accept-Version': 'v1' },
   });
 
   if (!response.ok) {
@@ -25,6 +25,6 @@ export async function fetchLatestPhotos(apiKey: string, page: number = 1, perPag
   const remaining = parseInt(response.headers.get('X-Ratelimit-Remaining') || '0', 10);
   console.log(`📊 Unsplash Quota Remaining: ${remaining}`);
 
-  const photos = await response.json() as UnsplashPhoto[];
+  const photos = (await response.json()) as UnsplashPhoto[];
   return { photos, remaining };
 }

@@ -7,18 +7,18 @@ export interface DBImage {
   width: number;
   height: number;
   color: string | null;
-  
+
   // Storage Keys (R2)
   raw_key: string;
   display_key: string;
-  
+
   // Metadata (Stored as JSON string in DB)
   meta_json: string; // Serialized UnsplashPhoto
-  
+
   // AI Analysis (Stored as JSON string in DB)
   ai_tags: string; // Serialized string[]
   ai_caption: string | null;
-  
+
   created_at: number; // Unix timestamp
 }
 

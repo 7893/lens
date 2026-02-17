@@ -59,16 +59,16 @@
 
 ## 技术栈
 
-| 层 | 技术 | 用途 |
-|----|------|------|
-| API + 前端 | Hono + React + Vite + Tailwind | 单 Worker 同源部署，零跨域 |
-| 采集引擎 | Workflows + Queues + Cron | 持久化执行，自动重试 |
-| 图片存储 | R2 | 零出口流量费 |
-| 元数据 | D1 (SQLite at Edge) | 关系查询，边缘就近访问 |
-| 语义搜索 | Vectorize (1024d, cosine) | 毫秒级向量相似度 |
-| AI | Llama 3.2 11B Vision + BGE Large EN v1.5 | 视觉理解 + 查询扩展 + 重排 + 向量化 |
-| 基础设施 | Terraform | 声明式资源管理 |
-| CI/CD | GitHub Actions | 推送即部署 |
+| 层         | 技术                                     | 用途                                |
+| ---------- | ---------------------------------------- | ----------------------------------- |
+| API + 前端 | Hono + React + Vite + Tailwind           | 单 Worker 同源部署，零跨域          |
+| 采集引擎   | Workflows + Queues + Cron                | 持久化执行，自动重试                |
+| 图片存储   | R2                                       | 零出口流量费                        |
+| 元数据     | D1 (SQLite at Edge)                      | 关系查询，边缘就近访问              |
+| 语义搜索   | Vectorize (1024d, cosine)                | 毫秒级向量相似度                    |
+| AI         | Llama 3.2 11B Vision + BGE Large EN v1.5 | 视觉理解 + 查询扩展 + 重排 + 向量化 |
+| 基础设施   | Terraform                                | 声明式资源管理                      |
+| CI/CD      | GitHub Actions                           | 推送即部署                          |
 
 ## 前端体验
 
@@ -100,13 +100,13 @@
 
 ## 文档
 
-| 文档 | 内容 |
-|------|------|
-| [系统设计](docs/architecture/DESIGN.md) | 双管道架构、数据流 |
-| [前端架构](docs/architecture/FRONTEND_DESIGN.md) | React + SWR + BlurHash 实现 |
-| [API 参考](docs/api/OPENAPI.md) | 接口定义、请求响应示例 |
-| [开发指南](docs/guide/DEVELOPMENT.md) | 本地开发、类型检查 |
-| [部署指南](docs/guide/SETUP.md) | 从零部署完整系统 |
+| 文档                                               | 内容                              |
+| -------------------------------------------------- | --------------------------------- |
+| [系统设计](docs/architecture/DESIGN.md)            | 双管道架构、数据流                |
+| [前端架构](docs/architecture/FRONTEND_DESIGN.md)   | React + SWR + BlurHash 实现       |
+| [API 参考](docs/api/OPENAPI.md)                    | 接口定义、请求响应示例            |
+| [开发指南](docs/guide/DEVELOPMENT.md)              | 本地开发、类型检查                |
+| [部署指南](docs/guide/SETUP.md)                    | 从零部署完整系统                  |
 | [架构决策](docs/ADR/001-architecture-decisions.md) | 为什么选 D1？为什么要 Vectorize？ |
 
 ## License
