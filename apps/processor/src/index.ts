@@ -152,12 +152,14 @@ export default {
       }
 
       // 5. Incremental sync: D1 embeddings → Vectorize
+      // Use a lag window to account for async Workflow completion
       const lastSyncConfig = await env.DB.prepare("SELECT value FROM system_config WHERE key = 'vectorize_last_sync'").first<{ value: string }>();
       const lastSync = parseInt(lastSyncConfig?.value || '0', 10);
+      const syncCutoff = Date.now() - 5 * 60 * 1000; // 5 min ago, so in-flight workflows settle
 
       const syncRows = await env.DB.prepare(
-        'SELECT id, ai_caption, ai_embedding FROM images WHERE ai_embedding IS NOT NULL AND created_at > ?'
-      ).bind(lastSync).all<{ id: string; ai_caption: string; ai_embedding: string }>();
+        'SELECT id, ai_caption, ai_embedding FROM images WHERE ai_embedding IS NOT NULL AND created_at > ? AND created_at <= ? LIMIT 500'
+      ).bind(lastSync, syncCutoff).all<{ id: string; ai_caption: string; ai_embedding: string }>();
 
       if (syncRows.results.length > 0) {
         const vectors = syncRows.results
@@ -173,7 +175,7 @@ export default {
         }
 
         await env.DB.prepare("INSERT INTO system_config (key, value, updated_at) VALUES ('vectorize_last_sync', ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at")
-          .bind(String(Date.now()), Date.now()).run();
+          .bind(String(syncCutoff), Date.now()).run();
         console.log(`✅ Synced ${vectors.length} new vectors to Vectorize`);
       } else {
         console.log(`✅ No new vectors to sync`);
