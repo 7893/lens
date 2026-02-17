@@ -64,6 +64,7 @@ export default {
           newPhotos.push(photo);
           if (promotedAt > newWatermark) newWatermark = promotedAt;
         }
+        if (!hitOld && newPhotos.length === 0) hitOld = true;
 
         if (newPhotos.length > 0) {
           const tasks: IngestionTask[] = newPhotos.map((photo) => ({
