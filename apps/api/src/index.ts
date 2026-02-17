@@ -44,7 +44,16 @@ app.use('/*', cors());
 // 1. Health Check
 app.get('/health', (c) => c.json({ status: 'healthy', name: 'lens' }));
 
-// 2. Latest images (default gallery)
+// 2. Stats
+app.get('/api/stats', async (c) => {
+  const { results } = await c.env.DB.prepare(
+    'SELECT COUNT(*) as total, MAX(created_at) as last_at, (SELECT COUNT(*) FROM images WHERE created_at > (SELECT MAX(created_at) - 3600000 FROM images)) as recent FROM images'
+  ).all();
+  const row = results[0] as any;
+  return c.json({ total: row.total, recent: row.recent });
+});
+
+// 3. Latest images (default gallery)
 app.get('/api/latest', async (c) => {
   const { results } = await c.env.DB.prepare(
     'SELECT * FROM images WHERE ai_caption IS NOT NULL ORDER BY created_at DESC LIMIT 100'
