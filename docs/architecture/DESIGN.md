@@ -27,8 +27,11 @@ graph TD
 
 ```
 Cron (hourly) → Processor scheduled handler
-  → fetch 30 random Unsplash photos
-  → send to Queue (process-photo messages)
+  → read high watermark (latest Unsplash created_at) from system_config
+  → fetch latest Unsplash photos page by page (order_by=latest)
+  → stop when photo.created_at < watermark (dedup same-second by ID)
+  → send new photos to Queue (process-photo messages)
+  → update high watermark in system_config
   → Queue consumer creates LensIngestWorkflow per photo
   → Workflow steps:
       1. download-and-store: raw + display images → R2
@@ -79,6 +82,12 @@ CREATE TABLE images (
     ai_caption TEXT,
     ai_embedding TEXT,
     created_at INTEGER
+);
+
+CREATE TABLE system_config (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at INTEGER NOT NULL
 );
 ```
 
