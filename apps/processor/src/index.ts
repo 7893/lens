@@ -27,37 +27,6 @@ export interface Env {
 }
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
-    const url = new URL(request.url);
-    if (url.pathname !== '/fix-orphans') return new Response('not found', { status: 404 });
-
-    const ids = (url.searchParams.get('ids') || '').split(',').filter(Boolean);
-    if (!ids.length) return new Response('provide ?ids=a,b,c');
-
-    const results: string[] = [];
-    for (const id of ids) {
-      try {
-        const obj = await env.R2.get(`display/${id}.jpg`);
-        if (!obj) { results.push(`${id}: no R2 file`); continue; }
-
-        const analysis = await analyzeImage(env.AI, obj.body);
-        const text = buildEmbeddingText(analysis.caption, analysis.tags);
-        const vector = await generateEmbedding(env.AI, text);
-
-        await env.DB.prepare(`
-          INSERT INTO images (id, width, height, color, raw_key, display_key, meta_json, ai_tags, ai_caption, ai_embedding, created_at)
-          VALUES (?, 0, 0, null, ?, ?, '{}', ?, ?, ?, ?)
-          ON CONFLICT(id) DO UPDATE SET ai_caption = excluded.ai_caption, ai_embedding = excluded.ai_embedding, ai_tags = excluded.ai_tags
-        `).bind(id, `raw/${id}.jpg`, `display/${id}.jpg`, JSON.stringify(analysis.tags), analysis.caption, JSON.stringify(vector), Date.now()).run();
-
-        results.push(`${id}: ✅`);
-      } catch (e: any) {
-        results.push(`${id}: ❌ ${e.message}`);
-      }
-    }
-    return new Response(results.join('\n'));
-  },
-
   async scheduled(_event: ScheduledEvent, env: Env, _ctx: ExecutionContext): Promise<void> {
     console.log('⏰ Cron triggered');
     if (!env.UNSPLASH_API_KEY) return;
@@ -80,10 +49,10 @@ export default {
       // 3. Fetch latest photos, stop when we hit photos strictly older than watermark
       let totalEnqueued = 0;
       let newWatermark = watermark;
-      let remaining = 50;
+      let remaining = Infinity;
       const MAX_PAGES = 50;
 
-      for (let page = 1; page <= MAX_PAGES; page++) {
+      for (let page = 1; page <= MAX_PAGES && remaining > 0; page++) {
         const result = await fetchLatestPhotos(env.UNSPLASH_API_KEY, page, 30);
         remaining = result.remaining;
         if (!result.photos.length) break;
@@ -139,7 +108,7 @@ export default {
         while (remaining > 2) {
           const result = await fetchLatestPhotos(env.UNSPLASH_API_KEY, scanPage, 30);
           remaining = result.remaining;
-          if (!result.photos.length) { scanPage = 1; break; }
+          if (!result.photos.length) break;
 
           // Batch check existing IDs for this page only
           const pageIds = result.photos.map(p => p.id);
@@ -265,7 +234,7 @@ export class LensIngestWorkflow extends WorkflowEntrypoint<Env, IngestionTask> {
       await this.env.DB.prepare(`
         INSERT INTO images (id, width, height, color, raw_key, display_key, meta_json, ai_tags, ai_caption, ai_embedding, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(id) DO UPDATE SET ai_caption = excluded.ai_caption, ai_embedding = excluded.ai_embedding
+        ON CONFLICT(id) DO UPDATE SET ai_caption = excluded.ai_caption, ai_embedding = excluded.ai_embedding, created_at = excluded.created_at
       `).bind(
         photoId, meta?.width ?? 0, meta?.height ?? 0, meta?.color ?? null,
         `raw/${photoId}.jpg`, `display/${photoId}.jpg`,
