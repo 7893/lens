@@ -24,16 +24,18 @@ export default {
 
     try {
       // 1. Read high watermark (latest Unsplash created_at we've seen)
-      const config = await env.DB.prepare("SELECT value FROM system_config WHERE key = 'unsplash_high_watermark'").first<{ value: string }>();
+      const config = await env.DB.prepare(
+        "SELECT value FROM system_config WHERE key = 'unsplash_high_watermark'",
+      ).first<{ value: string }>();
       const watermark = config?.value || '1970-01-01T00:00:00Z';
       console.log(`📌 High watermark: ${watermark}`);
 
       // 2. Collect known IDs at watermark boundary for dedup
       const knownIds = new Set<string>();
       if (watermark !== '1970-01-01T00:00:00Z') {
-        const rows = await env.DB.prepare(
-          "SELECT id FROM images WHERE json_extract(meta_json, '$.created_at') = ?"
-        ).bind(watermark).all<{ id: string }>();
+        const rows = await env.DB.prepare("SELECT id FROM images WHERE json_extract(meta_json, '$.created_at') = ?")
+          .bind(watermark)
+          .all<{ id: string }>();
         for (const r of rows.results) knownIds.add(r.id);
       }
 
@@ -51,23 +53,26 @@ export default {
         let hitOld = false;
         const newPhotos = [];
         for (const photo of result.photos) {
-          if (photo.created_at < watermark) { hitOld = true; break; }
+          if (photo.created_at < watermark) {
+            hitOld = true;
+            break;
+          }
           if (photo.created_at === watermark && knownIds.has(photo.id)) continue;
           newPhotos.push(photo);
           if (photo.created_at > newWatermark) newWatermark = photo.created_at;
         }
 
         if (newPhotos.length > 0) {
-          const tasks: IngestionTask[] = newPhotos.map(photo => ({
+          const tasks: IngestionTask[] = newPhotos.map((photo) => ({
             type: 'process-photo' as const,
             photoId: photo.id,
             downloadUrl: photo.urls.raw,
             displayUrl: photo.urls.regular,
             photographer: photo.user.name,
             source: 'unsplash' as const,
-            meta: photo
+            meta: photo,
           }));
-          await env.PHOTO_QUEUE.sendBatch(tasks.map(task => ({ body: task, contentType: 'json' })));
+          await env.PHOTO_QUEUE.sendBatch(tasks.map((task) => ({ body: task, contentType: 'json' })));
           totalEnqueued += newPhotos.length;
           console.log(`📦 Page ${page}: enqueued ${newPhotos.length} new photos`);
         }
@@ -80,8 +85,11 @@ export default {
 
       // 3. Update high watermark
       if (newWatermark !== watermark) {
-        await env.DB.prepare("INSERT INTO system_config (key, value, updated_at) VALUES ('unsplash_high_watermark', ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at")
-          .bind(newWatermark, Date.now()).run();
+        await env.DB.prepare(
+          "INSERT INTO system_config (key, value, updated_at) VALUES ('unsplash_high_watermark', ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+        )
+          .bind(newWatermark, Date.now())
+          .run();
         console.log(`📌 Watermark updated: ${watermark} → ${newWatermark}`);
       }
 
@@ -89,7 +97,9 @@ export default {
 
       // 4. Backfill: use remaining quota to scan for gaps
       if (remaining > 2) {
-        const scanPageConfig = await env.DB.prepare("SELECT value FROM system_config WHERE key = 'backfill_page'").first<{ value: string }>();
+        const scanPageConfig = await env.DB.prepare(
+          "SELECT value FROM system_config WHERE key = 'backfill_page'",
+        ).first<{ value: string }>();
         let scanPage = parseInt(scanPageConfig?.value || '1', 10);
         let backfilled = 0;
         let consecutiveEmpty = 0;
@@ -102,25 +112,29 @@ export default {
           if (!result.photos.length) break;
 
           // Batch check existing IDs for this page only
-          const pageIds = result.photos.map(p => p.id);
+          const pageIds = result.photos.map((p) => p.id);
           const placeholders = pageIds.map(() => '?').join(',');
           const existing = new Set(
-            (await env.DB.prepare(`SELECT id FROM images WHERE id IN (${placeholders})`).bind(...pageIds).all<{ id: string }>()).results.map(r => r.id)
+            (
+              await env.DB.prepare(`SELECT id FROM images WHERE id IN (${placeholders})`)
+                .bind(...pageIds)
+                .all<{ id: string }>()
+            ).results.map((r) => r.id),
           );
 
-          const gaps = result.photos.filter(p => !existing.has(p.id));
+          const gaps = result.photos.filter((p) => !existing.has(p.id));
           if (gaps.length > 0) {
             consecutiveEmpty = 0;
-            const tasks: IngestionTask[] = gaps.map(photo => ({
+            const tasks: IngestionTask[] = gaps.map((photo) => ({
               type: 'process-photo' as const,
               photoId: photo.id,
               downloadUrl: photo.urls.raw,
               displayUrl: photo.urls.regular,
               photographer: photo.user.name,
               source: 'unsplash' as const,
-              meta: photo
+              meta: photo,
             }));
-            await env.PHOTO_QUEUE.sendBatch(tasks.map(task => ({ body: task, contentType: 'json' })));
+            await env.PHOTO_QUEUE.sendBatch(tasks.map((task) => ({ body: task, contentType: 'json' })));
             backfilled += gaps.length;
           } else {
             consecutiveEmpty++;
@@ -137,26 +151,39 @@ export default {
           }
         }
 
-        await env.DB.prepare("INSERT INTO system_config (key, value, updated_at) VALUES ('backfill_page', ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at")
-          .bind(String(scanPage), Date.now()).run();
+        await env.DB.prepare(
+          "INSERT INTO system_config (key, value, updated_at) VALUES ('backfill_page', ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+        )
+          .bind(String(scanPage), Date.now())
+          .run();
         console.log(`✅ Backfill done: ${backfilled} gaps filled, next page=${scanPage}`);
       }
 
       // 5. Catch-up sync: handle any records missed by Workflow (e.g. manual inserts)
-      const lastSyncConfig = await env.DB.prepare("SELECT value FROM system_config WHERE key = 'vectorize_last_sync'").first<{ value: string }>();
+      const lastSyncConfig = await env.DB.prepare(
+        "SELECT value FROM system_config WHERE key = 'vectorize_last_sync'",
+      ).first<{ value: string }>();
       const lastSync = parseInt(lastSyncConfig?.value || '0', 10);
       const syncCutoff = Date.now() - 30_000;
 
       const syncRows = await env.DB.prepare(
-        'SELECT id, ai_caption, ai_embedding FROM images WHERE ai_embedding IS NOT NULL AND created_at > ? AND created_at <= ?'
-      ).bind(lastSync, syncCutoff).all<{ id: string; ai_caption: string; ai_embedding: string }>();
+        'SELECT id, ai_caption, ai_embedding FROM images WHERE ai_embedding IS NOT NULL AND created_at > ? AND created_at <= ?',
+      )
+        .bind(lastSync, syncCutoff)
+        .all<{ id: string; ai_caption: string; ai_embedding: string }>();
 
       if (syncRows.results.length > 0) {
         const vectors = syncRows.results
-          .map(r => {
+          .map((r) => {
             try {
-              return { id: r.id, values: JSON.parse(r.ai_embedding), metadata: { url: `display/${r.id}.jpg`, caption: r.ai_caption || '' } };
-            } catch { return null; }
+              return {
+                id: r.id,
+                values: JSON.parse(r.ai_embedding),
+                metadata: { url: `display/${r.id}.jpg`, caption: r.ai_caption || '' },
+              };
+            } catch {
+              return null;
+            }
           })
           .filter(Boolean) as VectorizeVector[];
 
@@ -166,8 +193,11 @@ export default {
         console.log(`✅ Catch-up synced ${vectors.length} vectors`);
       }
 
-      await env.DB.prepare("INSERT INTO system_config (key, value, updated_at) VALUES ('vectorize_last_sync', ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at")
-        .bind(String(syncCutoff), Date.now()).run();
+      await env.DB.prepare(
+        "INSERT INTO system_config (key, value, updated_at) VALUES ('vectorize_last_sync', ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+      )
+        .bind(String(syncCutoff), Date.now())
+        .run();
     } catch (error) {
       console.error('Scheduler error:', error);
     }
@@ -178,7 +208,7 @@ export default {
       try {
         await env.PHOTO_WORKFLOW.create({
           id: msg.body.photoId,
-          params: msg.body
+          params: msg.body,
         });
         msg.ack();
       } catch (error) {
@@ -186,7 +216,7 @@ export default {
         msg.retry();
       }
     }
-  }
+  },
 };
 
 export class LensIngestWorkflow extends WorkflowEntrypoint<Env, IngestionTask> {
@@ -202,7 +232,7 @@ export class LensIngestWorkflow extends WorkflowEntrypoint<Env, IngestionTask> {
         const displayResp = await fetch(displayUrl);
         const displayBuffer = await displayResp.arrayBuffer();
         await this.env.R2.put(`display/${photoId}.jpg`, displayBuffer, {
-          httpMetadata: { contentType: 'image/jpeg' }
+          httpMetadata: { contentType: 'image/jpeg' },
         });
       }
       return { success: true };
@@ -219,24 +249,37 @@ export class LensIngestWorkflow extends WorkflowEntrypoint<Env, IngestionTask> {
     });
 
     await step.do('persist-d1', retryConfig, async () => {
-      await this.env.DB.prepare(`
+      await this.env.DB.prepare(
+        `
         INSERT INTO images (id, width, height, color, raw_key, display_key, meta_json, ai_tags, ai_caption, ai_embedding, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET ai_caption = excluded.ai_caption, ai_embedding = excluded.ai_embedding, created_at = excluded.created_at
-      `).bind(
-        photoId, meta?.width ?? 0, meta?.height ?? 0, meta?.color ?? null,
-        `raw/${photoId}.jpg`, `display/${photoId}.jpg`,
-        JSON.stringify(meta ?? {}), JSON.stringify(analysis.tags),
-        analysis.caption, JSON.stringify(vector), Date.now()
-      ).run();
+      `,
+      )
+        .bind(
+          photoId,
+          meta?.width ?? 0,
+          meta?.height ?? 0,
+          meta?.color ?? null,
+          `raw/${photoId}.jpg`,
+          `display/${photoId}.jpg`,
+          JSON.stringify(meta ?? {}),
+          JSON.stringify(analysis.tags),
+          analysis.caption,
+          JSON.stringify(vector),
+          Date.now(),
+        )
+        .run();
     });
 
     await step.do('sync-vectorize', retryConfig, async () => {
-      await this.env.VECTORIZE.upsert([{
-        id: photoId,
-        values: vector,
-        metadata: { url: `display/${photoId}.jpg`, caption: analysis.caption || '' }
-      }]);
+      await this.env.VECTORIZE.upsert([
+        {
+          id: photoId,
+          values: vector,
+          metadata: { url: `display/${photoId}.jpg`, caption: analysis.caption || '' },
+        },
+      ]);
     });
   }
 }

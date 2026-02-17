@@ -4,28 +4,34 @@ export async function analyzeImage(ai: Ai, imageStream: ReadableStream): Promise
   // Accept Llama license
   await ai.run('@cf/meta/llama-3.2-11b-vision-instruct' as any, { prompt: 'agree', max_tokens: 1 }).catch(() => {});
 
-  const response = await ai.run('@cf/meta/llama-3.2-11b-vision-instruct', {
+  const response = (await ai.run('@cf/meta/llama-3.2-11b-vision-instruct', {
     image: imageArray,
-    prompt: "Describe this photo in 2-3 sentences. Then list exactly 5 tags as comma-separated words. Format:\nDescription: <description>\nTags: <tag1>, <tag2>, <tag3>, <tag4>, <tag5>",
+    prompt:
+      'Describe this photo in 2-3 sentences. Then list exactly 5 tags as comma-separated words. Format:\nDescription: <description>\nTags: <tag1>, <tag2>, <tag3>, <tag4>, <tag5>',
     max_tokens: 256,
-  }) as { description?: string; response?: string };
+  })) as { description?: string; response?: string };
 
-  const text = response.response || response.description || "";
+  const text = response.response || response.description || '';
 
   // Parse structured output
   const descMatch = text.match(/Description:\s*(.+?)(?:\n|Tags:|$)/is);
   const tagsMatch = text.match(/Tags:\s*(.+)/i);
 
   const caption = descMatch?.[1]?.trim() || text.split('\n')[0].trim();
-  const tags = tagsMatch?.[1]?.split(',').map(t => t.trim().toLowerCase()).filter(Boolean).slice(0, 5) || [];
+  const tags =
+    tagsMatch?.[1]
+      ?.split(',')
+      .map((t) => t.trim().toLowerCase())
+      .filter(Boolean)
+      .slice(0, 5) || [];
 
   return { caption, tags };
 }
 
 export async function generateEmbedding(ai: Ai, text: string): Promise<number[]> {
-  const response = await ai.run('@cf/baai/bge-large-en-v1.5', {
-    text: [text]
-  }) as { data: number[][] };
+  const response = (await ai.run('@cf/baai/bge-large-en-v1.5', {
+    text: [text],
+  })) as { data: number[][] };
 
   return response.data[0];
 }

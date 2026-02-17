@@ -5,7 +5,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { decode } from 'blurhash';
 import useSWR from 'swr';
 
-const fetcher = (url: string) => fetch(url).then(r => r.json());
+const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
 // BlurHash → data URL (cached)
 const blurCache = new Map<string, string>();
@@ -23,7 +23,9 @@ function blurHashToDataURL(hash: string, w = 32, h = 32): string {
     const url = canvas.toDataURL();
     blurCache.set(hash, url);
     return url;
-  } catch { return ''; }
+  } catch {
+    return '';
+  }
 }
 
 // Image card with blur placeholder + fade-in
@@ -32,10 +34,18 @@ function ImageCard({ image, onClick }: { image: ImageResult; onClick: () => void
   const blurUrl = image.blurHash ? blurHashToDataURL(image.blurHash) : '';
 
   return (
-    <div className="break-inside-avoid bg-white rounded-xl shadow-sm overflow-hidden hover:shadow-md transition-shadow group cursor-pointer" onClick={onClick}>
+    <div
+      className="break-inside-avoid bg-white rounded-xl shadow-sm overflow-hidden hover:shadow-md transition-shadow group cursor-pointer"
+      onClick={onClick}
+    >
       <div className="relative" style={{ backgroundColor: image.color || '#e5e7eb' }}>
         {blurUrl && !loaded && (
-          <img src={blurUrl} alt="" className="w-full h-auto object-cover" style={{ aspectRatio: `${image.width}/${image.height}` }} />
+          <img
+            src={blurUrl}
+            alt=""
+            className="w-full h-auto object-cover"
+            style={{ aspectRatio: `${image.width}/${image.height}` }}
+          />
         )}
         <img
           src={image.url}
@@ -62,8 +72,10 @@ function ImageCard({ image, onClick }: { image: ImageResult; onClick: () => void
         </div>
         {image.topics && image.topics.length > 0 && (
           <div className="mt-2 flex flex-wrap gap-1">
-            {image.topics.slice(0, 3).map(t => (
-              <span key={t} className="text-[10px] px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded-full">{t}</span>
+            {image.topics.slice(0, 3).map((t) => (
+              <span key={t} className="text-[10px] px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded-full">
+                {t}
+              </span>
             ))}
           </div>
         )}
@@ -102,18 +114,32 @@ interface ImageDetail {
   createdAt: string | null;
   promotedAt: string | null;
   photographer: {
-    name: string; username: string; bio: string | null; location: string | null;
-    profile: string | null; profileImage: string | null;
-    instagram: string | null; twitter: string | null; portfolio: string | null;
+    name: string;
+    username: string;
+    bio: string | null;
+    location: string | null;
+    profile: string | null;
+    profileImage: string | null;
+    instagram: string | null;
+    twitter: string | null;
+    portfolio: string | null;
     totalPhotos: number | null;
   };
   exif: {
-    make: string | null; model: string | null; camera: string | null;
-    aperture: string | null; exposure: string | null; focalLength: string | null; iso: number | null;
+    make: string | null;
+    model: string | null;
+    camera: string | null;
+    aperture: string | null;
+    exposure: string | null;
+    focalLength: string | null;
+    iso: number | null;
   } | null;
   location: {
-    name: string | null; city: string | null; country: string | null;
-    latitude: number | null; longitude: number | null;
+    name: string | null;
+    city: string | null;
+    country: string | null;
+    latitude: number | null;
+    longitude: number | null;
   } | null;
   topics: string[];
   stats: { views: number | null; downloads: number | null; likes: number | null };
@@ -127,7 +153,9 @@ function Stat({ icon: Icon, label, value }: { icon: typeof Eye; label: string; v
     <div className="flex items-center gap-1.5 text-xs text-gray-500">
       <Icon className="w-3.5 h-3.5 text-gray-400" />
       <span className="text-gray-400">{label}</span>
-      <span className="ml-auto font-medium text-gray-600">{typeof value === 'number' ? value.toLocaleString() : value}</span>
+      <span className="ml-auto font-medium text-gray-600">
+        {typeof value === 'number' ? value.toLocaleString() : value}
+      </span>
     </div>
   );
 }
@@ -136,20 +164,38 @@ function ImageModal({ image, score, onClose }: { image: ImageResult; score?: num
   const { data: detail } = useSWR<ImageDetail>(`/api/images/${image.id}`, fetcher);
 
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
     document.addEventListener('keydown', handler);
     document.body.style.overflow = 'hidden';
-    return () => { document.removeEventListener('keydown', handler); document.body.style.overflow = ''; };
+    return () => {
+      document.removeEventListener('keydown', handler);
+      document.body.style.overflow = '';
+    };
   }, [onClose]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 animate-fade-in" onClick={onClose}>
-      <div className="relative max-w-6xl w-full max-h-[90vh] flex flex-col md:flex-row bg-white rounded-2xl overflow-hidden shadow-2xl" onClick={e => e.stopPropagation()}>
-        <button onClick={onClose} className="absolute top-3 right-3 z-10 p-1.5 bg-black/50 hover:bg-black/70 rounded-full text-white transition-colors" aria-label="Close">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 animate-fade-in"
+      onClick={onClose}
+    >
+      <div
+        className="relative max-w-6xl w-full max-h-[90vh] flex flex-col md:flex-row bg-white rounded-2xl overflow-hidden shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <button
+          onClick={onClose}
+          className="absolute top-3 right-3 z-10 p-1.5 bg-black/50 hover:bg-black/70 rounded-full text-white transition-colors"
+          aria-label="Close"
+        >
           <X className="w-5 h-5" />
         </button>
 
-        <div className="md:w-2/3 bg-gray-900 flex items-center justify-center min-h-[300px]" style={{ backgroundColor: detail?.color || '#111' }}>
+        <div
+          className="md:w-2/3 bg-gray-900 flex items-center justify-center min-h-[300px]"
+          style={{ backgroundColor: detail?.color || '#111' }}
+        >
           <img src={image.url} alt={image.caption || ''} className="max-w-full max-h-[80vh] object-contain" />
         </div>
 
@@ -160,10 +206,17 @@ function ImageModal({ image, score, onClose }: { image: ImageResult; score?: num
                 <img src={detail.photographer.profileImage} alt="" className="w-10 h-10 rounded-full" />
               )}
               <div>
-                <a href={detail.photographer.profile || '#'} target="_blank" rel="noopener noreferrer" className="font-medium text-gray-800 hover:text-blue-600 transition-colors">
+                <a
+                  href={detail.photographer.profile || '#'}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-medium text-gray-800 hover:text-blue-600 transition-colors"
+                >
                   {detail.photographer.name}
                 </a>
-                {detail.photographer.location && <p className="text-xs text-gray-400">{detail.photographer.location}</p>}
+                {detail.photographer.location && (
+                  <p className="text-xs text-gray-400">{detail.photographer.location}</p>
+                )}
                 {detail.photographer.bio && <p className="text-xs text-gray-500 mt-0.5">{detail.photographer.bio}</p>}
                 <div className="flex gap-2 mt-1 text-[10px] text-gray-400">
                   {detail.photographer.totalPhotos && <span>{detail.photographer.totalPhotos} photos</span>}
@@ -174,9 +227,7 @@ function ImageModal({ image, score, onClose }: { image: ImageResult; score?: num
             </div>
           )}
 
-          {detail?.altDescription && (
-            <p className="text-sm text-gray-600 italic">{detail.altDescription}</p>
-          )}
+          {detail?.altDescription && <p className="text-sm text-gray-600 italic">{detail.altDescription}</p>}
 
           {detail?.description && detail.description !== detail.altDescription && (
             <p className="text-sm text-gray-600">{detail.description}</p>
@@ -199,13 +250,16 @@ function ImageModal({ image, score, onClose }: { image: ImageResult; score?: num
           {detail?.ai?.caption && (
             <div>
               <div className="flex items-center gap-1.5 text-xs text-gray-400 mb-1.5">
-                <Sparkles className="w-3.5 h-3.5" /><span>AI Description</span>
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>AI Description</span>
               </div>
               <p className="text-sm text-gray-700 leading-relaxed">{detail.ai.caption}</p>
               {detail.ai.tags.length > 0 && (
                 <div className="flex flex-wrap gap-1 mt-2">
-                  {detail.ai.tags.map(t => (
-                    <span key={t} className="text-[10px] px-1.5 py-0.5 bg-blue-50 text-blue-500 rounded-full">{t}</span>
+                  {detail.ai.tags.map((t) => (
+                    <span key={t} className="text-[10px] px-1.5 py-0.5 bg-blue-50 text-blue-500 rounded-full">
+                      {t}
+                    </span>
                   ))}
                 </div>
               )}
@@ -214,8 +268,10 @@ function ImageModal({ image, score, onClose }: { image: ImageResult; score?: num
 
           {detail?.topics && detail.topics.length > 0 && (
             <div className="flex flex-wrap gap-1">
-              {detail.topics.map(t => (
-                <span key={t} className="text-[10px] px-2 py-0.5 bg-green-50 text-green-600 rounded-full">{t}</span>
+              {detail.topics.map((t) => (
+                <span key={t} className="text-[10px] px-2 py-0.5 bg-green-50 text-green-600 rounded-full">
+                  {t}
+                </span>
               ))}
             </div>
           )}
@@ -223,12 +279,18 @@ function ImageModal({ image, score, onClose }: { image: ImageResult; score?: num
           {detail?.exif && (
             <div className="space-y-1.5">
               <div className="flex items-center gap-1.5 text-xs text-gray-400 mb-1">
-                <Aperture className="w-3.5 h-3.5" /><span>Camera</span>
+                <Aperture className="w-3.5 h-3.5" />
+                <span>Camera</span>
               </div>
               {detail.exif.camera && <p className="text-sm text-gray-700 font-medium">{detail.exif.camera}</p>}
               <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-gray-500">
                 {detail.exif.aperture && <span>{detail.exif.aperture}</span>}
-                {detail.exif.exposure && <span><Clock className="w-3 h-3 inline mr-0.5" />{detail.exif.exposure}</span>}
+                {detail.exif.exposure && (
+                  <span>
+                    <Clock className="w-3 h-3 inline mr-0.5" />
+                    {detail.exif.exposure}
+                  </span>
+                )}
                 {detail.exif.focalLength && <span>{detail.exif.focalLength}</span>}
                 {detail.exif.iso && <span>ISO {detail.exif.iso}</span>}
               </div>
@@ -244,18 +306,27 @@ function ImageModal({ image, score, onClose }: { image: ImageResult; score?: num
           )}
 
           <div className="space-y-1.5 text-xs text-gray-400 border-t pt-4">
-            <div>{detail?.width || image.width} × {detail?.height || image.height}</div>
+            <div>
+              {detail?.width || image.width} × {detail?.height || image.height}
+            </div>
             {score !== undefined && <div>Relevance: {(score * 100).toFixed(1)}%</div>}
             {detail?.createdAt && <div>Taken: {new Date(detail.createdAt).toLocaleDateString()}</div>}
             {detail?.color && (
               <div className="flex items-center gap-2">
-                Color: <span className="inline-block w-4 h-4 rounded-full border" style={{ backgroundColor: detail.color }} /> {detail.color}
+                Color:{' '}
+                <span className="inline-block w-4 h-4 rounded-full border" style={{ backgroundColor: detail.color }} />{' '}
+                {detail.color}
               </div>
             )}
           </div>
 
           {detail?.source && (
-            <a href={detail.source} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-xs text-blue-500 hover:text-blue-700 transition-colors">
+            <a
+              href={detail.source}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 text-xs text-blue-500 hover:text-blue-700 transition-colors"
+            >
               <ExternalLink className="w-3.5 h-3.5" /> View on Unsplash
             </a>
           )}
@@ -280,9 +351,12 @@ export default function Home() {
   const [selected, setSelected] = useState<ImageResult | null>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
 
-  const handleObserver = useCallback((entries: IntersectionObserverEntry[]) => {
-    if (entries[0].isIntersecting && hasMore) loadMore();
-  }, [hasMore, loadMore]);
+  const handleObserver = useCallback(
+    (entries: IntersectionObserverEntry[]) => {
+      if (entries[0].isIntersecting && hasMore) loadMore();
+    },
+    [hasMore, loadMore],
+  );
 
   useEffect(() => {
     const el = sentinelRef.current;
@@ -311,15 +385,19 @@ export default function Home() {
           </div>
 
           {took !== undefined && isSearching && (
-            <p className="text-xs text-gray-400 mt-2">Found {total} results in {took}ms</p>
+            <p className="text-xs text-gray-400 mt-2">
+              Found {total} results in {took}ms
+            </p>
           )}
         </div>
       </div>
 
       <div className="max-w-7xl mx-auto columns-1 sm:columns-2 md:columns-3 lg:columns-4 gap-4 space-y-4 px-8">
-        {isLoading ? <Skeleton /> : results.map((img) => (
-          <ImageCard key={img.id} image={img} onClick={() => setSelected(img)} />
-        ))}
+        {isLoading ? (
+          <Skeleton />
+        ) : (
+          results.map((img) => <ImageCard key={img.id} image={img} onClick={() => setSelected(img)} />)
+        )}
       </div>
 
       <div ref={sentinelRef} className="h-4" />
