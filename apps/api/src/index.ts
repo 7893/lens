@@ -83,6 +83,12 @@ app.get('/api/search', async (c) => {
   const q = c.req.query('q');
   if (!q) return c.json({ error: 'Missing query param "q"' }, 400);
 
+  // Cache: same query returns cached result for 10 min
+  const cacheKey = new Request(`https://lens-cache/search?q=${encodeURIComponent(q.toLowerCase().trim())}`);
+  const cache = caches.default;
+  const cached = await cache.match(cacheKey);
+  if (cached) return cached;
+
   const start = Date.now();
 
   try {
@@ -167,7 +173,11 @@ app.get('/api/search', async (c) => {
       return toImageResult(c.dbImage, score);
     });
 
-    return c.json<SearchResponse>({ results: images, total: images.length, took: Date.now() - start });
+    const resp = new Response(JSON.stringify({ results: images, total: images.length, took: Date.now() - start }), {
+      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=600' },
+    });
+    c.executionCtx.waitUntil(cache.put(cacheKey, resp.clone()));
+    return resp;
   } catch (err) {
     console.error('Search error:', err);
     return c.json({ error: 'Internal Server Error' }, 500);
