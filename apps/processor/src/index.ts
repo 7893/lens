@@ -151,22 +151,16 @@ export default {
         console.log(`✅ Backfill done: ${backfilled} gaps filled, next page=${scanPage}`);
       }
 
-      // 5. Incremental sync: D1 embeddings → Vectorize
-      // Loop until all pending records are synced, waiting for async Workflows to settle
-      let totalSynced = 0;
-      for (let round = 0; round < 10; round++) {
-        if (round > 0) await new Promise(r => setTimeout(r, 30_000)); // wait 30s for Workflows to finish
+      // 5. Catch-up sync: handle any records missed by Workflow (e.g. manual inserts)
+      const lastSyncConfig = await env.DB.prepare("SELECT value FROM system_config WHERE key = 'vectorize_last_sync'").first<{ value: string }>();
+      const lastSync = parseInt(lastSyncConfig?.value || '0', 10);
+      const syncCutoff = Date.now() - 30_000;
 
-        const lastSyncConfig = await env.DB.prepare("SELECT value FROM system_config WHERE key = 'vectorize_last_sync'").first<{ value: string }>();
-        const lastSync = parseInt(lastSyncConfig?.value || '0', 10);
-        const syncCutoff = Date.now() - 30_000; // 30s lag for in-flight writes
+      const syncRows = await env.DB.prepare(
+        'SELECT id, ai_caption, ai_embedding FROM images WHERE ai_embedding IS NOT NULL AND created_at > ? AND created_at <= ?'
+      ).bind(lastSync, syncCutoff).all<{ id: string; ai_caption: string; ai_embedding: string }>();
 
-        const syncRows = await env.DB.prepare(
-          'SELECT id, ai_caption, ai_embedding FROM images WHERE ai_embedding IS NOT NULL AND created_at > ? AND created_at <= ?'
-        ).bind(lastSync, syncCutoff).all<{ id: string; ai_caption: string; ai_embedding: string }>();
-
-        if (!syncRows.results.length) break;
-
+      if (syncRows.results.length > 0) {
         const vectors = syncRows.results
           .map(r => {
             try {
@@ -178,13 +172,11 @@ export default {
         for (let i = 0; i < vectors.length; i += 100) {
           await env.VECTORIZE.upsert(vectors.slice(i, i + 100));
         }
-
-        await env.DB.prepare("INSERT INTO system_config (key, value, updated_at) VALUES ('vectorize_last_sync', ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at")
-          .bind(String(syncCutoff), Date.now()).run();
-        totalSynced += vectors.length;
-        console.log(`🔄 Sync round ${round}: ${vectors.length} vectors`);
+        console.log(`✅ Catch-up synced ${vectors.length} vectors`);
       }
-      console.log(`✅ Vectorize sync done: ${totalSynced} total`);
+
+      await env.DB.prepare("INSERT INTO system_config (key, value, updated_at) VALUES ('vectorize_last_sync', ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at")
+        .bind(String(syncCutoff), Date.now()).run();
     } catch (error) {
       console.error('Scheduler error:', error);
     }
@@ -246,6 +238,14 @@ export class LensIngestWorkflow extends WorkflowEntrypoint<Env, IngestionTask> {
         JSON.stringify(meta ?? {}), JSON.stringify(analysis.tags),
         analysis.caption, JSON.stringify(vector), Date.now()
       ).run();
+    });
+
+    await step.do('sync-vectorize', retryConfig, async () => {
+      await this.env.VECTORIZE.upsert([{
+        id: photoId,
+        values: vector,
+        metadata: { url: `display/${photoId}.jpg`, caption: analysis.caption || '' }
+      }]);
     });
   }
 }
