@@ -60,7 +60,15 @@ export default {
         value: string;
       }>();
       const anchorId = anchorConfig?.value || '';
-      console.log(`📌 Anchor: ${anchorId || '(cold start)'}`);
+
+      const lastHeadConfig = await env.DB.prepare(
+        "SELECT value FROM system_config WHERE key = 'last_head_count'",
+      ).first<{ value: string }>();
+      const lastHeadCount = parseInt(lastHeadConfig?.value || '0', 10);
+      // Skip pages that are definitely new (from last sync's head count)
+      const skipPages = Math.floor(lastHeadCount / 30);
+
+      console.log(`📌 Anchor: ${anchorId || '(cold start)'}, skip ${skipPages} pages`);
 
       let headNew = 0;
       let newAnchorId = '';
@@ -72,6 +80,14 @@ export default {
         if (!result.photos.length) break;
 
         if (page === 1) newAnchorId = result.photos[0].id;
+
+        // Skip D1 lookup for pages we know are new
+        if (page <= skipPages) {
+          await enqueue(result.photos);
+          headNew += result.photos.length;
+          console.log(`📦 Head p${page}: +${result.photos.length} (skipped dedup)`);
+          continue;
+        }
 
         let hitAnchor = false;
         const candidates: UnsplashPhoto[] = [];
@@ -96,7 +112,7 @@ export default {
         }
       }
 
-      // Update anchor
+      // Update anchor and head count
       if (newAnchorId && newAnchorId !== anchorId) {
         await env.DB.prepare(
           "INSERT INTO system_config (key, value, updated_at) VALUES ('last_seen_id', ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
@@ -105,6 +121,11 @@ export default {
           .run();
         console.log(`📌 Anchor: ${anchorId} → ${newAnchorId}`);
       }
+      await env.DB.prepare(
+        "INSERT INTO system_config (key, value, updated_at) VALUES ('last_head_count', ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+      )
+        .bind(String(headNew), Date.now())
+        .run();
       console.log(`✅ Head: ${headNew} new photos`);
 
       // ════════════════════════════════════
