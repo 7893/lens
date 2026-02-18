@@ -84,7 +84,7 @@ export default {
         } else {
           await enqueue(res.photos);
           totalNewFound += res.photos.length;
-          if (res.remaining < 15) break;
+          if (res.remaining < 1) break;
         }
       }
 
@@ -98,7 +98,7 @@ export default {
 
       console.log(`🕯️ Phase 2: Diving into history. Starting from page ${backfillPage}...`);
 
-      while (apiRemaining > 15) {
+      while (apiRemaining > 1) {
         const res = await fetchLatestPhotos(env.UNSPLASH_API_KEY, backfillPage, 30);
         apiRemaining = res.remaining;
         if (!res.photos.length) {
