@@ -1,5 +1,5 @@
 import useSWR from 'swr';
-import { SearchResponse, ImageResult } from '@lens/shared';
+import { SearchResponse } from '@lens/shared';
 import { useState, useEffect, useCallback } from 'react';
 
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
