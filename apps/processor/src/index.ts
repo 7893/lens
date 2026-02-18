@@ -23,6 +23,13 @@ export default {
     if (!env.UNSPLASH_API_KEY) return;
 
     try {
+      // 1. Get current high-water mark (anchor)
+      const anchorRow = await env.DB.prepare("SELECT value FROM system_config WHERE key = 'last_seen_id'").first<{
+        value: string;
+      }>();
+      const oldAnchor = anchorRow?.value || '';
+      console.log(`📌 Old Anchor: ${oldAnchor || '(none)'}`);
+
       // ── Helper: batch enqueue photos ──
       const enqueue = async (photos: UnsplashPhoto[]) => {
         if (!photos.length) return;
@@ -38,57 +45,58 @@ export default {
         await env.PHOTO_QUEUE.sendBatch(tasks.map((t) => ({ body: t, contentType: 'json' })));
       };
 
-      // ════════════════════════════════════
-      // Simple Strategy: grab latest until we hit existing photos
-      // ════════════════════════════════════
       let totalNew = 0;
 
+      // 2. Fetch up to 50 pages or until we hit the old anchor
       for (let page = 1; page <= 50; page++) {
         const result = await fetchLatestPhotos(env.UNSPLASH_API_KEY, page, 30);
         if (!result.photos.length) break;
 
-        // Filter out already existing photos
-        const ids = result.photos.map((p) => p.id);
-        const ph = ids.map(() => '?').join(',');
-        const existing = new Set(
-          (
-            await env.DB.prepare(`SELECT id FROM images WHERE id IN (${ph})`)
-              .bind(...ids)
-              .all<{ id: string }>()
-          ).results.map((r) => r.id),
-        );
-        const fresh = result.photos.filter((p) => !existing.has(p.id));
-
-        if (fresh.length > 0) {
-          await enqueue(fresh);
-          totalNew += fresh.length;
-          const ratio = (fresh.length / result.photos.length) * 100;
-          console.log(
-            `📦 Page ${page}: +${fresh.length} new (${result.photos.length - fresh.length} existed, ${ratio.toFixed(0)}% new)`,
-          );
-
-          // Stop if new photo ratio is too low (< 10%) - we've caught up
-          if (ratio < 10) {
-            console.log(`🛑 New photo ratio too low (${ratio.toFixed(0)}%), stopping`);
+        // BRUTAL UPDATE: If this is the first page and we have photos, update anchor IMMEDIATELY
+        if (page === 1) {
+          const latestId = result.photos[0].id;
+          if (latestId === oldAnchor) {
+            console.log('✅ No new photos found. Skipping.');
             break;
           }
+          // Advance the anchor in DB right now! Even if we crash later, we mark these as "seen".
+          await env.DB.prepare(
+            "INSERT INTO system_config (key, value, updated_at) VALUES ('last_seen_id', ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+          )
+            .bind(latestId, Date.now())
+            .run();
+          console.log(`🚀 New Anchor set: ${latestId}`);
+        }
+
+        // Find where the old anchor is in this page
+        const anchorIdx = oldAnchor ? result.photos.findIndex((p) => p.id === oldAnchor) : -1;
+
+        if (anchorIdx === -1) {
+          // Whole page is new
+          await enqueue(result.photos);
+          totalNew += result.photos.length;
+          console.log(`📦 Page ${page}: +${result.photos.length} new photos`);
         } else {
-          console.log(`🛑 Page ${page}: all ${result.photos.length} existed, stopping`);
+          // Found the connection point! Only photos before anchor are new.
+          const freshOnes = result.photos.slice(0, anchorIdx);
+          if (freshOnes.length > 0) {
+            await enqueue(freshOnes);
+            totalNew += freshOnes.length;
+          }
+          console.log(`🛑 Caught up to old anchor at page ${page} index ${anchorIdx}. Stopping.`);
           break;
         }
 
-        // Circuit breaker: stop if quota low
+        // Circuit breaker: stop if quota is dangerously low
         if (result.remaining < 3) {
-          console.log(`⚠️ Quota low (${result.remaining}), stopping`);
+          console.log(`⚠️ Quota low (${result.remaining}), stopping ingestion for this run.`);
           break;
         }
       }
 
-      console.log(`✅ Done: +${totalNew} photos`);
+      console.log(`✅ Run complete: +${totalNew} photos enqueued.`);
 
-      // ════════════════════════════════════
-      // Vectorize catch-up sync
-      // ════════════════════════════════════
+      // 3. Vectorize catch-up sync (Independent block)
       const lastSyncConfig = await env.DB.prepare(
         "SELECT value FROM system_config WHERE key = 'vectorize_last_sync'",
       ).first<{ value: string }>();
@@ -128,7 +136,7 @@ export default {
         .bind(String(syncCutoff), Date.now())
         .run();
     } catch (error) {
-      console.error('Scheduler error:', error);
+      console.error('💥 Scheduler error:', error);
     }
   },
 
