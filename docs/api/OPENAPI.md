@@ -19,21 +19,21 @@
   - **视觉扩展**: 简短词（如 "cat"）会被扩展为视觉丰富词。
   - **LLM 重排**: 结果经过 Llama 3.2 的相关性验证。
 - **响应示例**:
-    ```json
-    {
-      "results": [
-        {
-          "id": "abc-123",
-          "url": "/image/display/abc-123.jpg",
-          "caption": "A detailed description...",
-          "score": 0.99,
-          "exif": { "camera": "Sony A7III" }
-        }
-      ],
-      "total": 100,
-      "took": 450
-    }
-    ```
+  ```json
+  {
+    "results": [
+      {
+        "id": "abc-123",
+        "url": "/image/display/abc-123.jpg",
+        "caption": "A detailed description...",
+        "score": 0.99,
+        "exif": { "camera": "Sony A7III" }
+      }
+    ],
+    "total": 100,
+    "took": 450
+  }
+  ```
 
 ### 2. 获取最新图片 (Latest Gallery)
 
