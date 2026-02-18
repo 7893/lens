@@ -254,6 +254,9 @@ export class LensIngestWorkflow extends WorkflowEntrypoint<Env, IngestionTask> {
           httpMetadata: { contentType: 'image/jpeg' },
         });
       }
+      // Trigger Unsplash download tracking (API requirement)
+      const dlUrl = meta?.links?.download_location;
+      if (dlUrl) await fetch(`${dlUrl}?client_id=${this.env.UNSPLASH_API_KEY}`);
       return { success: true };
     });
 
