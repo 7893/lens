@@ -38,7 +38,7 @@ export default {
       ).all<{ key: string; value: string }>();
       const state = Object.fromEntries(configRows.results.map((r) => [r.key, r.value]));
 
-      let lastSeenId = state.last_seen_id || '';
+      const lastSeenId = state.last_seen_id || '';
       let backfillPage = parseInt(state.backfill_next_page || '1', 10);
       let apiRemaining = 50;
 
