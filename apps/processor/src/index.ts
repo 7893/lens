@@ -1,5 +1,5 @@
 import { WorkflowEntrypoint, WorkflowStep, WorkflowEvent } from 'cloudflare:workers';
-import { IngestionTask, UnsplashPhoto } from '@lens/shared';
+import { IngestionTask, UnsplashPhoto, DBImage } from '@lens/shared';
 import { fetchLatestPhotos } from './utils/unsplash';
 import { streamToR2 } from './services/downloader';
 import { analyzeImage, generateEmbedding } from './services/ai';
@@ -94,7 +94,11 @@ export default {
       // Correct for the shift caused by new photos added at the top
       const shift = Math.floor(totalNewFound / 30);
       backfillPage += shift;
-      if (shift > 0) console.log(`🔄 Timeline shifted by ${shift} pages due to new photos.`);
+      if (shift > 0) {
+        console.log(`🔄 Timeline shifted by ${shift} pages due to new photos.`);
+        // Persist the shifted page immediately to prevent double-processing in next run
+        await updateConfig(env.DB, 'backfill_next_page', String(backfillPage));
+      }
 
       console.log(`🕯️ Phase 2: Diving into history. Starting from page ${backfillPage}...`);
 
