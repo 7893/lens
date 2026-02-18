@@ -117,6 +117,7 @@ export interface UnsplashPhoto {
     self: string;
     html: string;
     download: string;
+    download_location: string;
   };
   user: {
     id: string;
