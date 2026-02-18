@@ -56,14 +56,22 @@ export default {
       };
 
       // ════════════════════════════════════
+      // Load all config in ONE query
+      // ════════════════════════════════════
+      const configRows = await env.DB.prepare(
+        "SELECT key, value FROM system_config WHERE key IN ('last_seen_id', 'tail_page', 'is_backfill_complete')",
+      ).all<{ key: string; value: string }>();
+      const config = Object.fromEntries(configRows.results.map((r) => [r.key, r.value]));
+
+      const anchorId = config['last_seen_id'] || '';
+      const savedTailPage = parseInt(config['tail_page'] || '1', 10);
+      const isBackfillComplete = config['is_backfill_complete'] === 'true';
+
+      console.log(`📌 Anchor: ${anchorId || '(cold start)'}, tail: ${savedTailPage}, done: ${isBackfillComplete}`);
+
+      // ════════════════════════════════════
       // Phase 1: Head sync — grab newest (NO DB lookup, memory only)
       // ════════════════════════════════════
-      const anchorConfig = await env.DB.prepare("SELECT value FROM system_config WHERE key = 'last_seen_id'").first<{
-        value: string;
-      }>();
-      const anchorId = anchorConfig?.value || '';
-      console.log(`📌 Anchor: ${anchorId || '(cold start)'}`);
-
       let headNew = 0;
       let newAnchorId = '';
       let remaining = Infinity;
@@ -99,41 +107,41 @@ export default {
         }
       }
 
-      // Update anchor and head count
+      // Collect config updates for batch write
+      const configUpdates: D1PreparedStatement[] = [];
+      const now = Date.now();
+
       if (newAnchorId && newAnchorId !== anchorId) {
-        await env.DB.prepare(
-          "INSERT INTO system_config (key, value, updated_at) VALUES ('last_seen_id', ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
-        )
-          .bind(newAnchorId, Date.now())
-          .run();
+        configUpdates.push(
+          env.DB.prepare(
+            "INSERT INTO system_config (key, value, updated_at) VALUES ('last_seen_id', ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+          ).bind(newAnchorId, now),
+        );
         console.log(`📌 Anchor: ${anchorId} → ${newAnchorId}`);
       }
-      await env.DB.prepare(
-        "INSERT INTO system_config (key, value, updated_at) VALUES ('last_head_count', ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
-      )
-        .bind(String(headNew), Date.now())
-        .run();
+      configUpdates.push(
+        env.DB.prepare(
+          "INSERT INTO system_config (key, value, updated_at) VALUES ('last_head_count', ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+        ).bind(String(headNew), now),
+      );
       console.log(`✅ Head: ${headNew} new photos`);
 
       // ════════════════════════════════════
       // Phase 2: Tail backfill — blind write until merge
       // ════════════════════════════════════
-      const backfillDoneConfig = await env.DB.prepare(
-        "SELECT value FROM system_config WHERE key = 'is_backfill_complete'",
-      ).first<{ value: string }>();
+      let tailPage = savedTailPage;
+      let tailNew = 0;
+      let backfillJustCompleted = false;
 
-      if (remaining > 2 && backfillDoneConfig?.value !== 'true') {
-        const tailConfig = await env.DB.prepare("SELECT value FROM system_config WHERE key = 'tail_page'").first<{
-          value: string;
-        }>();
-        const savedPage = parseInt(tailConfig?.value || '1', 10);
+      if (remaining > 2 && !isBackfillComplete) {
         // Compensate for sliding window
         const pageShift = Math.floor(headNew / 30);
-        let tailPage = savedPage + pageShift;
-        let tailNew = 0;
+        tailPage = savedTailPage + pageShift;
         let consecutiveZero = 0;
 
-        console.log(`🔄 Tail from page ${tailPage} (saved=${savedPage}, shift=+${pageShift}), remaining=${remaining}`);
+        console.log(
+          `🔄 Tail from page ${tailPage} (saved=${savedTailPage}, shift=+${pageShift}), remaining=${remaining}`,
+        );
 
         while (remaining > 2) {
           const result = await fetchLatestPhotos(env.UNSPLASH_API_KEY, tailPage, 30);
@@ -141,11 +149,7 @@ export default {
 
           if (!result.photos.length) {
             console.log(`🏁 Tail reached end at page ${tailPage}`);
-            await env.DB.prepare(
-              "INSERT INTO system_config (key, value, updated_at) VALUES ('is_backfill_complete', 'true', ?) ON CONFLICT(key) DO UPDATE SET value = 'true', updated_at = excluded.updated_at",
-            )
-              .bind(Date.now())
-              .run();
+            backfillJustCompleted = true;
             break;
           }
 
@@ -159,11 +163,7 @@ export default {
             consecutiveZero++;
             if (consecutiveZero >= 3) {
               console.log(`🎉 Backfill merged! 3 consecutive pages with no new photos`);
-              await env.DB.prepare(
-                "INSERT INTO system_config (key, value, updated_at) VALUES ('is_backfill_complete', 'true', ?) ON CONFLICT(key) DO UPDATE SET value = 'true', updated_at = excluded.updated_at",
-              )
-                .bind(Date.now())
-                .run();
+              backfillJustCompleted = true;
               break;
             }
           } else {
@@ -173,14 +173,26 @@ export default {
           tailPage++;
         }
 
-        await env.DB.prepare(
-          "INSERT INTO system_config (key, value, updated_at) VALUES ('tail_page', ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
-        )
-          .bind(String(tailPage), Date.now())
-          .run();
+        configUpdates.push(
+          env.DB.prepare(
+            "INSERT INTO system_config (key, value, updated_at) VALUES ('tail_page', ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+          ).bind(String(tailPage), now),
+        );
+        if (backfillJustCompleted) {
+          configUpdates.push(
+            env.DB.prepare(
+              "INSERT INTO system_config (key, value, updated_at) VALUES ('is_backfill_complete', 'true', ?) ON CONFLICT(key) DO UPDATE SET value = 'true', updated_at = excluded.updated_at",
+            ).bind(now),
+          );
+        }
         console.log(`✅ Tail: ${tailNew} new photos, next page=${tailPage}`);
-      } else if (backfillDoneConfig?.value === 'true') {
+      } else if (isBackfillComplete) {
         console.log(`⏭️ Backfill complete, skipping`);
+      }
+
+      // Batch write all config updates
+      if (configUpdates.length > 0) {
+        await env.DB.batch(configUpdates);
       }
 
       // ════════════════════════════════════
