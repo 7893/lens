@@ -1,57 +1,109 @@
-# 🖼️ Lens v6.0 - 极致 AI 图片画廊
+# Lens
 
-[![Cloudflare Workers](https://img.shields.io/badge/Cloudflare-Workers-orange)](https://workers.cloudflare.com/)
+**AI-Powered Semantic Image Search on Cloudflare Edge**
+
+> 你搜"孤独感"，它给你一条雪夜独行的小巷。你搜"温暖"，它给你壁炉旁的猫。
+> 不是关键词匹配 — 是 AI 真的看懂了每一张图。
+
+[![Live Demo](https://img.shields.io/badge/Live-lens.53.workers.dev-F38020?logo=cloudflare&logoColor=white)](https://lens.53.workers.dev)
+[![TypeScript](https://img.shields.io/badge/100%25-TypeScript-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-**Lens** 是一个基于 Cloudflare Serverless 生态构建的现代化智能图库系统。它能够全自动采集 Unsplash 高画质原图，利用大模型进行视觉理解，并提供极具工业感的语义搜索体验。
+---
 
-## 🌟 核心亮点 (Why Lens?)
+## Lens 是什么
 
-- **⚡ 语义重排搜索**: 结合向量匹配与 LLM (Llama 3.2) 二次重排，搜索“悲伤的猫”不仅仅是搜标签，而是理解画面意境。
-- **🦖 霸道采集算法**: 采用“双向贪婪”模式，每小时自动榨干 Unsplash API 配额，追赶新发布的同时，稳步挖掘历史库存。
-- **💾 RAW 级存档**: 自动存储 50MB+ 的原始画质大图到 R2，同时生成优化的展示流。
-- **🛠️ 极致工程化**: 全栈 Monorepo 结构，基础设施即代码 (Terraform)，双管道解耦设计。
+一个**零运维、全自动**的 AI 语义图库。
 
-## 📐 系统架构 (Architecture)
+- 每小时自动从 Unsplash 采集新图，图库持续增长
+- Llama 3.2 Vision 理解每张图的内容
+- BGE Large 生成 1024 维语义向量，融合全部元数据
+- 三级搜索管道：LLM 查询扩展 → 向量检索 → LLM 语义重排
+- 支持中英日等多语言自然语言搜索
 
-```mermaid
-graph TD
-    User((用户)) -->|搜索/浏览| API[Search API (Hono)]
-    API -->|1.查询扩展| AI_LLM[Llama 3.2]
-    API -->|2.向量检索| Vectorize[(Vectorize DB)]
-    API -->|3.结果重排| AI_LLM
+没有服务器，没有容器，没有 GPU 实例。
 
-    subgraph Ingestion [Ingestion Pipeline Async]
-        Cron[⏰ 每小时触发] -->|新图+回填| Processor[Processor Worker]
-        Processor -->|任务缓冲| Queue[Cloudflare Queue]
-        Queue -->|执行任务| Workflow[LensIngestWorkflow]
+## 架构
 
-        Workflow -->|1.并行流下载| R2[(R2 Bucket)]
-        Workflow -->|2.视觉理解| AI_Vision[LLaVA 1.5]
-        Workflow -->|3.向量化| AI_Embed[BGE Large]
-        Workflow -->|4.持久化| D1[(D1 DB)]
-    end
+```
+┌─────────────────── Search Pipeline ───────────────────┐
+│                                                       │
+│  User ──▶ LLM Expansion ──▶ BGE Embedding ──▶ Vectorize
+│               │                                │      │
+│               │         LLM Re-ranking ◀───────┘      │
+│               │                │                      │
+│               │◀──── D1 (metadata) ◀───┘              │
+│               │                                       │
+│               ▼                                       │
+│           R2 (images) ──▶ User                        │
+└───────────────────────────────────────────────────────┘
+
+┌─────────────────── Ingestion Pipeline ────────────────┐
+│                                                       │
+│  Cron (hourly)                                        │
+│    │                                                  │
+│    ▼                                                  │
+│  lens-processor ──▶ Queue ──▶ LensIngestWorkflow      │
+│                                  │                    │
+│                                  ├─ Download → R2     │
+│                                  ├─ Llama Vision → AI │
+│                                  ├─ BGE → Embedding   │
+│                                  └─ Persist → D1      │
+│                                                       │
+│  Cron also syncs D1 embeddings → Vectorize (upsert)   │
+└───────────────────────────────────────────────────────┘
 ```
 
-## 📚 文档中心
+两条管道完全解耦。搜索永远快，采集慢慢来。每一步独立重试，自动自愈。
 
-- [**系统设计 (System Design)**](docs/architecture/DESIGN.md): 详细解析双向贪婪算法与偏移修正原理。
-- [**API 参考 (API Reference)**](docs/api/OPENAPI.md): 了解查询扩展与重排接口协议。
-- [**部署指南 (Setup Guide)**](docs/guide/SETUP.md): 从 Terraform 资源创建到代码部署。
+## 技术栈
 
-## 🚀 快速启动
+| 层         | 技术                                     | 用途                                |
+| ---------- | ---------------------------------------- | ----------------------------------- |
+| API + 前端 | Hono + React + Vite + Tailwind           | 单 Worker 同源部署，零跨域          |
+| 采集引擎   | Workflows + Queues + Cron                | 持久化执行，自动重试                |
+| 图片存储   | R2                                       | 零出口流量费                        |
+| 元数据     | D1 (SQLite at Edge)                      | 关系查询，边缘就近访问              |
+| 语义搜索   | Vectorize (1024d, cosine)                | 毫秒级向量相似度                    |
+| AI         | Llama 3.2 11B Vision + BGE Large EN v1.5 | 视觉理解 + 查询扩展 + 重排 + 向量化 |
+| 基础设施   | Terraform                                | 声明式资源管理                      |
+| CI/CD      | GitHub Actions                           | 推送即部署                          |
 
-```bash
-# 1. 初始化基础设施 (D1, R2, Vectorize, Queues)
-cd terraform && terraform apply
+## 前端体验
 
-# 2. 部署采集与 API 服务
-npm run deploy
+- 🔍 搜索框居中，输入后平滑上移
+- 🎨 BlurHash 模糊占位图，图片渐显加载
+- 💀 搜索时骨架屏动画
+- 🖼️ 点击查看完整详情（摄影师 / EXIF / AI 描述 / 地点 / 统计 / 分类）
+- 📍 缩略图卡片展示描述、地点、分类标签
+- ♾️ 无限滚动，客户端渐进渲染
+- 🔤 Inter 字体，干净排版
 
-# 3. 部署前端画廊
-cd apps/web && npm run deploy
-```
+## 工程亮点
 
-## 📝 许可证
+- **三级搜索管道** — LLM 扩展 → 向量检索 → LLM 重排，大多数向量搜索到检索就结束了
+- **多语言搜索** — LLM 自动翻译非英文查询，中日英随便搜
+- **全元数据向量化** — caption + tags + 描述 + 地点 + 摄影师 + 分类全部参与 embedding
+- **完整数据链路** — Unsplash 全字段存储 → API 全字段返回 → 前端全字段展示
+- **边缘原生 AI** — 视觉理解、查询扩展、结果重排，三个 AI 任务全跑在 Cloudflare 边缘
+- **端到端类型安全** — `@lens/shared` 在编译期锁定 API 契约
+- **Monorepo 原子提交** — API、前端、类型、采集引擎同仓库，零版本漂移
+- **幂等全链路** — `ON CONFLICT DO UPDATE` + `upsert`，无限重试也安全
+- **事件驱动自愈** — Cron → Queue → Workflow，每步独立重试
+- **基础设施即代码** — D1、Queue、Vectorize 由 Terraform 管理
+- **极简架构** — 两个 Worker 撑起整个系统，零微服务开销
 
-MIT License
+## 文档
+
+| 文档                                               | 内容                              |
+| -------------------------------------------------- | --------------------------------- |
+| [系统设计](docs/architecture/DESIGN.md)            | 双管道架构、数据流                |
+| [前端架构](docs/architecture/FRONTEND_DESIGN.md)   | React + SWR + BlurHash 实现       |
+| [API 参考](docs/api/OPENAPI.md)                    | 接口定义、请求响应示例            |
+| [开发指南](docs/guide/DEVELOPMENT.md)              | 本地开发、类型检查                |
+| [部署指南](docs/guide/SETUP.md)                    | 从零部署完整系统                  |
+| [架构决策](docs/ADR/001-architecture-decisions.md) | 为什么选 D1？为什么要 Vectorize？ |
+
+## License
+
+MIT
