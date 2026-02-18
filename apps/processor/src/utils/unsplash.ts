@@ -8,21 +8,8 @@ export interface FetchResult {
 }
 
 export async function fetchLatestPhotos(apiKey: string, page: number = 1, perPage: number = 30): Promise<FetchResult> {
-  return fetchPhotos(apiKey, 'latest', page, perPage);
-}
-
-export async function fetchOldestPhotos(apiKey: string, page: number = 1, perPage: number = 30): Promise<FetchResult> {
-  return fetchPhotos(apiKey, 'oldest', page, perPage);
-}
-
-async function fetchPhotos(
-  apiKey: string,
-  orderBy: 'latest' | 'oldest',
-  page: number,
-  perPage: number,
-): Promise<FetchResult> {
-  const url = `${UNSPLASH_API_URL}/photos?order_by=${orderBy}&per_page=${perPage}&page=${page}`;
-  console.log(`🌐 Fetching ${orderBy} photos page ${page}`);
+  const url = `${UNSPLASH_API_URL}/photos?order_by=latest&per_page=${perPage}&page=${page}`;
+  console.log(`🌐 Fetching latest photos page ${page}`);
 
   const response = await fetch(url, {
     headers: { Authorization: `Client-ID ${apiKey}`, 'Accept-Version': 'v1' },
