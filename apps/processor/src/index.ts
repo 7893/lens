@@ -1,6 +1,6 @@
 import { WorkflowEntrypoint, WorkflowStep, WorkflowEvent } from 'cloudflare:workers';
 import { IngestionTask, UnsplashPhoto } from '@lens/shared';
-import { fetchLatestPhotos } from './utils/unsplash';
+import { fetchLatestPhotos, fetchOldestPhotos } from './utils/unsplash';
 import { streamToR2 } from './services/downloader';
 import { analyzeImage, generateEmbedding } from './services/ai';
 import { buildEmbeddingText } from './utils/embedding';
@@ -56,25 +56,26 @@ export default {
       };
 
       // ════════════════════════════════════
-      // Load all config in ONE query
+      // Load config
       // ════════════════════════════════════
       const configRows = await env.DB.prepare(
-        "SELECT key, value FROM system_config WHERE key IN ('last_seen_id', 'tail_page', 'is_backfill_complete')",
+        "SELECT key, value FROM system_config WHERE key IN ('last_seen_id', 'oldest_page', 'head_oldest_ts')",
       ).all<{ key: string; value: string }>();
       const config = Object.fromEntries(configRows.results.map((r) => [r.key, r.value]));
 
       const anchorId = config['last_seen_id'] || '';
-      const savedTailPage = parseInt(config['tail_page'] || '1', 10);
-      const isBackfillComplete = config['is_backfill_complete'] === 'true';
+      const oldestPage = parseInt(config['oldest_page'] || '1', 10);
+      const headOldestTs = parseInt(config['head_oldest_ts'] || '0', 10);
 
-      console.log(`📌 Anchor: ${anchorId || '(cold start)'}, tail: ${savedTailPage}, done: ${isBackfillComplete}`);
+      console.log(`📌 Anchor: ${anchorId || '(cold start)'}, oldestPage: ${oldestPage}, headOldestTs: ${headOldestTs}`);
 
       // ════════════════════════════════════
-      // Phase 1: Head sync — grab newest (NO DB lookup, memory only)
+      // Phase 1: Head sync (order_by=latest) — grab newest
       // ════════════════════════════════════
       let headNew = 0;
       let newAnchorId = '';
       let remaining = Infinity;
+      let headOldestTsThisRun = Infinity;
 
       for (let page = 1; page <= 50 && remaining > 0; page++) {
         const result = await fetchLatestPhotos(env.UNSPLASH_API_KEY, page, 30);
@@ -83,16 +84,17 @@ export default {
 
         if (page === 1) newAnchorId = result.photos[0].id;
 
-        // Find anchor in memory — no DB query
-        let anchorIdx = -1;
-        if (anchorId) {
-          anchorIdx = result.photos.findIndex((p) => p.id === anchorId);
-        }
+        // Find anchor in memory
+        const anchorIdx = anchorId ? result.photos.findIndex((p) => p.id === anchorId) : -1;
 
         if (anchorIdx === -1) {
-          // Anchor not found — all photos are new, blind enqueue
+          // All photos are new
           await enqueue(result.photos);
           headNew += result.photos.length;
+          // Track oldest timestamp from head
+          const lastPhoto = result.photos[result.photos.length - 1];
+          const ts = new Date(lastPhoto.created_at).getTime();
+          if (ts < headOldestTsThisRun) headOldestTsThisRun = ts;
           console.log(`📦 Head p${page}: +${result.photos.length}`);
         } else {
           // Anchor found — only photos before it are new
@@ -100,100 +102,79 @@ export default {
           if (newPhotos.length > 0) {
             await enqueue(newPhotos);
             headNew += newPhotos.length;
-            console.log(`📦 Head p${page}: +${newPhotos.length}`);
           }
-          console.log(`🛑 Hit anchor at page ${page} position ${anchorIdx}`);
+          console.log(`🛑 Hit anchor at page ${page} pos ${anchorIdx}, +${newPhotos.length}`);
           break;
         }
       }
 
-      // Collect config updates for batch write
-      const configUpdates: D1PreparedStatement[] = [];
       const now = Date.now();
 
+      // Update anchor
       if (newAnchorId && newAnchorId !== anchorId) {
-        configUpdates.push(
-          env.DB.prepare(
-            "INSERT INTO system_config (key, value, updated_at) VALUES ('last_seen_id', ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
-          ).bind(newAnchorId, now),
-        );
-        console.log(`📌 Anchor: ${anchorId} → ${newAnchorId}`);
+        await env.DB.prepare(
+          "INSERT INTO system_config (key, value, updated_at) VALUES ('last_seen_id', ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+        )
+          .bind(newAnchorId, now)
+          .run();
       }
-      configUpdates.push(
-        env.DB.prepare(
-          "INSERT INTO system_config (key, value, updated_at) VALUES ('last_head_count', ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
-        ).bind(String(headNew), now),
-      );
-      console.log(`✅ Head: ${headNew} new photos`);
+      // Update head_oldest_ts (for merge detection)
+      if (headOldestTsThisRun < Infinity && headOldestTsThisRun < headOldestTs) {
+        await env.DB.prepare(
+          "INSERT INTO system_config (key, value, updated_at) VALUES ('head_oldest_ts', ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+        )
+          .bind(String(headOldestTsThisRun), now)
+          .run();
+      }
+      console.log(`✅ Head: +${headNew}`);
 
       // ════════════════════════════════════
-      // Phase 2: Tail backfill — blind write until merge
+      // Phase 2: Tail backfill (order_by=oldest) — static pages!
       // ════════════════════════════════════
-      let tailPage = savedTailPage;
       let tailNew = 0;
-      let backfillJustCompleted = false;
+      let tailPage = oldestPage;
+      let tailNewestTs = 0;
 
-      if (remaining > 2 && !isBackfillComplete) {
-        // Compensate for sliding window
-        const pageShift = Math.floor(headNew / 30);
-        tailPage = savedTailPage + pageShift;
-        let consecutiveZero = 0;
+      // Use remaining quota for backfill
+      while (remaining > 2) {
+        const result = await fetchOldestPhotos(env.UNSPLASH_API_KEY, tailPage, 30);
+        remaining = result.remaining;
 
-        console.log(
-          `🔄 Tail from page ${tailPage} (saved=${savedTailPage}, shift=+${pageShift}), remaining=${remaining}`,
-        );
-
-        while (remaining > 2) {
-          const result = await fetchLatestPhotos(env.UNSPLASH_API_KEY, tailPage, 30);
-          remaining = result.remaining;
-
-          if (!result.photos.length) {
-            console.log(`🏁 Tail reached end at page ${tailPage}`);
-            backfillJustCompleted = true;
-            break;
-          }
-
-          // Blind write — let DB dedup
-          const wrote = await blindWrite(result.photos);
-          tailNew += wrote;
-          console.log(`🔄 Tail p${tailPage}: +${wrote} (remaining=${remaining})`);
-
-          // Check for merge: 3 consecutive pages with 0 new = we've caught up
-          if (wrote === 0) {
-            consecutiveZero++;
-            if (consecutiveZero >= 3) {
-              console.log(`🎉 Backfill merged! 3 consecutive pages with no new photos`);
-              backfillJustCompleted = true;
-              break;
-            }
-          } else {
-            consecutiveZero = 0;
-          }
-
-          tailPage++;
+        if (!result.photos.length) {
+          console.log(`🏁 Tail reached end at page ${tailPage}`);
+          break;
         }
 
-        configUpdates.push(
-          env.DB.prepare(
-            "INSERT INTO system_config (key, value, updated_at) VALUES ('tail_page', ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
-          ).bind(String(tailPage), now),
-        );
-        if (backfillJustCompleted) {
-          configUpdates.push(
-            env.DB.prepare(
-              "INSERT INTO system_config (key, value, updated_at) VALUES ('is_backfill_complete', 'true', ?) ON CONFLICT(key) DO UPDATE SET value = 'true', updated_at = excluded.updated_at",
-            ).bind(now),
+        // Blind write
+        const wrote = await blindWrite(result.photos);
+        tailNew += wrote;
+
+        // Track newest timestamp from tail (last photo is newest in oldest-order)
+        const newestPhoto = result.photos[result.photos.length - 1];
+        tailNewestTs = new Date(newestPhoto.created_at).getTime();
+
+        console.log(`🔄 Tail p${tailPage}: +${wrote} (remaining=${remaining})`);
+        tailPage++;
+
+        // Merge check: if tail's newest >= head's oldest, we've met!
+        const effectiveHeadTs = headOldestTsThisRun < Infinity ? headOldestTsThisRun : headOldestTs;
+        if (effectiveHeadTs > 0 && tailNewestTs >= effectiveHeadTs) {
+          console.log(
+            `🎉 Merged! tail=${new Date(tailNewestTs).toISOString()} >= head=${new Date(effectiveHeadTs).toISOString()}`,
           );
+          break;
         }
-        console.log(`✅ Tail: ${tailNew} new photos, next page=${tailPage}`);
-      } else if (isBackfillComplete) {
-        console.log(`⏭️ Backfill complete, skipping`);
       }
 
-      // Batch write all config updates
-      if (configUpdates.length > 0) {
-        await env.DB.batch(configUpdates);
+      // Save tail progress
+      if (tailPage > oldestPage) {
+        await env.DB.prepare(
+          "INSERT INTO system_config (key, value, updated_at) VALUES ('oldest_page', ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+        )
+          .bind(String(tailPage), now)
+          .run();
       }
+      console.log(`✅ Tail: +${tailNew}, page=${tailPage}`);
 
       // ════════════════════════════════════
       // Phase 3: Vectorize catch-up sync
