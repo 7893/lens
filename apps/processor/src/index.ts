@@ -73,12 +73,13 @@ export default {
           if (fresh.length > 0) {
             await enqueue(fresh);
             totalNew += fresh.length;
-            // Update anchor to the newest photo we actually processed
-            if (!newAnchorId) newAnchorId = candidates[0].id;
             console.log(`📦 Page ${page}: +${fresh.length} new (${candidates.length - fresh.length} existed)`);
           } else {
             console.log(`📦 Page ${page}: 0 new (${candidates.length} existed)`);
           }
+
+          // Update anchor to mark we've processed up to here (even if all existed)
+          if (!newAnchorId) newAnchorId = candidates[0].id;
         }
 
         if (anchorIdx !== -1) {
