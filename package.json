@@ -2,7 +2,7 @@
   "name": "lens",
   "version": "6.0.0",
   "private": true,
-  "description": "Pic: Smart Image Gallery with Semantic Search",
+  "description": "Lens: Smart Image Gallery with Semantic Search",
   "workspaces": [
     "apps/*",
     "packages/*"
