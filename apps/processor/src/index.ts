@@ -54,25 +54,35 @@ export default {
         const result = await fetchLatestPhotos(env.UNSPLASH_API_KEY, page, 30);
         if (!result.photos.length) break;
 
-        // Remember first photo as new anchor candidate
-        if (page === 1) newAnchorId = result.photos[0].id;
-
         // Find anchor in memory
         const anchorIdx = anchorId ? result.photos.findIndex((p) => p.id === anchorId) : -1;
 
-        if (anchorIdx === -1) {
-          // All photos are new
-          await enqueue(result.photos);
-          totalNew += result.photos.length;
-          console.log(`📦 Page ${page}: +${result.photos.length}`);
-        } else {
-          // Anchor found — only photos before it are new
-          const newPhotos = result.photos.slice(0, anchorIdx);
-          if (newPhotos.length > 0) {
-            await enqueue(newPhotos);
-            totalNew += newPhotos.length;
+        // Determine which photos to consider
+        const candidates = anchorIdx === -1 ? result.photos : result.photos.slice(0, anchorIdx);
+
+        if (candidates.length > 0) {
+          // Filter out already existing photos
+          const ids = candidates.map((p) => p.id);
+          const ph = ids.map(() => '?').join(',');
+          const existing = new Set(
+            (await env.DB.prepare(`SELECT id FROM images WHERE id IN (${ph})`).bind(...ids).all<{ id: string }>())
+              .results.map((r) => r.id),
+          );
+          const fresh = candidates.filter((p) => !existing.has(p.id));
+
+          if (fresh.length > 0) {
+            await enqueue(fresh);
+            totalNew += fresh.length;
+            // Update anchor to the newest photo we actually processed
+            if (!newAnchorId) newAnchorId = candidates[0].id;
+            console.log(`📦 Page ${page}: +${fresh.length} new (${candidates.length - fresh.length} existed)`);
+          } else {
+            console.log(`📦 Page ${page}: 0 new (${candidates.length} existed)`);
           }
-          console.log(`🛑 Hit anchor at page ${page} pos ${anchorIdx}, +${newPhotos.length}`);
+        }
+
+        if (anchorIdx !== -1) {
+          console.log(`🛑 Hit anchor at page ${page} pos ${anchorIdx}`);
           break;
         }
 
@@ -83,7 +93,7 @@ export default {
         }
       }
 
-      // Update anchor
+      // Update anchor only if we found new photos
       if (newAnchorId && newAnchorId !== anchorId) {
         await env.DB.prepare(
           "INSERT INTO system_config (key, value, updated_at) VALUES ('last_seen_id', ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
