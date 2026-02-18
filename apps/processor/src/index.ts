@@ -106,28 +106,9 @@ export default {
           break;
         }
 
-        // Filter out already existing photos
-        const ids = res.photos.map((p) => p.id);
-        const ph = ids.map(() => '?').join(',');
-        const existing = new Set(
-          (
-            await env.DB.prepare(`SELECT id FROM images WHERE id IN (${ph})`)
-              .bind(...ids)
-              .all<{ id: string }>()
-          ).results.map((r) => r.id),
-        );
-        const fresh = res.photos.filter((p) => !existing.has(p.id));
-
-        if (fresh.length > 0) {
-          await enqueue(fresh);
-          console.log(
-            `📦 Backfill p${backfillPage}: +${fresh.length} new (${existing.size} skipped). Quota: ${apiRemaining}`,
-          );
-        } else {
-          console.log(
-            `📦 Backfill p${backfillPage}: all ${res.photos.length} existed, skipped. Quota: ${apiRemaining}`,
-          );
-        }
+        // Blind enqueue - Workflow will skip existing photos
+        await enqueue(res.photos);
+        console.log(`📦 Backfill p${backfillPage}: +${res.photos.length} enqueued. Quota: ${apiRemaining}`);
 
         backfillPage++;
         await updateConfig(env.DB, 'backfill_next_page', String(backfillPage));
@@ -197,6 +178,16 @@ export class LensIngestWorkflow extends WorkflowEntrypoint<Env, IngestionTask> {
   async run(event: WorkflowEvent<IngestionTask>, step: WorkflowStep) {
     const task = event.payload;
     const { photoId, displayUrl, meta } = task;
+
+    // Skip if already exists in DB
+    const exists = await step.do('check-exists', async () => {
+      const row = await this.env.DB.prepare('SELECT id FROM images WHERE id = ?').bind(photoId).first();
+      return !!row;
+    });
+    if (exists) {
+      console.log(`⏭️ Photo ${photoId} already exists, skipping`);
+      return;
+    }
 
     const retryConfig = { retries: { limit: 10, delay: '30 seconds' as const, backoff: 'constant' as const } };
 
