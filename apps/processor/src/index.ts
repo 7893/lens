@@ -23,48 +23,47 @@ export default {
     if (!env.UNSPLASH_API_KEY) return;
 
     try {
-      // 1. Read high watermark (latest Unsplash created_at we've seen)
-      const config = await env.DB.prepare(
-        "SELECT value FROM system_config WHERE key = 'unsplash_high_watermark'",
+      // 1. Read anchor: the ID of the first photo we saw last time
+      const anchorConfig = await env.DB.prepare(
+        "SELECT value FROM system_config WHERE key = 'last_seen_id'",
       ).first<{ value: string }>();
-      const watermark = config?.value || '1970-01-01T00:00:00Z';
-      console.log(`📌 High watermark: ${watermark}`);
+      const anchorId = anchorConfig?.value || '';
+      console.log(`📌 Anchor ID: ${anchorId || '(cold start)'}`);
 
-      // 2. Collect known IDs at watermark boundary for dedup
-      const knownIds = new Set<string>();
-      if (watermark !== '1970-01-01T00:00:00Z') {
-        const rows = await env.DB.prepare("SELECT id FROM images WHERE json_extract(meta_json, '$.promoted_at') = ?")
-          .bind(watermark)
-          .all<{ id: string }>();
-        for (const r of rows.results) knownIds.add(r.id);
-      }
-
-      // 3. Fetch latest photos, stop when we hit photos strictly older than watermark
-      // Note: order_by=latest sorts by promoted_at, not created_at
+      // 2. Fetch latest photos, stop when we hit the anchor ID
       let totalEnqueued = 0;
-      let newWatermark = watermark;
+      let newAnchorId = '';
       let remaining = Infinity;
-      const MAX_PAGES = 50;
+      const MAX_PAGES = 10; // safety cap to prevent runaway if anchor is deleted
 
       for (let page = 1; page <= MAX_PAGES && remaining > 0; page++) {
         const result = await fetchLatestPhotos(env.UNSPLASH_API_KEY, page, 30);
         remaining = result.remaining;
         if (!result.photos.length) break;
 
-        let hitOld = false;
-        const newPhotos = [];
+        // Remember the very first photo as the new anchor
+        if (page === 1) newAnchorId = result.photos[0].id;
+
+        // Check which photos we already have
+        const pageIds = result.photos.map((p) => p.id);
+        const placeholders = pageIds.map(() => '?').join(',');
+        const existing = new Set(
+          (
+            await env.DB.prepare(`SELECT id FROM images WHERE id IN (${placeholders})`)
+              .bind(...pageIds)
+              .all<{ id: string }>()
+          ).results.map((r) => r.id),
+        );
+
+        let hitAnchor = false;
+        const newPhotos: UnsplashPhoto[] = [];
         for (const photo of result.photos) {
-          const promotedAt = photo.promoted_at || '';
-          if (!promotedAt) continue;
-          if (promotedAt < watermark) {
-            hitOld = true;
+          if (photo.id === anchorId) {
+            hitAnchor = true;
             break;
           }
-          if (promotedAt === watermark && knownIds.has(photo.id)) continue;
-          newPhotos.push(photo);
-          if (promotedAt > newWatermark) newWatermark = promotedAt;
+          if (!existing.has(photo.id)) newPhotos.push(photo);
         }
-        if (!hitOld && newPhotos.length === 0) hitOld = true;
 
         if (newPhotos.length > 0) {
           const tasks: IngestionTask[] = newPhotos.map((photo) => ({
@@ -81,20 +80,20 @@ export default {
           console.log(`📦 Page ${page}: enqueued ${newPhotos.length} new photos`);
         }
 
-        if (hitOld) {
-          console.log(`🛑 Hit old photo at page ${page}, stopping`);
+        if (hitAnchor) {
+          console.log(`🛑 Hit anchor at page ${page}, stopping`);
           break;
         }
       }
 
-      // 3. Update high watermark
-      if (newWatermark !== watermark) {
+      // 3. Update anchor to the first photo of page 1
+      if (newAnchorId && newAnchorId !== anchorId) {
         await env.DB.prepare(
-          "INSERT INTO system_config (key, value, updated_at) VALUES ('unsplash_high_watermark', ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+          "INSERT INTO system_config (key, value, updated_at) VALUES ('last_seen_id', ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
         )
-          .bind(newWatermark, Date.now())
+          .bind(newAnchorId, Date.now())
           .run();
-        console.log(`📌 Watermark updated: ${watermark} → ${newWatermark}`);
+        console.log(`📌 Anchor updated: ${anchorId} → ${newAnchorId}`);
       }
 
       console.log(`✅ Total enqueued: ${totalEnqueued} new photos`);
