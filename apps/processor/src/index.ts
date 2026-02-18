@@ -38,9 +38,9 @@ export default {
         await env.PHOTO_QUEUE.sendBatch(tasks.map((t) => ({ body: t, contentType: 'json' })));
       };
 
-      // ── Helper: batch dedup against D1 ──
-      const findNew = async (photos: UnsplashPhoto[]) => {
-        if (!photos.length) return [];
+      // ── Helper: blind write, returns count of actually new photos ──
+      const blindWrite = async (photos: UnsplashPhoto[]) => {
+        if (!photos.length) return 0;
         const ids = photos.map((p) => p.id);
         const ph = ids.map(() => '?').join(',');
         const existing = new Set(
@@ -50,64 +50,51 @@ export default {
               .all<{ id: string }>()
           ).results.map((r) => r.id),
         );
-        return photos.filter((p) => !existing.has(p.id));
+        const fresh = photos.filter((p) => !existing.has(p.id));
+        if (fresh.length > 0) await enqueue(fresh);
+        return fresh.length;
       };
 
       // ════════════════════════════════════
-      // Phase 1: Head sync — grab newest
+      // Phase 1: Head sync — grab newest (NO DB lookup, memory only)
       // ════════════════════════════════════
       const anchorConfig = await env.DB.prepare("SELECT value FROM system_config WHERE key = 'last_seen_id'").first<{
         value: string;
       }>();
       const anchorId = anchorConfig?.value || '';
-
-      const lastHeadConfig = await env.DB.prepare(
-        "SELECT value FROM system_config WHERE key = 'last_head_count'",
-      ).first<{ value: string }>();
-      const lastHeadCount = parseInt(lastHeadConfig?.value || '0', 10);
-      // Skip pages that are definitely new (from last sync's head count)
-      const skipPages = Math.floor(lastHeadCount / 30);
-
-      console.log(`📌 Anchor: ${anchorId || '(cold start)'}, skip ${skipPages} pages`);
+      console.log(`📌 Anchor: ${anchorId || '(cold start)'}`);
 
       let headNew = 0;
       let newAnchorId = '';
       let remaining = Infinity;
 
-      for (let page = 1; page <= 10 && remaining > 0; page++) {
+      for (let page = 1; page <= 50 && remaining > 0; page++) {
         const result = await fetchLatestPhotos(env.UNSPLASH_API_KEY, page, 30);
         remaining = result.remaining;
         if (!result.photos.length) break;
 
         if (page === 1) newAnchorId = result.photos[0].id;
 
-        // Skip D1 lookup for pages we know are new
-        if (page <= skipPages) {
+        // Find anchor in memory — no DB query
+        let anchorIdx = -1;
+        if (anchorId) {
+          anchorIdx = result.photos.findIndex((p) => p.id === anchorId);
+        }
+
+        if (anchorIdx === -1) {
+          // Anchor not found — all photos are new, blind enqueue
           await enqueue(result.photos);
           headNew += result.photos.length;
-          console.log(`📦 Head p${page}: +${result.photos.length} (skipped dedup)`);
-          continue;
-        }
-
-        let hitAnchor = false;
-        const candidates: UnsplashPhoto[] = [];
-        for (const photo of result.photos) {
-          if (photo.id === anchorId) {
-            hitAnchor = true;
-            break;
+          console.log(`📦 Head p${page}: +${result.photos.length}`);
+        } else {
+          // Anchor found — only photos before it are new
+          const newPhotos = result.photos.slice(0, anchorIdx);
+          if (newPhotos.length > 0) {
+            await enqueue(newPhotos);
+            headNew += newPhotos.length;
+            console.log(`📦 Head p${page}: +${newPhotos.length}`);
           }
-          candidates.push(photo);
-        }
-
-        const fresh = await findNew(candidates);
-        if (fresh.length > 0) {
-          await enqueue(fresh);
-          headNew += fresh.length;
-          console.log(`📦 Head p${page}: +${fresh.length}`);
-        }
-
-        if (hitAnchor) {
-          console.log(`🛑 Hit anchor at page ${page}`);
+          console.log(`🛑 Hit anchor at page ${page} position ${anchorIdx}`);
           break;
         }
       }
@@ -129,19 +116,24 @@ export default {
       console.log(`✅ Head: ${headNew} new photos`);
 
       // ════════════════════════════════════
-      // Phase 2: Tail backfill — fill gaps
+      // Phase 2: Tail backfill — blind write until merge
       // ════════════════════════════════════
-      if (remaining > 2) {
+      const backfillDoneConfig = await env.DB.prepare(
+        "SELECT value FROM system_config WHERE key = 'is_backfill_complete'",
+      ).first<{ value: string }>();
+
+      if (remaining > 2 && backfillDoneConfig?.value !== 'true') {
         const tailConfig = await env.DB.prepare("SELECT value FROM system_config WHERE key = 'tail_page'").first<{
           value: string;
         }>();
         const savedPage = parseInt(tailConfig?.value || '1', 10);
-        // Compensate for sliding window: new head photos push old pages down
-        const rollback = Math.max(1, Math.ceil(headNew / 30));
-        let tailPage = Math.max(1, savedPage - rollback);
+        // Compensate for sliding window
+        const pageShift = Math.floor(headNew / 30);
+        let tailPage = savedPage + pageShift;
         let tailNew = 0;
+        let consecutiveZero = 0;
 
-        console.log(`🔄 Tail from page ${tailPage} (saved=${savedPage}, rollback=${rollback}), remaining=${remaining}`);
+        console.log(`🔄 Tail from page ${tailPage} (saved=${savedPage}, shift=+${pageShift}), remaining=${remaining}`);
 
         while (remaining > 2) {
           const result = await fetchLatestPhotos(env.UNSPLASH_API_KEY, tailPage, 30);
@@ -149,15 +141,35 @@ export default {
 
           if (!result.photos.length) {
             console.log(`🏁 Tail reached end at page ${tailPage}`);
+            await env.DB.prepare(
+              "INSERT INTO system_config (key, value, updated_at) VALUES ('is_backfill_complete', 'true', ?) ON CONFLICT(key) DO UPDATE SET value = 'true', updated_at = excluded.updated_at",
+            )
+              .bind(Date.now())
+              .run();
             break;
           }
 
-          const fresh = await findNew(result.photos);
-          if (fresh.length > 0) {
-            await enqueue(fresh);
-            tailNew += fresh.length;
+          // Blind write — let DB dedup
+          const wrote = await blindWrite(result.photos);
+          tailNew += wrote;
+          console.log(`🔄 Tail p${tailPage}: +${wrote} (remaining=${remaining})`);
+
+          // Check for merge: 3 consecutive pages with 0 new = we've caught up
+          if (wrote === 0) {
+            consecutiveZero++;
+            if (consecutiveZero >= 3) {
+              console.log(`🎉 Backfill merged! 3 consecutive pages with no new photos`);
+              await env.DB.prepare(
+                "INSERT INTO system_config (key, value, updated_at) VALUES ('is_backfill_complete', 'true', ?) ON CONFLICT(key) DO UPDATE SET value = 'true', updated_at = excluded.updated_at",
+              )
+                .bind(Date.now())
+                .run();
+              break;
+            }
+          } else {
+            consecutiveZero = 0;
           }
-          console.log(`🔄 Tail p${tailPage}: +${fresh.length} (remaining=${remaining})`);
+
           tailPage++;
         }
 
@@ -167,6 +179,8 @@ export default {
           .bind(String(tailPage), Date.now())
           .run();
         console.log(`✅ Tail: ${tailNew} new photos, next page=${tailPage}`);
+      } else if (backfillDoneConfig?.value === 'true') {
+        console.log(`⏭️ Backfill complete, skipping`);
       }
 
       // ════════════════════════════════════
