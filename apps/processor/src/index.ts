@@ -62,7 +62,16 @@ export default {
         if (fresh.length > 0) {
           await enqueue(fresh);
           totalNew += fresh.length;
-          console.log(`📦 Page ${page}: +${fresh.length} new (${result.photos.length - fresh.length} existed)`);
+          const ratio = (fresh.length / result.photos.length) * 100;
+          console.log(
+            `📦 Page ${page}: +${fresh.length} new (${result.photos.length - fresh.length} existed, ${ratio.toFixed(0)}% new)`,
+          );
+
+          // Stop if new photo ratio is too low (< 10%) - we've caught up
+          if (ratio < 10) {
+            console.log(`🛑 New photo ratio too low (${ratio.toFixed(0)}%), stopping`);
+            break;
+          }
         } else {
           console.log(`🛑 Page ${page}: all ${result.photos.length} existed, stopping`);
           break;
