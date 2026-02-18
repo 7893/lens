@@ -39,51 +39,29 @@ export default {
       };
 
       // ════════════════════════════════════
-      // High Water Mark Strategy — only grab latest
+      // Simple Strategy: grab latest until we hit existing photos
       // ════════════════════════════════════
-      const anchorRow = await env.DB.prepare("SELECT value FROM system_config WHERE key = 'last_seen_id'").first<{
-        value: string;
-      }>();
-      const anchorId = anchorRow?.value || '';
-      console.log(`📌 Anchor: ${anchorId || '(cold start)'}`);
-
       let totalNew = 0;
-      let newAnchorId = '';
 
       for (let page = 1; page <= 50; page++) {
         const result = await fetchLatestPhotos(env.UNSPLASH_API_KEY, page, 30);
         if (!result.photos.length) break;
 
-        // Find anchor in memory
-        const anchorIdx = anchorId ? result.photos.findIndex((p) => p.id === anchorId) : -1;
+        // Filter out already existing photos
+        const ids = result.photos.map((p) => p.id);
+        const ph = ids.map(() => '?').join(',');
+        const existing = new Set(
+          (await env.DB.prepare(`SELECT id FROM images WHERE id IN (${ph})`).bind(...ids).all<{ id: string }>())
+            .results.map((r) => r.id),
+        );
+        const fresh = result.photos.filter((p) => !existing.has(p.id));
 
-        // Determine which photos to consider
-        const candidates = anchorIdx === -1 ? result.photos : result.photos.slice(0, anchorIdx);
-
-        if (candidates.length > 0) {
-          // Filter out already existing photos
-          const ids = candidates.map((p) => p.id);
-          const ph = ids.map(() => '?').join(',');
-          const existing = new Set(
-            (await env.DB.prepare(`SELECT id FROM images WHERE id IN (${ph})`).bind(...ids).all<{ id: string }>())
-              .results.map((r) => r.id),
-          );
-          const fresh = candidates.filter((p) => !existing.has(p.id));
-
-          if (fresh.length > 0) {
-            await enqueue(fresh);
-            totalNew += fresh.length;
-            console.log(`📦 Page ${page}: +${fresh.length} new (${candidates.length - fresh.length} existed)`);
-          } else {
-            console.log(`📦 Page ${page}: 0 new (${candidates.length} existed)`);
-          }
-
-          // Update anchor to mark we've processed up to here (even if all existed)
-          if (!newAnchorId) newAnchorId = candidates[0].id;
-        }
-
-        if (anchorIdx !== -1) {
-          console.log(`🛑 Hit anchor at page ${page} pos ${anchorIdx}`);
+        if (fresh.length > 0) {
+          await enqueue(fresh);
+          totalNew += fresh.length;
+          console.log(`📦 Page ${page}: +${fresh.length} new (${result.photos.length - fresh.length} existed)`);
+        } else {
+          console.log(`🛑 Page ${page}: all ${result.photos.length} existed, stopping`);
           break;
         }
 
@@ -94,15 +72,6 @@ export default {
         }
       }
 
-      // Update anchor only if we found new photos
-      if (newAnchorId && newAnchorId !== anchorId) {
-        await env.DB.prepare(
-          "INSERT INTO system_config (key, value, updated_at) VALUES ('last_seen_id', ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
-        )
-          .bind(newAnchorId, Date.now())
-          .run();
-        console.log(`📌 Anchor updated: ${newAnchorId}`);
-      }
       console.log(`✅ Done: +${totalNew} photos`);
 
       // ════════════════════════════════════
