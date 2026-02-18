@@ -17,20 +17,31 @@ export interface Env {
   UNSPLASH_API_KEY: string;
 }
 
+async function updateConfig(db: D1Database, key: string, value: string) {
+  await db
+    .prepare(
+      "INSERT INTO system_config (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+    )
+    .bind(key, value, Date.now())
+    .run();
+}
+
 export default {
   async scheduled(_event: ScheduledEvent, env: Env, _ctx: ExecutionContext): Promise<void> {
-    console.log('⏰ Cron triggered');
+    console.log('⏰ Greedy Ingestion Triggered');
     if (!env.UNSPLASH_API_KEY) return;
 
     try {
-      // 1. Get current high-water mark (anchor)
-      const anchorRow = await env.DB.prepare("SELECT value FROM system_config WHERE key = 'last_seen_id'").first<{
-        value: string;
-      }>();
-      const oldAnchor = anchorRow?.value || '';
-      console.log(`📌 Old Anchor: ${oldAnchor || '(none)'}`);
+      // 1. Load current state
+      const configRows = await env.DB.prepare(
+        "SELECT key, value FROM system_config WHERE key IN ('last_seen_id', 'backfill_next_page')",
+      ).all<{ key: string; value: string }>();
+      const state = Object.fromEntries(configRows.results.map((r) => [r.key, r.value]));
 
-      // ── Helper: batch enqueue photos ──
+      let lastSeenId = state.last_seen_id || '';
+      let backfillPage = parseInt(state.backfill_next_page || '1', 10);
+      let apiRemaining = 50;
+
       const enqueue = async (photos: UnsplashPhoto[]) => {
         if (!photos.length) return;
         const tasks: IngestionTask[] = photos.map((p) => ({
@@ -45,58 +56,69 @@ export default {
         await env.PHOTO_QUEUE.sendBatch(tasks.map((t) => ({ body: t, contentType: 'json' })));
       };
 
-      let totalNew = 0;
+      // ════════════════════════════════════
+      // PHASE 1: Forward Catch-up (The Newest)
+      // ════════════════════════════════════
+      console.log(`🔎 Phase 1: Checking for new photos since ${lastSeenId || 'forever'}...`);
+      let totalNewFound = 0;
 
-      // 2. Fetch up to 50 pages or until we hit the old anchor
-      for (let page = 1; page <= 50; page++) {
-        const result = await fetchLatestPhotos(env.UNSPLASH_API_KEY, page, 30);
-        if (!result.photos.length) break;
+      for (let p = 1; p <= 10; p++) {
+        const res = await fetchLatestPhotos(env.UNSPLASH_API_KEY, p, 30);
+        apiRemaining = res.remaining;
+        if (!res.photos.length) break;
 
-        // BRUTAL UPDATE: If this is the first page and we have photos, update anchor IMMEDIATELY
-        if (page === 1) {
-          const latestId = result.photos[0].id;
-          if (latestId === oldAnchor) {
-            console.log('✅ No new photos found. Skipping.');
-            break;
-          }
-          // Advance the anchor in DB right now! Even if we crash later, we mark these as "seen".
-          await env.DB.prepare(
-            "INSERT INTO system_config (key, value, updated_at) VALUES ('last_seen_id', ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
-          )
-            .bind(latestId, Date.now())
-            .run();
-          console.log(`🚀 New Anchor set: ${latestId}`);
+        // Record the absolute newest ID immediately
+        if (p === 1 && res.photos[0].id !== lastSeenId) {
+          await updateConfig(env.DB, 'last_seen_id', res.photos[0].id);
+          console.log(`🌟 Advanced top anchor to: ${res.photos[0].id}`);
         }
 
-        // Find where the old anchor is in this page
-        const anchorIdx = oldAnchor ? result.photos.findIndex((p) => p.id === oldAnchor) : -1;
+        const anchorIdx = lastSeenId ? res.photos.findIndex((x) => x.id === lastSeenId) : -1;
 
-        if (anchorIdx === -1) {
-          // Whole page is new
-          await enqueue(result.photos);
-          totalNew += result.photos.length;
-          console.log(`📦 Page ${page}: +${result.photos.length} new photos`);
+        if (anchorIdx !== -1) {
+          const fresh = res.photos.slice(0, anchorIdx);
+          await enqueue(fresh);
+          totalNewFound += fresh.length;
+          console.log(`✅ Caught up to present! Found ${fresh.length} new photos on page ${p}.`);
+          break;
         } else {
-          // Found the connection point! Only photos before anchor are new.
-          const freshOnes = result.photos.slice(0, anchorIdx);
-          if (freshOnes.length > 0) {
-            await enqueue(freshOnes);
-            totalNew += freshOnes.length;
-          }
-          console.log(`🛑 Caught up to old anchor at page ${page} index ${anchorIdx}. Stopping.`);
-          break;
-        }
-
-        // Circuit breaker: stop if quota is dangerously low
-        if (result.remaining < 3) {
-          console.log(`⚠️ Quota low (${result.remaining}), stopping ingestion for this run.`);
-          break;
+          await enqueue(res.photos);
+          totalNewFound += res.photos.length;
+          if (res.remaining < 15) break;
         }
       }
 
-      console.log(`✅ Run complete: +${totalNew} photos enqueued.`);
+      // ════════════════════════════════════
+      // PHASE 2: Backward Backfill (The History)
+      // ════════════════════════════════════
+      // Correct for the shift caused by new photos added at the top
+      const shift = Math.floor(totalNewFound / 30);
+      backfillPage += shift;
+      if (shift > 0) console.log(`🔄 Timeline shifted by ${shift} pages due to new photos.`);
 
-      // 3. Vectorize catch-up sync (Independent block)
+      console.log(`🕯️ Phase 2: Diving into history. Starting from page ${backfillPage}...`);
+
+      while (apiRemaining > 15) {
+        const res = await fetchLatestPhotos(env.UNSPLASH_API_KEY, backfillPage, 30);
+        apiRemaining = res.remaining;
+        if (!res.photos.length) {
+          console.log('🏁 Reached the end of Unsplash history (or no more results).');
+          break;
+        }
+
+        await enqueue(res.photos);
+        console.log(`📦 Backfilled page ${backfillPage} (+30 photos). Remaining Quota: ${apiRemaining}`);
+
+        backfillPage++;
+        // Persist progress after every successful page
+        await updateConfig(env.DB, 'backfill_next_page', String(backfillPage));
+      }
+
+      console.log(`✅ Run complete. Next backfill start page: ${backfillPage}`);
+
+      // ════════════════════════════════════
+      // PHASE 3: Vectorize Sync
+      // ════════════════════════════════════
       const lastSyncConfig = await env.DB.prepare(
         "SELECT value FROM system_config WHERE key = 'vectorize_last_sync'",
       ).first<{ value: string }>();
@@ -127,16 +149,12 @@ export default {
         for (let i = 0; i < vectors.length; i += 100) {
           await env.VECTORIZE.upsert(vectors.slice(i, i + 100));
         }
-        console.log(`✅ Catch-up synced ${vectors.length} vectors`);
+        console.log(`✅ Synced ${vectors.length} vectors to index.`);
       }
 
-      await env.DB.prepare(
-        "INSERT INTO system_config (key, value, updated_at) VALUES ('vectorize_last_sync', ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
-      )
-        .bind(String(syncCutoff), Date.now())
-        .run();
+      await updateConfig(env.DB, 'vectorize_last_sync', String(syncCutoff));
     } catch (error) {
-      console.error('💥 Scheduler error:', error);
+      console.error('💥 Scheduler critical error:', error);
     }
   },
 
@@ -172,7 +190,6 @@ export class LensIngestWorkflow extends WorkflowEntrypoint<Env, IngestionTask> {
           httpMetadata: { contentType: 'image/jpeg' },
         });
       }
-      // Trigger Unsplash download tracking (API requirement)
       const dlUrl = meta?.links?.download_location;
       if (dlUrl) await fetch(`${dlUrl}?client_id=${this.env.UNSPLASH_API_KEY}`);
       return { success: true };
