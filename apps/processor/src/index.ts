@@ -1,5 +1,5 @@
 import { WorkflowEntrypoint, WorkflowStep, WorkflowEvent } from 'cloudflare:workers';
-import { IngestionTask, UnsplashPhoto, DBImage } from '@lens/shared';
+import { IngestionTask, UnsplashPhoto } from '@lens/shared';
 import { fetchLatestPhotos } from './utils/unsplash';
 import { streamToR2 } from './services/downloader';
 import { analyzeImage, generateEmbedding } from './services/ai';

@@ -18,9 +18,9 @@ graph TD
         Cron[⏰ 每小时触发] -->|1. 发现新图| Processor[Processor Worker]
         Processor -->|2. 推送任务| Queue[Queue]
         Processor -->|3. 历史回填| Unsplash[Unsplash API]
-        
+
         Queue -->|4. 触发处理| Workflow[LensIngestWorkflow]
-        
+
         Workflow -->|Step 1: 幂等检查| D1
         Workflow -->|Step 2: 并行流下载| R2[(R2 Bucket)]
         Workflow -->|Step 3: 视觉理解| AI_Vision[LLaVA 1.5]
@@ -37,16 +37,18 @@ graph TD
 这是本项目的核心算法，旨在 Unsplash 每小时 50 次配额限制下，实现最大化吞吐量。
 
 ### Phase 1: 向前追赶 (Forward Catch-up)
+
 - **目标**: 确保系统始终拥有最新的图片。
 - **逻辑**: 从第 1 页开始抓取，直到遇到数据库中存储的 `last_seen_id`。
 - **霸道更新**: 只要第 1 页成功获取，**立即**更新 `last_seen_id`。即使后续入队失败，下次运行也会从最新的位置开始，绝不回头补漏。
 
 ### Phase 2: 向后回填 (Backward Backfill)
+
 - **目标**: 利用剩余配额挖掘历史数据。
-- **分页偏移修正 (Timeline Shift Correction)**: 
-    - 算法会自动计算 Phase 1 抓取到的新图数量。
-    - 公式: `backfill_page += Math.floor(new_photos / 30)`。
-    - **原理**: 由于 Unsplash 是按时间倒序排列，新图的加入会导致历史图向后“漂移”。修正后可完美避免重复抓取已入库的图。
+- **分页偏移修正 (Timeline Shift Correction)**:
+  - 算法会自动计算 Phase 1 抓取到的新图数量。
+  - 公式: `backfill_page += Math.floor(new_photos / 30)`。
+  - **原理**: 由于 Unsplash 是按时间倒序排列，新图的加入会导致历史图向后“漂移”。修正后可完美避免重复抓取已入库的图。
 - **配额耗尽策略**: 持续抓取，直到 API 剩余配额为 1。
 
 ## 3. 搜索算法：多层智能增强
@@ -66,7 +68,7 @@ graph TD
 
 ## 5. 存储策略
 
-| 路径 | 格式 | 用途 | 缓存策略 |
-| --- | --- | --- | --- |
-| `/raw/{id}.jpg` | 原图 (RAW) | 存档与高质量下载 | 1 年 (Immutable) |
+| 路径                | 格式            | 用途               | 缓存策略         |
+| ------------------- | --------------- | ------------------ | ---------------- |
+| `/raw/{id}.jpg`     | 原图 (RAW)      | 存档与高质量下载   | 1 年 (Immutable) |
 | `/display/{id}.jpg` | 1080p (Regular) | 前端展示与 AI 分析 | 1 年 (Immutable) |
