@@ -51,8 +51,11 @@ export default {
         const ids = result.photos.map((p) => p.id);
         const ph = ids.map(() => '?').join(',');
         const existing = new Set(
-          (await env.DB.prepare(`SELECT id FROM images WHERE id IN (${ph})`).bind(...ids).all<{ id: string }>())
-            .results.map((r) => r.id),
+          (
+            await env.DB.prepare(`SELECT id FROM images WHERE id IN (${ph})`)
+              .bind(...ids)
+              .all<{ id: string }>()
+          ).results.map((r) => r.id),
         );
         const fresh = result.photos.filter((p) => !existing.has(p.id));
 
