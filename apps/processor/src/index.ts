@@ -106,11 +106,30 @@ export default {
           break;
         }
 
-        await enqueue(res.photos);
-        console.log(`📦 Backfilled page ${backfillPage} (+30 photos). Remaining Quota: ${apiRemaining}`);
+        // Filter out already existing photos
+        const ids = res.photos.map((p) => p.id);
+        const ph = ids.map(() => '?').join(',');
+        const existing = new Set(
+          (
+            await env.DB.prepare(`SELECT id FROM images WHERE id IN (${ph})`)
+              .bind(...ids)
+              .all<{ id: string }>()
+          ).results.map((r) => r.id),
+        );
+        const fresh = res.photos.filter((p) => !existing.has(p.id));
+
+        if (fresh.length > 0) {
+          await enqueue(fresh);
+          console.log(
+            `📦 Backfill p${backfillPage}: +${fresh.length} new (${existing.size} skipped). Quota: ${apiRemaining}`,
+          );
+        } else {
+          console.log(
+            `📦 Backfill p${backfillPage}: all ${res.photos.length} existed, skipped. Quota: ${apiRemaining}`,
+          );
+        }
 
         backfillPage++;
-        // Persist progress after every successful page
         await updateConfig(env.DB, 'backfill_next_page', String(backfillPage));
       }
 
