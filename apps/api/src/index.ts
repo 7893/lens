@@ -243,7 +243,7 @@ app.get('/api/images/:id', async (c) => {
         }
       : null,
     topics: Object.entries(meta.topic_submissions || {})
-      .filter(([, v]: [string, { status: string }]) => v.status === 'approved')
+      .filter(([, v]) => (v as { status: string }).status === 'approved')
       .map(([k]) => k),
     stats: {
       views: meta.views,
