@@ -24,9 +24,9 @@ export default {
 
     try {
       // 1. Read anchor: the ID of the first photo we saw last time
-      const anchorConfig = await env.DB.prepare(
-        "SELECT value FROM system_config WHERE key = 'last_seen_id'",
-      ).first<{ value: string }>();
+      const anchorConfig = await env.DB.prepare("SELECT value FROM system_config WHERE key = 'last_seen_id'").first<{
+        value: string;
+      }>();
       const anchorId = anchorConfig?.value || '';
       console.log(`📌 Anchor ID: ${anchorId || '(cold start)'}`);
 
