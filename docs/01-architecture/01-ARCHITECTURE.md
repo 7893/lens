@@ -73,15 +73,15 @@ Unsplash API 免费版限制每小时 **50 次** 请求。为了在极低配额�
 
 ```mermaid
 graph TD
-    User((用户)) -->|搜索/浏览| API[Search API (Hono)]
+    User([用户]) -->|搜索/浏览| API[Search API]
     API -->|1.查询扩展| AI_LLM[Llama 3.2]
     API -->|2.向量检索| Vectorize[(Vectorize DB)]
     API -->|3.结果重排| AI_LLM
     
     subgraph Ingestion [Ingestion Pipeline Async]
-        Cron[⏰ 每小时触发] -->|新图+回填| Processor[Processor Worker]
-        Processor -->|任务缓冲| Queue[Cloudflare Queue]
-        Queue -->|执行任务| Workflow[LensIngestWorkflow]
+        Cron[Cron定时触发] -->|新图+回填| Processor[Processor Worker]
+        Processor -->|任务入队| Queue[Cloudflare Queue]
+        Queue -->|执行任务| Workflow[Lens Workflow]
         
         Workflow -->|1.幂等检查| D1[(D1 Database)]
         Workflow -->|2.流式下载| R2[(R2 Bucket)]
