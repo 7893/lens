@@ -121,21 +121,26 @@ export default {
       console.log(`✅ Run complete. Next backfill start page: ${backfillPage}`);
 
       // ════════════════════════════════════
-      // PHASE 3: Vectorize Sync
+      // PHASE 3: Vectorize Sync (Batched & Looped to clear backlog)
       // ════════════════════════════════════
-      const lastSyncConfig = await env.DB.prepare(
-        "SELECT value FROM system_config WHERE key = 'vectorize_last_sync'",
-      ).first<{ value: string }>();
-      const lastSync = parseInt(lastSyncConfig?.value || '0', 10);
-      const syncCutoff = Date.now() - 30_000;
+      console.log('🔄 Phase 3: Synchronizing vectors to index...');
+      let batchesProcessed = 0;
 
-      const syncRows = await env.DB.prepare(
-        'SELECT id, ai_caption, ai_embedding FROM images WHERE ai_embedding IS NOT NULL AND created_at > ? AND created_at <= ?',
-      )
-        .bind(lastSync, syncCutoff)
-        .all<{ id: string; ai_caption: string; ai_embedding: string }>();
+      while (batchesProcessed < 10) {
+        // Process up to 1000 records per Cron run
+        const lastSyncConfig = await env.DB.prepare(
+          "SELECT value FROM system_config WHERE key = 'vectorize_last_sync'",
+        ).first<{ value: string }>();
+        const lastSync = parseInt(lastSyncConfig?.value || '0', 10);
 
-      if (syncRows.results.length > 0) {
+        const syncRows = await env.DB.prepare(
+          'SELECT id, ai_caption, ai_embedding, created_at FROM images WHERE ai_embedding IS NOT NULL AND created_at > ? ORDER BY created_at ASC LIMIT 100',
+        )
+          .bind(lastSync)
+          .all<{ id: string; ai_caption: string; ai_embedding: string; created_at: number }>();
+
+        if (syncRows.results.length === 0) break;
+
         const vectors = syncRows.results
           .map((r) => {
             try {
@@ -150,13 +155,16 @@ export default {
           })
           .filter(Boolean) as VectorizeVector[];
 
-        for (let i = 0; i < vectors.length; i += 100) {
-          await env.VECTORIZE.upsert(vectors.slice(i, i + 100));
-        }
-        console.log(`✅ Synced ${vectors.length} vectors to index.`);
+        await env.VECTORIZE.upsert(vectors);
+
+        const newLastSync = syncRows.results[syncRows.results.length - 1].created_at;
+        await updateConfig(env.DB, 'vectorize_last_sync', String(newLastSync));
+
+        batchesProcessed++;
+        console.log(`✅ Batch ${batchesProcessed}: Synced 100 vectors. Checkpoint: ${newLastSync}`);
       }
 
-      await updateConfig(env.DB, 'vectorize_last_sync', String(syncCutoff));
+      if (batchesProcessed === 0) console.log('✨ Vectorize index is already up to date.');
     } catch (error) {
       console.error('💥 Scheduler critical error:', error);
     }
