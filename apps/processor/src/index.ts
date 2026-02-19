@@ -41,7 +41,6 @@ export default {
     const backfillPage = parseInt(state.backfill_next_page || '1', 10);
 
     // --- TASK A: Ingestion (Forward & Backward) ---
-    // Wrapped in its own try-catch so Unsplash rate limits don't block Task B
     try {
       await this.runIngestion(env, lastSeenId, backfillPage);
     } catch (error) {
@@ -49,7 +48,6 @@ export default {
     }
 
     // --- TASK B: Vectorize Sync (Clearing the Backlog) ---
-    // This task is independent and should run even if Unsplash is down/limited
     try {
       await this.runVectorSync(env);
     } catch (error) {
@@ -59,16 +57,14 @@ export default {
 
   /**
    * PHASE 1 & 2: Pulling data from Unsplash
+   * Optimized for 1500/hr seamless ingestion
    */
   async runIngestion(env: Env, lastSeenId: string, backfillPage: number) {
-    let totalNewFound = 0;
     let currentBackfillPage = backfillPage;
 
     // Helper to check D1 and only enqueue brand new photos
     const filterAndEnqueue = async (photos: UnsplashPhoto[]) => {
       if (!photos.length) return 0;
-
-      // 1. Pre-filter by checking D1 in bulk
       const ids = photos.map((p) => p.id);
       const placeholders = ids.map(() => '?').join(',');
       const { results } = await env.DB.prepare(`SELECT id FROM images WHERE id IN (${placeholders})`)
@@ -80,7 +76,6 @@ export default {
 
       if (!freshPhotos.length) return 0;
 
-      // 2. Enqueue only the truly new photos
       const tasks: IngestionTask[] = freshPhotos.map((p) => ({
         type: 'process-photo' as const,
         photoId: p.id,
@@ -96,35 +91,31 @@ export default {
     };
 
     // --- STEP 0: Cold Start (Fetch Page 1 to get real quota) ---
-    console.log(`🔎 Ingestion: Starting cold start since ${lastSeenId}...`);
+    console.log(`🔎 Ingestion: Starting catch-up from top...`);
     const firstRes = await fetchLatestPhotos(env.UNSPLASH_API_KEY, 1, 30);
     let apiRemaining = firstRes.remaining;
 
-    if (!firstRes.photos.length) {
-      console.log('✨ Unsplash returned no photos. Done.');
-      return;
-    }
+    if (!firstRes.photos.length) return;
 
-    // 1. Update anchor if first image is new
+    // 1. Update global top anchor
     if (firstRes.photos[0].id !== lastSeenId) {
       await updateConfig(env.DB, 'last_seen_id', firstRes.photos[0].id);
       console.log(`🌟 Top anchor advanced to: ${firstRes.photos[0].id}`);
     }
 
-    // 2. Check for anchor hit in first page
-    const anchorIdx = lastSeenId ? firstRes.photos.findIndex((x) => x.id === lastSeenId) : -1;
-    if (anchorIdx !== -1) {
-      const fresh = firstRes.photos.slice(0, anchorIdx);
-      await filterAndEnqueue(fresh);
-      console.log(`✅ Anchor hit on page 1. Catch-up finished.`);
-      // Proceed to backfill if we have quota
+    // --- TASK A: Forward Catch-up (Catching new releases) ---
+    let hitAnchor = false;
+    const firstPageAnchorIdx = lastSeenId ? firstRes.photos.findIndex((x) => x.id === lastSeenId) : -1;
+
+    if (firstPageAnchorIdx !== -1) {
+      // Small gap: handled in page 1
+      await filterAndEnqueue(firstRes.photos.slice(0, firstPageAnchorIdx));
+      hitAnchor = true;
+      console.log(`✅ Catch-up finished on page 1.`);
     } else {
-      totalNewFound += await filterAndEnqueue(firstRes.photos);
-
-      // --- TASK A: Forward Catch-up (Parallel from page 2) ---
-      let hitAnchor = false;
+      // Large gap: parallel catch-up starting from page 2
+      await filterAndEnqueue(firstRes.photos);
       let forwardPage = 2;
-
       while (!hitAnchor && forwardPage <= 10 && apiRemaining > 0) {
         const chunkSize = Math.min(5, apiRemaining);
         const pages = Array.from({ length: chunkSize }, (_, i) => forwardPage + i);
@@ -136,57 +127,48 @@ export default {
         forwardPage += chunkSize;
 
         for (const res of results) {
-          if (!res.photos.length) {
-            hitAnchor = true;
-            break;
-          }
           const idx = lastSeenId ? res.photos.findIndex((x) => x.id === lastSeenId) : -1;
           if (idx !== -1) {
-            totalNewFound += await filterAndEnqueue(res.photos.slice(0, idx));
+            await filterAndEnqueue(res.photos.slice(0, idx));
             hitAnchor = true;
             break;
           } else {
-            totalNewFound += await filterAndEnqueue(res.photos);
+            await filterAndEnqueue(res.photos);
           }
         }
       }
     }
 
-    // --- TASK B: Backward Backfill (Greedy) ---
-    const shift = Math.floor(totalNewFound / 30);
-    currentBackfillPage += shift;
-    if (shift > 0) {
-      await updateConfig(env.DB, 'backfill_next_page', String(currentBackfillPage));
-    }
-
-    console.log(`🕯️ Ingestion: Backfilling from page ${currentBackfillPage}... (Quota: ${apiRemaining})`);
+    // --- TASK B: Backward Backfill (Seamless Continuation) ---
+    // No more 'shift' calculation. We strictly continue from where we left off.
+    console.log(`🕯️ Ingestion: Resuming backfill from page ${currentBackfillPage}... (Quota: ${apiRemaining})`);
 
     while (apiRemaining > 0) {
       const useParallel = apiRemaining >= 5;
       const chunkSize = useParallel ? 5 : 1;
       const pages = Array.from({ length: chunkSize }, (_, i) => currentBackfillPage + i);
 
-      console.log(`🚀 Backfill ${useParallel ? 'parallel' : 'serial'} batch: pages ${pages.join(', ')}`);
+      console.log(`🚀 Backfill batch: pages ${pages.join(', ')}`);
       const results = await Promise.all(pages.map((p) => fetchLatestPhotos(env.UNSPLASH_API_KEY, p, 30)));
 
       apiRemaining = results[results.length - 1].remaining;
 
-      let batchTotal = 0;
       for (const res of results) {
         if (!res.photos.length) {
           apiRemaining = 0;
           break;
         }
-        batchTotal += await filterAndEnqueue(res.photos);
+        // Pre-filter ensures we don't duplicate even if pages shifted
+        await filterAndEnqueue(res.photos);
       }
 
       currentBackfillPage += chunkSize;
+      // Save progress after each successful batch
       await updateConfig(env.DB, 'backfill_next_page', String(currentBackfillPage));
-      console.log(`✅ Batch complete. Found ${batchTotal} new photos. Remaining Quota: ${apiRemaining}`);
 
       if (apiRemaining <= 0) break;
     }
-    console.log(`✨ Ingestion cycle finished. Next backfill starts at: ${currentBackfillPage}`);
+    console.log(`✨ Cycle finished. Next cycle will resume backfill from page: ${currentBackfillPage}`);
   },
 
   /**
@@ -206,7 +188,7 @@ export default {
         'SELECT id, ai_caption, ai_embedding, created_at FROM images WHERE ai_embedding IS NOT NULL AND created_at > ? ORDER BY created_at ASC LIMIT 100',
       )
         .bind(lastSync)
-        .all<{ id: string; ai_caption: string; ai_embedding: string; created_at: number }>();
+        .all<{ id: string; ai_caption: string; api_embedding: string; created_at: number }>();
 
       if (syncRows.results.length === 0) break;
 
