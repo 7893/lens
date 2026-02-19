@@ -23,14 +23,14 @@ terraform apply
 
 ```bash
 # D1
-wrangler d1 create lens-db
-wrangler d1 execute lens-db --remote --file=apps/processor/schema.sql
+wrangler d1 create lens-d1
+wrangler d1 execute lens-d1 --remote --file=apps/processor/schema.sql
 
 # R2
 wrangler r2 bucket create lens-r2
 
 # Vectorize (1024 dims = bge-large-en-v1.5)
-wrangler vectorize create lens-vectors-v2 --dimensions=1024 --metric=cosine
+wrangler vectorize create lens-vectors --dimensions=1024 --metric=cosine
 
 # Queue
 wrangler queues create lens-queue
