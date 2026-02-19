@@ -11,6 +11,7 @@ Lens 是一个完全基于 Cloudflare Edge 栈的项目。部署分为三个阶�
 ### 1.1 使用 Terraform (声明式)
 
 进入 `lens/infra/terraform` 目录并配置变量：
+
 ```bash
 cp terraform.tfvars.example terraform.tfvars
 # 填写 CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID
@@ -23,6 +24,7 @@ terraform apply
 在 `lens/` 根目录下运行以下命令：
 
 1.  **D1 数据库**:
+
     ```bash
     npx wrangler d1 create lens-d1
     # 记录下返回的 UUID，更新到 apps/api 和 apps/processor 的 wrangler.toml
@@ -30,11 +32,13 @@ terraform apply
     ```
 
 2.  **R2 存储桶**:
+
     ```bash
     npx wrangler r2 bucket create lens-r2
     ```
 
 3.  **Vectorize 索引**:
+
     ```bash
     npx wrangler vectorize create lens-vectors --dimensions=1024 --metric=cosine
     ```
@@ -56,6 +60,7 @@ npx wrangler secret put UNSPLASH_API_KEY
 ```
 
 此外，在 GitHub 仓库中配置以下 Secrets 用于 Actions：
+
 - `CLOUDFLARE_API_TOKEN`
 - `CLOUDFLARE_ACCOUNT_ID`
 
@@ -66,7 +71,9 @@ npx wrangler secret put UNSPLASH_API_KEY
 Lens 采用了 Monorepo 结构，各组件之间存在构建依赖。
 
 ### 3.1 自动化部署 (GitHub Actions)
+
 每次推送至 `main` 分支时，`.github/workflows/deploy.yml` 会自动执行以下步骤：
+
 1. 构建 `@lens/shared` 包。
 2. 构建 `@lens/web` 前端。
 3. 将前端静态产物拷贝至 `apps/api/public`。
@@ -74,7 +81,9 @@ Lens 采用了 Monorepo 结构，各组件之间存在构建依赖。
 5. 部署 `lens-processor` Worker。
 
 ### 3.2 手动部署流程
+
 如果需要手动全栈发布，请在根目录下按序执行：
+
 ```bash
 # 1. 构建共享包
 pnpm build --filter "@lens/shared"
