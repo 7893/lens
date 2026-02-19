@@ -31,143 +31,141 @@ export default {
     console.log('⏰ Greedy Ingestion Triggered');
     if (!env.UNSPLASH_API_KEY) return;
 
+    // 1. Load current state
+    const configRows = await env.DB.prepare(
+      "SELECT key, value FROM system_config WHERE key IN ('last_seen_id', 'backfill_next_page')",
+    ).all<{ key: string; value: string }>();
+    const state = Object.fromEntries(configRows.results.map((r) => [r.key, r.value]));
+
+    const lastSeenId = state.last_seen_id || '';
+    const backfillPage = parseInt(state.backfill_next_page || '1', 10);
+
+    // --- TASK A: Ingestion (Forward & Backward) ---
+    // Wrapped in its own try-catch so Unsplash rate limits don't block Task B
     try {
-      // 1. Load current state
-      const configRows = await env.DB.prepare(
-        "SELECT key, value FROM system_config WHERE key IN ('last_seen_id', 'backfill_next_page')",
-      ).all<{ key: string; value: string }>();
-      const state = Object.fromEntries(configRows.results.map((r) => [r.key, r.value]));
-
-      const lastSeenId = state.last_seen_id || '';
-      let backfillPage = parseInt(state.backfill_next_page || '1', 10);
-      let apiRemaining = 50;
-
-      const enqueue = async (photos: UnsplashPhoto[]) => {
-        if (!photos.length) return;
-        const tasks: IngestionTask[] = photos.map((p) => ({
-          type: 'process-photo' as const,
-          photoId: p.id,
-          downloadUrl: p.urls.raw,
-          displayUrl: p.urls.regular,
-          photographer: p.user.name,
-          source: 'unsplash' as const,
-          meta: p,
-        }));
-        await env.PHOTO_QUEUE.sendBatch(tasks.map((t) => ({ body: t, contentType: 'json' })));
-      };
-
-      // ════════════════════════════════════
-      // PHASE 1: Forward Catch-up (The Newest)
-      // ════════════════════════════════════
-      console.log(`🔎 Phase 1: Checking for new photos since ${lastSeenId || 'forever'}...`);
-      let totalNewFound = 0;
-
-      for (let p = 1; p <= 10; p++) {
-        const res = await fetchLatestPhotos(env.UNSPLASH_API_KEY, p, 30);
-        apiRemaining = res.remaining;
-        if (!res.photos.length) break;
-
-        // Record the absolute newest ID immediately
-        if (p === 1 && res.photos[0].id !== lastSeenId) {
-          await updateConfig(env.DB, 'last_seen_id', res.photos[0].id);
-          console.log(`🌟 Advanced top anchor to: ${res.photos[0].id}`);
-        }
-
-        const anchorIdx = lastSeenId ? res.photos.findIndex((x) => x.id === lastSeenId) : -1;
-
-        if (anchorIdx !== -1) {
-          const fresh = res.photos.slice(0, anchorIdx);
-          await enqueue(fresh);
-          totalNewFound += fresh.length;
-          console.log(`✅ Caught up to present! Found ${fresh.length} new photos on page ${p}.`);
-          break;
-        } else {
-          await enqueue(res.photos);
-          totalNewFound += res.photos.length;
-          if (res.remaining < 1) break;
-        }
-      }
-
-      // ════════════════════════════════════
-      // PHASE 2: Backward Backfill (The History)
-      // ════════════════════════════════════
-      // Correct for the shift caused by new photos added at the top
-      const shift = Math.floor(totalNewFound / 30);
-      backfillPage += shift;
-      if (shift > 0) {
-        console.log(`🔄 Timeline shifted by ${shift} pages due to new photos.`);
-        // Persist the shifted page immediately to prevent double-processing in next run
-        await updateConfig(env.DB, 'backfill_next_page', String(backfillPage));
-      }
-
-      console.log(`🕯️ Phase 2: Diving into history. Starting from page ${backfillPage}...`);
-
-      while (apiRemaining > 1) {
-        const res = await fetchLatestPhotos(env.UNSPLASH_API_KEY, backfillPage, 30);
-        apiRemaining = res.remaining;
-        if (!res.photos.length) {
-          console.log('🏁 Reached the end of Unsplash history (or no more results).');
-          break;
-        }
-
-        // Blind enqueue - Workflow will skip existing photos
-        await enqueue(res.photos);
-        console.log(`📦 Backfill p${backfillPage}: +${res.photos.length} enqueued. Quota: ${apiRemaining}`);
-
-        backfillPage++;
-        await updateConfig(env.DB, 'backfill_next_page', String(backfillPage));
-      }
-
-      console.log(`✅ Run complete. Next backfill start page: ${backfillPage}`);
-
-      // ════════════════════════════════════
-      // PHASE 3: Vectorize Sync (Batched & Looped to clear backlog)
-      // ════════════════════════════════════
-      console.log('🔄 Phase 3: Synchronizing vectors to index...');
-      let batchesProcessed = 0;
-
-      while (batchesProcessed < 10) {
-        // Process up to 1000 records per Cron run
-        const lastSyncConfig = await env.DB.prepare(
-          "SELECT value FROM system_config WHERE key = 'vectorize_last_sync'",
-        ).first<{ value: string }>();
-        const lastSync = parseInt(lastSyncConfig?.value || '0', 10);
-
-        const syncRows = await env.DB.prepare(
-          'SELECT id, ai_caption, ai_embedding, created_at FROM images WHERE ai_embedding IS NOT NULL AND created_at > ? ORDER BY created_at ASC LIMIT 100',
-        )
-          .bind(lastSync)
-          .all<{ id: string; ai_caption: string; ai_embedding: string; created_at: number }>();
-
-        if (syncRows.results.length === 0) break;
-
-        const vectors = syncRows.results
-          .map((r) => {
-            try {
-              return {
-                id: r.id,
-                values: JSON.parse(r.ai_embedding),
-                metadata: { url: `display/${r.id}.jpg`, caption: r.ai_caption || '' },
-              };
-            } catch {
-              return null;
-            }
-          })
-          .filter(Boolean) as VectorizeVector[];
-
-        await env.VECTORIZE.upsert(vectors);
-
-        const newLastSync = syncRows.results[syncRows.results.length - 1].created_at;
-        await updateConfig(env.DB, 'vectorize_last_sync', String(newLastSync));
-
-        batchesProcessed++;
-        console.log(`✅ Batch ${batchesProcessed}: Synced 100 vectors. Checkpoint: ${newLastSync}`);
-      }
-
-      if (batchesProcessed === 0) console.log('✨ Vectorize index is already up to date.');
+      await this.runIngestion(env, lastSeenId, backfillPage);
     } catch (error) {
-      console.error('💥 Scheduler critical error:', error);
+      console.error('💥 Ingestion Task failed:', error);
     }
+
+    // --- TASK B: Vectorize Sync (Clearing the Backlog) ---
+    // This task is independent and should run even if Unsplash is down/limited
+    try {
+      await this.runVectorSync(env);
+    } catch (error) {
+      console.error('💥 Vector Sync Task failed:', error);
+    }
+  },
+
+  /**
+   * PHASE 1 & 2: Pulling data from Unsplash
+   */
+  async runIngestion(env: Env, lastSeenId: string, backfillPage: number) {
+    let apiRemaining = 50;
+    let totalNewFound = 0;
+    let currentBackfillPage = backfillPage;
+
+    const enqueue = async (photos: UnsplashPhoto[]) => {
+      if (!photos.length) return;
+      const tasks: IngestionTask[] = photos.map((p) => ({
+        type: 'process-photo' as const,
+        photoId: p.id,
+        downloadUrl: p.urls.raw,
+        displayUrl: p.urls.regular,
+        photographer: p.user.name,
+        source: 'unsplash' as const,
+        meta: p,
+      }));
+      await env.PHOTO_QUEUE.sendBatch(tasks.map((t) => ({ body: t, contentType: 'json' })));
+    };
+
+    // Forward Catch-up
+    console.log(`🔎 Ingestion: Catching up since ${lastSeenId}...`);
+    for (let p = 1; p <= 10; p++) {
+      const res = await fetchLatestPhotos(env.UNSPLASH_API_KEY, p, 30);
+      apiRemaining = res.remaining;
+      if (!res.photos.length) break;
+
+      if (p === 1 && res.photos[0].id !== lastSeenId) {
+        await updateConfig(env.DB, 'last_seen_id', res.photos[0].id);
+        console.log(`🌟 Top anchor advanced to: ${res.photos[0].id}`);
+      }
+
+      const anchorIdx = lastSeenId ? res.photos.findIndex((x) => x.id === lastSeenId) : -1;
+      if (anchorIdx !== -1) {
+        const fresh = res.photos.slice(0, anchorIdx);
+        await enqueue(fresh);
+        totalNewFound += fresh.length;
+        break;
+      } else {
+        await enqueue(res.photos);
+        totalNewFound += res.photos.length;
+        if (apiRemaining < 1) break;
+      }
+    }
+
+    // Backward Backfill
+    const shift = Math.floor(totalNewFound / 30);
+    currentBackfillPage += shift;
+    if (shift > 0) await updateConfig(env.DB, 'backfill_next_page', String(currentBackfillPage));
+
+    console.log(`🕯️ Ingestion: Backfilling from page ${currentBackfillPage}...`);
+    while (apiRemaining > 1) {
+      const res = await fetchLatestPhotos(env.UNSPLASH_API_KEY, currentBackfillPage, 30);
+      apiRemaining = res.remaining;
+      if (!res.photos.length) break;
+
+      await enqueue(res.photos);
+      currentBackfillPage++;
+      await updateConfig(env.DB, 'backfill_next_page', String(currentBackfillPage));
+    }
+  },
+
+  /**
+   * PHASE 3: Syncing D1 metadata to Vectorize Index
+   */
+  async runVectorSync(env: Env) {
+    console.log('🔄 Sync: Synchronizing vectors to index...');
+    let batchesProcessed = 0;
+
+    while (batchesProcessed < 10) {
+      const lastSyncConfig = await env.DB.prepare(
+        "SELECT value FROM system_config WHERE key = 'vectorize_last_sync'",
+      ).first<{ value: string }>();
+      const lastSync = parseInt(lastSyncConfig?.value || '0', 10);
+
+      const syncRows = await env.DB.prepare(
+        'SELECT id, ai_caption, ai_embedding, created_at FROM images WHERE ai_embedding IS NOT NULL AND created_at > ? ORDER BY created_at ASC LIMIT 100',
+      )
+        .bind(lastSync)
+        .all<{ id: string; ai_caption: string; ai_embedding: string; created_at: number }>();
+
+      if (syncRows.results.length === 0) break;
+
+      const vectors = syncRows.results
+        .map((r) => {
+          try {
+            return {
+              id: r.id,
+              values: JSON.parse(r.ai_embedding),
+              metadata: { url: `display/${r.id}.jpg`, caption: r.ai_caption || '' },
+            };
+          } catch {
+            return null;
+          }
+        })
+        .filter(Boolean) as VectorizeVector[];
+
+      await env.VECTORIZE.upsert(vectors);
+
+      const newLastSync = syncRows.results[syncRows.results.length - 1].created_at;
+      await updateConfig(env.DB, 'vectorize_last_sync', String(newLastSync));
+
+      batchesProcessed++;
+      console.log(`✅ Batch ${batchesProcessed}: Synced 100 vectors. Checkpoint: ${newLastSync}`);
+    }
+
+    if (batchesProcessed === 0) console.log('✨ Vectorize index is already up to date.');
   },
 
   async queue(batch: MessageBatch<IngestionTask>, env: Env): Promise<void> {
@@ -191,15 +189,11 @@ export class LensIngestWorkflow extends WorkflowEntrypoint<Env, IngestionTask> {
     const task = event.payload;
     const { photoId, displayUrl, meta } = task;
 
-    // Skip if already exists in DB
     const exists = await step.do('check-exists', async () => {
       const row = await this.env.DB.prepare('SELECT id FROM images WHERE id = ?').bind(photoId).first();
       return !!row;
     });
-    if (exists) {
-      console.log(`⏭️ Photo ${photoId} already exists, skipping`);
-      return;
-    }
+    if (exists) return;
 
     const retryConfig = { retries: { limit: 10, delay: '30 seconds' as const, backoff: 'constant' as const } };
 
