@@ -138,22 +138,6 @@ Lens 是一个**全自动、语义驱动**的 AI 图片搜索引擎。
 
 ---
 
-## 资源清单
-
-| 类型 | 名称 | 用途 |
-|------|------|------|
-| Worker | `lens` | API + 前端 |
-| Worker | `lens-processor` | 采集引擎 |
-| D1 | `lens-d1` | 元数据 |
-| R2 | `lens-r2` | 图片存储 |
-| Vectorize | `lens-vectors` | 向量索引 |
-| Queue | `lens-queue` | 任务队列 |
-| Workflow | `lens-workflow` | 图片处理 |
-| AI Gateway | `lens-gateway` | AI 调用监控 |
-| KV | `lens-kv` | 配置存储 |
-
----
-
 ## 文档
 
 - [系统设计](docs/architecture/DESIGN.md) — 架构详解、算法原理
