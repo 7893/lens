@@ -6,18 +6,19 @@ compatibility_flags = ["nodejs_compat"]
 # D1 Database (Metadata)
 [[d1_databases]]
 binding = "DB"
-database_name = "lens-db"
-database_id = "4b1414c1-7800-4ccf-af7b-90d63720b6aa"
+database_name = "lens-d1"
+database_id = "af9a1e43-7c7b-47da-add7-ed16d6de5ee5"
 
 # Workflow (Orchestration)
 [[workflows]]
 binding = "PHOTO_WORKFLOW"
-name = "lens-ingest"
+name = "lens-workflow"
 class_name = "LensIngestWorkflow"
 
 # Workers AI (Vision & Embedding)
 [ai]
 binding = "AI"
+gateway = { id = "lens-gateway" }
 
 # Queue Producer (From Cron -> Queue)
 [[queues.producers]]
@@ -39,7 +40,7 @@ bucket_name = "lens-r2"
 # Vectorize Index (Semantic Search)
 [[vectorize]]
 binding = "VECTORIZE"
-index_name = "lens-vectors-v2"
+index_name = "lens-vectors"
 
 # Cron Trigger (Scheduler)
 [triggers]

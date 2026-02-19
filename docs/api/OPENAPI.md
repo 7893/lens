@@ -1,4 +1,4 @@
-# Lens v6.0 API 参考 (OpenAPI)
+# Lens API 参考 (OpenAPI)
 
 所有 API 路径均以 `/api` 为前缀。
 
