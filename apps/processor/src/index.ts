@@ -188,7 +188,7 @@ export default {
         'SELECT id, ai_caption, ai_embedding, created_at FROM images WHERE ai_embedding IS NOT NULL AND created_at > ? ORDER BY created_at ASC LIMIT 100',
       )
         .bind(lastSync)
-        .all<{ id: string; ai_caption: string; api_embedding: string; created_at: number }>();
+        .all<{ id: string; ai_caption: string; ai_embedding: string; created_at: number }>();
 
       if (syncRows.results.length === 0) break;
 
