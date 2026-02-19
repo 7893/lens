@@ -139,11 +139,14 @@ Lens 是一个**全自动、语义驱动**的 AI 图片搜索引擎。
 
 ---
 
-## 文档
+## 📚 文档中心 (Documentation Index)
 
-- [系统设计](docs/architecture/DESIGN.md) — 架构详解、算法原理
-- [API 参考](docs/api/OPENAPI.md) — 接口文档
-- [部署指南](docs/guide/SETUP.md) — 从零开始部署
+- [**01. 系统架构与算法详解**](docs/01-architecture/01-ARCHITECTURE.md) — 深度剖析双管道解耦与高水位线采集算法。
+- [**02. 存储与数据模型**](docs/02-storage/02-DATABASE-STORAGE.md) — D1、R2 与 Vectorize 的表结构与一致性策略。
+- [**03. 完整接口指南**](docs/03-api/03-API-REFERENCE.md) — 详细的 API 字段定义与交互示例。
+- [**04. 全栈部署与 IaC**](docs/04-deployment/04-DEPLOYMENT-GUIDE.md) — 修正后的手动部署与 GitHub Actions 流程。
+- [**05. 开发与扩展指南**](docs/05-development/05-DEVELOPMENT-CONTRIBUTING.md) — AI 提示词工程、Monorepo 模式与模型切换。
+- [**06. 运维与监控**](docs/06-maintenance/06-MAINTENANCE-MONITORING.md) — AI 成本控制、故障排查与数据库管理。
 
 ---
 
