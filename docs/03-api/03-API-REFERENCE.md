@@ -79,6 +79,7 @@ Lens 所有 API 接口均通过 `https://<your-worker-subdomain>.workers.dev/api
 
 - **URL**: `GET /api/stats`
 - **返回**:
+
   ```json
   {
     "total": 18035,
