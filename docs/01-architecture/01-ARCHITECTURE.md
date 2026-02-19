@@ -75,22 +75,28 @@ Unsplash API 免费版限制每小时 **50 次** 请求。为了在极低配额�
 
 ## 5. 架构图示
 
-```mermaid
-graph TD
-    User([用户]) -->|搜索/浏览| API[Search API]
-    API -->|1.查询扩展| AI_LLM[Llama 3.2]
-    API -->|2.向量检索| Vectorize[(Vectorize DB)]
-    API -->|3.结果重排| AI_LLM
-
-    subgraph Ingestion [Ingestion Pipeline Async]
-        Cron[Cron定时触发] -->|新图+回填| Processor[Processor Worker]
-        Processor -->|任务入队| Queue[Cloudflare Queue]
-        Queue -->|执行任务| Workflow[Lens Workflow]
-
-        Workflow -->|1.幂等检查| D1[(D1 Database)]
-        Workflow -->|2.流式下载| R2[(R2 Bucket)]
-        Workflow -->|3.视觉理解| AI_Vision[Vision Model]
-        Workflow -->|4.向量化| AI_Embed[BGE Large]
-        Workflow -->|5.入库同步| D1
-    end
+```text
+       用户 (User)
+          │
+          ▼
+┌─────────────────────────────────────────┐
+│           Search API (Hono)             │
+│                                         │
+│  查询扩展 → 向量检索 → LLM重排 → 返回   │
+└─────────────────────────────────────────┘
+          │           │           │
+          ▼           ▼           ▼
+      D1 Database  Vectorize   R2 Bucket
+      (元数据)      (向量索引)  (图片存储)
+          ▲           ▲           ▲
+          │           │           │
+┌─────────────────────────────────────────┐
+│        数据采集管道 (Ingestion)         │
+│                                         │
+│  检查存在 → 下载 → AI分析 → 写入同步    │
+└─────────────────────────────────────────┘
+          ▲           ▲
+          │           │
+      Cloudflare    Cron任务
+        Queue      (每小时)
 ```

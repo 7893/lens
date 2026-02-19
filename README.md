@@ -103,23 +103,30 @@ Lens 是一个**全自动、语义驱动**的 AI 图片搜索引擎。
 
 ## 系统架构 (Architecture)
 
-```mermaid
-graph TD
-    User([用户]) -->|搜索/浏览| API[Search API]
-    API -->|1.查询扩展| AI_LLM[Llama 3.2]
-    API -->|2.向量检索| Vectorize[(Vectorize DB)]
-    API -->|3.结果重排| AI_LLM
-
-    subgraph Ingestion [数据采集管道 - 异步]
-        Cron[定时任务] -->|触发抓取| Processor[Processor Worker]
-        Processor -->|任务入队| Queue[Cloudflare Queue]
-        Queue -->|启动流| Workflow[Lens Workflow]
-
-        Workflow -->|1.存入文件| R2[(R2 Bucket)]
-        Workflow -->|2.视觉分析| AI_Vision[Vision Model]
-        Workflow -->|3.向量化| AI_Embed[Embedding Model]
-        Workflow -->|4.持久化| D1[(D1 Database)]
-    end
+```text
+       用户 (User)
+          │
+          ▼
+┌─────────────────────────────────────────┐
+│           Search API (Hono)             │
+│                                         │
+│  查询扩展 → 向量检索 → LLM重排 → 返回   │
+└─────────────────────────────────────────┘
+          │           │           │
+          ▼           ▼           ▼
+      D1 Database  Vectorize   R2 Bucket
+      (元数据)      (向量索引)  (图片存储)
+          ▲           ▲           ▲
+          │           │           │
+┌─────────────────────────────────────────┐
+│        数据采集管道 (Ingestion)         │
+│                                         │
+│  检查存在 → 下载 → AI分析 → 写入同步    │
+└─────────────────────────────────────────┘
+          ▲           ▲
+          │           │
+      Cloudflare    Cron任务
+        Queue      (每小时)
 ```
 
 ---
