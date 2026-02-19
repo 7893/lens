@@ -8,15 +8,15 @@
 
 ### 资源清单
 
-| 类型 | 名称 | 用途 |
-|------|------|------|
-| D1 | `lens-d1` | 元数据存储 |
-| R2 | `lens-r2` | 图片存储 |
-| Vectorize | `lens-vectors` | 向量索引 |
-| Queue | `lens-queue` | 任务队列 |
-| KV | `lens-kv` | 配置存储 |
-| Workflow | `lens-workflow` | 图片处理流程 |
-| AI Gateway | `lens-gateway` | AI 调用网关 |
+| 类型       | 名称            | 用途         |
+| ---------- | --------------- | ------------ |
+| D1         | `lens-d1`       | 元数据存储   |
+| R2         | `lens-r2`       | 图片存储     |
+| Vectorize  | `lens-vectors`  | 向量索引     |
+| Queue      | `lens-queue`    | 任务队列     |
+| KV         | `lens-kv`       | 配置存储     |
+| Workflow   | `lens-workflow` | 图片处理流程 |
+| AI Gateway | `lens-gateway`  | AI 调用网关  |
 
 ### 架构图
 
@@ -77,14 +77,14 @@
 
 ## 5. 存储策略
 
-| 路径 | 格式 | 用途 | 缓存策略 |
-|------|------|------|----------|
-| `/raw/{id}.jpg` | 原图 (RAW) | 存档与高质量下载 | 1 年 (Immutable) |
+| 路径                | 格式            | 用途               | 缓存策略         |
+| ------------------- | --------------- | ------------------ | ---------------- |
+| `/raw/{id}.jpg`     | 原图 (RAW)      | 存档与高质量下载   | 1 年 (Immutable) |
 | `/display/{id}.jpg` | 1080p (Regular) | 前端展示与 AI 分析 | 1 年 (Immutable) |
 
 ## 6. AI 模型
 
-| 模型 | 用途 |
-|------|------|
+| 模型                          | 用途                         |
+| ----------------------------- | ---------------------------- |
 | Llama 3.2 11B Vision Instruct | 图片分析、查询扩展、结果重排 |
-| BGE Large EN v1.5 | 文本向量化（1024 维） |
+| BGE Large EN v1.5             | 文本向量化（1024 维）        |
