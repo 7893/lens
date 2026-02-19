@@ -5,54 +5,160 @@
 > 你搜"孤独感"，它给你一条雪夜独行的小巷。你搜"温暖"，它给你壁炉旁的猫。
 > 不是关键词匹配 — 是 AI 真的看懂了每一张图。
 
+[![Live Demo](https://img.shields.io/badge/Live-lens.53.workers.dev-F38020?logo=cloudflare&logoColor=white)](https://lens.53.workers.dev)
 [![TypeScript](https://img.shields.io/badge/100%25-TypeScript-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 ---
 
-## 项目理念
+## 这是什么
 
-Lens 是一个**全自动、语义驱动**的 AI 图片搜索引擎，它完全运行在边缘网络上，无需人工运维。通过深度理解图像的意境与语义，它让搜索从简单的关键词匹配进化到了情感与内容的共鸣。
+Lens 是一个**全自动、语义驱动**的 AI 图片搜索引擎。
+
+传统图片搜索靠标签、文件名、关键词。Lens 不一样 — 它让 AI 真正"看"每一张图，理解画面里的情绪、氛围、故事，然后用自然语言找到你想要的那张。
+
+你可以搜"下雨天的咖啡馆"、"童年的夏天"、"赛博朋克风格的街道"，它都能懂。
 
 ---
 
-## 📐 系统架构 (Architecture)
+## 为什么牛逼
 
-```mermaid
-graph TD
-    User((用户)) -->|搜索/浏览| API[Search API (Hono)]
-    API -->|1.查询扩展| AI_LLM[Llama 3.2]
-    API -->|2.向量检索| Vectorize[(Vectorize DB)]
-    API -->|3.结果重排| AI_LLM
-    
-    subgraph Ingestion [Ingestion Pipeline Async]
-        Cron[⏰ 每小时触发] -->|新图+回填| Processor[Processor Worker]
-        Processor -->|任务缓冲| Queue[Cloudflare Queue]
-        Queue -->|执行任务| Workflow[LensIngestWorkflow]
-        
-        Workflow -->|1.并行流下载| R2[(R2 Bucket)]
-        Workflow -->|2.视觉理解| AI_Vision[Vision Model]
-        Workflow -->|3.向量化| AI_Embed[BGE Large]
-        Workflow -->|4.持久化元数据| D1[(D1 Database)]
-    end
+### 🧠 三级搜索管道
+
+不是简单的向量匹配就完事了：
+
+1. **查询扩展** — 你输入"猫"，AI 自动补充"毛茸茸、慵懒、宠物、温馨"
+2. **向量检索** — 1024 维语义向量，从万级图库中毫秒级召回
+3. **LLM 重排** — 大模型逐个审视候选结果，按相关性重新排序
+
+三层漏斗，层层过滤，结果就是比普通向量搜索准得多。
+
+### ⚡ 零运维架构
+
+没有服务器。没有容器。没有 K8s。没有 GPU 实例。
+
+整个系统跑在 Cloudflare Edge 上：
+- **Workers** 处理请求，全球边缘节点，延迟极低
+- **D1** 存元数据，SQLite 内核，就近访问
+- **R2** 存图片，S3 兼容，零出口流量费
+- **Vectorize** 存向量，原生向量数据库
+- **Workflows** 跑后台任务，持久化执行，自动重试
+
+部署一次，永远在线。不用半夜爬起来修服务器。
+
+### 🤖 全自动数据采集
+
+系统自己会"长大"：
+
+- 每小时自动从 Unsplash 抓取最新图片
+- 同时回填历史数据，图库持续膨胀
+- AI 自动分析每张图，生成描述和向量
+- 不需要人工干预，7x24 小时运转
+
+### 🔄 双管道解耦
+
+搜索和采集完全分离：
+
+- **搜索管道**：同步，毫秒级响应，用户体验优先
+- **采集管道**：异步，后台慢慢跑，不影响前台
+
+采集任务堆积？没关系，搜索照样快。这就是工程上的解耦。
+
+### 💰 成本控制
+
+精打细算每一分钱：
+
+- Unsplash API 免费版每小时 50 次，算法设计充分利用每一次配额
+- Workflow 第一步检查图片是否已存在，重复的直接跳过，不浪费 AI 调用
+- R2 零出口费，图片随便访问不心疼
+- 整套系统跑在 Cloudflare 免费额度内
+
+### 🛡️ 数据一致性
+
+三个存储，三份数据，必须一致：
+
+- D1 存元数据
+- R2 存图片文件
+- Vectorize 存向量
+
+每次写入都是原子操作，Workflow 保证要么全成功，要么全失败。不会出现"图片有了但搜不到"的尴尬。
+
+---
+
+## 技术亮点
+
+| 特性 | 实现 |
+|------|------|
+| 语义搜索 | Llama 3.2 + BGE Large 1024 维向量 |
+| 查询理解 | LLM 自动扩展、翻译、补充视觉词汇 |
+| 结果重排 | LLM 二次排序，不只是向量距离 |
+| 图片理解 | Llama 3.2 Vision 生成描述和标签 |
+| 持久化任务 | Cloudflare Workflows，自动重试最多 10 次 |
+| 任务削峰 | Queue 缓冲，避免瞬时压力 |
+| 边缘部署 | 全球 300+ 节点，就近响应 |
+| 基础设施即代码 | Terraform 管理，一键重建 |
+
+---
+
+## 系统架构
+
+```
+用户
+  │
+  ▼
+┌─────────────────────────────────────────┐
+│           Search API (Hono)             │
+│                                         │
+│  查询扩展 → 向量检索 → LLM重排 → 返回   │
+└─────────────────────────────────────────┘
+                    │
+        ┌───────────┼───────────┐
+        ▼           ▼           ▼
+      D1          Vectorize     R2
+    (元数据)       (向量)      (图片)
+        ▲           ▲           ▲
+        │           │           │
+        └───────────┼───────────┘
+                    │
+┌─────────────────────────────────────────┐
+│              Workflow                   │
+│                                         │
+│  检查存在 → 下载 → AI分析 → 写入        │
+└─────────────────────────────────────────┘
+                    ▲
+                    │
+                  Queue
+                    ▲
+                    │
+              Processor
+                    ▲
+                    │
+            Cron (每小时)
 ```
 
 ---
 
-## 🌟 核心亮点
+## 资源清单
 
-- **⚡ 语义重排搜索**: 结合向量匹配与大语言模型二次重排，让搜索结果更加贴合人类直觉。
-- **🦖 智能采集算法**: “双向贪婪”模式，自动追赶新发布内容的同时，稳步挖掘历史库，确保数据始终鲜活。
-- **💾 极致存档**: 自动存储原始画质大图，并针对展示流进行极致优化。
-- **🛠️ 极致工程化**: 核心逻辑完全解耦，采集引擎独立于搜索流量，互不干扰。
+| 类型 | 名称 | 用途 |
+|------|------|------|
+| Worker | `lens` | API + 前端 |
+| Worker | `lens-processor` | 采集引擎 |
+| D1 | `lens-d1` | 元数据 |
+| R2 | `lens-r2` | 图片存储 |
+| Vectorize | `lens-vectors` | 向量索引 |
+| Queue | `lens-queue` | 任务队列 |
+| Workflow | `lens-workflow` | 图片处理 |
+| AI Gateway | `lens-gateway` | AI 调用监控 |
+| KV | `lens-kv` | 配置存储 |
 
 ---
 
-## 📚 文档中心
+## 文档
 
-- [**系统设计 (System Design)**](docs/architecture/DESIGN.md): 详细解析双管道架构与核心算法原理。
-- [**API 参考 (API Reference)**](docs/api/OPENAPI.md): 了解查询扩展与搜索接口细节。
-- [**部署指南 (Setup Guide)**](docs/guide/SETUP.md): 了解从零构建基础设施的详细流程。
+- [系统设计](docs/architecture/DESIGN.md) — 架构详解、算法原理
+- [API 参考](docs/api/OPENAPI.md) — 接口文档
+- [部署指南](docs/guide/SETUP.md) — 从零开始部署
 
 ---
 

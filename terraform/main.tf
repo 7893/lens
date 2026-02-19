@@ -1,24 +1,32 @@
-# R2 Bucket — use existing "lens-r2" (managed outside Terraform)
+# Cloudflare Infrastructure for Lens
 
-# D1 Database
+# 1. D1 Database (Metadata)
 resource "cloudflare_d1_database" "db" {
   account_id = var.account_id
-  name       = "lens-db"
+  name       = "lens-d1"
 }
 
-# Queue
+# 2. R2 Bucket (Asset Storage) - Import existing
+resource "cloudflare_r2_bucket" "assets" {
+  account_id = var.account_id
+  name       = "lens-r2"
+  location   = "APAC"
+}
+
+# 3. Queue (Ingestion Pipeline)
 resource "cloudflare_queue" "ingestion" {
   account_id = var.account_id
   name       = "lens-queue"
 }
 
-# Vectorize Index (not natively supported by Terraform, use local-exec)
-resource "null_resource" "vectorize_index" {
-  triggers = {
-    index_name = "lens-vectors-v2"
-  }
+# 4. Vectorize Index (Semantic Search) - managed via wrangler
+# lens-vectors already exists with 18,035 vectors
 
-  provisioner "local-exec" {
-    command = "npx wrangler vectorize create ${self.triggers.index_name} --dimensions=1024 --metric=cosine || echo 'Index already exists'"
-  }
+# 5. Workers KV (Settings)
+resource "cloudflare_workers_kv_namespace" "kv" {
+  account_id = var.account_id
+  title      = "lens-kv"
 }
+
+# 6. AI Gateway (managed via API, provider doesn't support yet)
+# Name: lens-gateway
