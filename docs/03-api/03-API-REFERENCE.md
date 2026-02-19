@@ -15,11 +15,13 @@ Lens 所有 API 接口均通过 `https://<your-worker-subdomain>.workers.dev/api
   - `limit` (number, 可选): 返回条数。默认 20，最大 100。
 
 ### 1.1 内部增强逻辑
+
 - **LLM 查询扩展**: 4 词以内的短搜索词会自动扩充为视觉特征词。
 - **自动翻译**: 非英文输入会自动转化为英文后进行向量化。
 - **LLM 语义重排**: 利用 Llama 3.2 对 Top 50 结果进行深度相关性分析。
 
 ### 1.2 响应格式
+
 ```json
 {
   "results": [
@@ -84,6 +86,7 @@ Lens 所有 API 接口均通过 `https://<your-worker-subdomain>.workers.dev/api
     "last_at": 1771502728240
   }
   ```
+
   - `total`: 数据库中图片总数。
   - `recent`: 过去 1 小时内新增的图片数量。
 
@@ -97,7 +100,7 @@ Lens 所有 API 接口均通过 `https://<your-worker-subdomain>.workers.dev/api
 - **参数**:
   - `type`: `raw` 或 `display`。
   - `filename`: `{id}.jpg`。
-- **特性**: 
+- **特性**:
   - 自动注入 `ETag`。
   - 强制 CDN 长效缓存。
 
