@@ -109,12 +109,12 @@ graph TD
     API -->|1.查询扩展| AI_LLM[Llama 3.2]
     API -->|2.向量检索| Vectorize[(Vectorize DB)]
     API -->|3.结果重排| AI_LLM
-    
+
     subgraph Ingestion [数据采集管道 - 异步]
         Cron[定时任务] -->|触发抓取| Processor[Processor Worker]
         Processor -->|任务入队| Queue[Cloudflare Queue]
         Queue -->|启动流| Workflow[Lens Workflow]
-        
+
         Workflow -->|1.存入文件| R2[(R2 Bucket)]
         Workflow -->|2.视觉分析| AI_Vision[Vision Model]
         Workflow -->|3.向量化| AI_Embed[Embedding Model]

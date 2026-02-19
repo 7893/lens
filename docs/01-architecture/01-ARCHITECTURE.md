@@ -11,6 +11,7 @@ Lens 是一个基于 Cloudflare 边缘计算栈构建的高性能 AI 图片搜�
 Lens 的后端被逻辑划分为两个完全独立的管道，通过 **Cloudflare Queues** 和 **Workflows** 进行削峰填谷和异步解耦。
 
 ### 1.1 搜索管道 (Search Pipeline) - 同步、低延迟
+
 这是用户直接感知的接口层，其核心挑战在于**语义对齐**。
 
 1.  **查询扩展 (Query Expansion)**: 当用户输入关键词（如 "孤独"）时，Llama 3.2 11B 模型会将其扩展为视觉语义词（如 "lonely, solitary person, misty street, dim lights"），并自动完成跨语言翻译。
@@ -19,12 +20,13 @@ Lens 的后端被逻辑划分为两个完全独立的管道，通过 **Cloudflar
 4.  **结果合并**: 从 **D1** 读取最终元数据，通过 **R2** 代理返回图片流。
 
 ### 1.2 采集管道 (Ingestion Pipeline) - 异步、持久化
+
 这是系统的“心脏”，负责图库的持续扩张。
 
 1.  **调度器 (Cron)**: 每小时整点触发 `lens-processor`。
 2.  **双向贪婪算法**: 详见下文算法部分。
 3.  **任务分发 (Queue)**: 图片任务进入队列，平滑 CPU 瞬时压力。
-4.  **状态机任务 (Workflow)**: 
+4.  **状态机任务 (Workflow)**:
     - **检查存在**: 毫秒级 D1 查询，确保不重复处理。
     - **流式存图**: 原始图与展示图并行上传至 R2。
     - **视觉理解**: AI Vision 模型生成图片 Caption 和多维度 Tags。
@@ -37,20 +39,22 @@ Lens 的后端被逻辑划分为两个完全独立的管道，通过 **Cloudflar
 Unsplash API 免费版限制每小时 **50 次** 请求。为了在极低配额下实现最大吞吐量，Lens 采用了自研的采集算法。
 
 ### 2.1 向前追赶 (Forward Catch-up)
+
 - **目标**: 获取自上次运行以来新发布的图片。
-- **逻辑**: 
-    1. 从 `page=1` 开始抓取。
-    2. 如果当前页的图片 ID 列表里没有数据库中的 `last_seen_id`（高水位线），则全部入库并继续下一页。
-    3. 如果在当前页发现了 `last_seen_id`，则只截取该 ID 之前的图片，并立即停止。
-    4. **更新锚点**: 只要第 1 页的第一张图 ID 不同，立即更新 `last_seen_id`。
+- **逻辑**:
+  1. 从 `page=1` 开始抓取。
+  2. 如果当前页的图片 ID 列表里没有数据库中的 `last_seen_id`（高水位线），则全部入库并继续下一页。
+  3. 如果在当前页发现了 `last_seen_id`，则只截取该 ID 之前的图片，并立即停止。
+  4. **更新锚点**: 只要第 1 页的第一张图 ID 不同，立即更新 `last_seen_id`。
 
 ### 2.2 向后回填 (Backward Backfill)
+
 - **目标**: 挖掘历史库存。
-- **逻辑**: 
-    1. 读取 `backfill_next_page`。
-    2. 在满足 API 剩余配额的前提下（Remaining > 1），持续向后翻页。
-    3. **偏移修正**: 算法会自动根据本周期内发现的新图数量（`totalNewFound`），按每页 30 张的比例，自动跳过相应的历史页码，避免重复扫描相同内容。
-    4. **状态保存**: 处理完成后更新下一周期的起始页。
+- **逻辑**:
+  1. 读取 `backfill_next_page`。
+  2. 在满足 API 剩余配额的前提下（Remaining > 1），持续向后翻页。
+  3. **偏移修正**: 算法会自动根据本周期内发现的新图数量（`totalNewFound`），按每页 30 张的比例，自动跳过相应的历史页码，避免重复扫描相同内容。
+  4. **状态保存**: 处理完成后更新下一周期的起始页。
 
 ---
 
@@ -77,12 +81,12 @@ graph TD
     API -->|1.查询扩展| AI_LLM[Llama 3.2]
     API -->|2.向量检索| Vectorize[(Vectorize DB)]
     API -->|3.结果重排| AI_LLM
-    
+
     subgraph Ingestion [Ingestion Pipeline Async]
         Cron[Cron定时触发] -->|新图+回填| Processor[Processor Worker]
         Processor -->|任务入队| Queue[Cloudflare Queue]
         Queue -->|执行任务| Workflow[Lens Workflow]
-        
+
         Workflow -->|1.幂等检查| D1[(D1 Database)]
         Workflow -->|2.流式下载| R2[(R2 Bucket)]
         Workflow -->|3.视觉理解| AI_Vision[Vision Model]
