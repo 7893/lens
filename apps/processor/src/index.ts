@@ -71,10 +71,8 @@ export default {
 
       // 1. Pre-filter by checking D1 in bulk
       const ids = photos.map((p) => p.id);
-      const placeholders = ids.map(() => "?").join(",");
-      const { results } = await env.DB.prepare(
-        `SELECT id FROM images WHERE id IN (${placeholders})`
-      )
+      const placeholders = ids.map(() => '?').join(',');
+      const { results } = await env.DB.prepare(`SELECT id FROM images WHERE id IN (${placeholders})`)
         .bind(...ids)
         .all<{ id: string }>();
 
@@ -85,32 +83,29 @@ export default {
 
       // 2. Enqueue only the truly new photos
       const tasks: IngestionTask[] = freshPhotos.map((p) => ({
-        type: "process-photo" as const,
+        type: 'process-photo' as const,
         photoId: p.id,
         downloadUrl: p.urls.raw,
         displayUrl: p.urls.regular,
         photographer: p.user.name,
-        source: "unsplash" as const,
+        source: 'unsplash' as const,
         meta: p,
       }));
 
-      await env.PHOTO_QUEUE.sendBatch(
-        tasks.map((t) => ({ body: t, contentType: "json" }))
-      );
+      await env.PHOTO_QUEUE.sendBatch(tasks.map((t) => ({ body: t, contentType: 'json' })));
       return freshPhotos.length;
     };
 
     // --- TASK A: Forward Catch-up (Incremental) ---
     console.log(`🔎 Ingestion: Catching up since ${lastSeenId}...`);
     let hitAnchor = false;
-    for (let chunk = 0; chunk < 2; chunk++) { // Check first 10 pages in 2 chunks of 5
+    for (let chunk = 0; chunk < 2; chunk++) {
+      // Check first 10 pages in 2 chunks of 5
       if (hitAnchor) break;
-      
+
       const pages = Array.from({ length: 5 }, (_, i) => chunk * 5 + i + 1);
-      const results = await Promise.all(
-        pages.map((p) => fetchLatestPhotos(env.UNSPLASH_API_KEY, p, 30))
-      );
-      
+      const results = await Promise.all(pages.map((p) => fetchLatestPhotos(env.UNSPLASH_API_KEY, p, 30)));
+
       apiRemaining = results[results.length - 1].remaining;
 
       for (let i = 0; i < results.length; i++) {
@@ -121,7 +116,7 @@ export default {
         }
 
         if (chunk === 0 && i === 0 && photos[0].id !== lastSeenId) {
-          await updateConfig(env.DB, "last_seen_id", photos[0].id);
+          await updateConfig(env.DB, 'last_seen_id', photos[0].id);
           console.log(`🌟 Top anchor advanced to: ${photos[0].id}`);
         }
 
@@ -143,23 +138,21 @@ export default {
     const shift = Math.floor(totalNewFound / 30);
     currentBackfillPage += shift;
     if (shift > 0) {
-      await updateConfig(env.DB, "backfill_next_page", String(currentBackfillPage));
+      await updateConfig(env.DB, 'backfill_next_page', String(currentBackfillPage));
     }
 
     console.log(`🕯️ Ingestion: Backfilling from page ${currentBackfillPage}...`);
-    
+
     // Process in chunks of 5 pages to utilize parallelism without overwhelming Unsplash
     while (apiRemaining > 5) {
       const chunkSize = Math.min(5, apiRemaining - 1);
       const pages = Array.from({ length: chunkSize }, (_, i) => currentBackfillPage + i);
-      
-      console.log(`🚀 Batch processing pages: ${pages.join(", ")}`);
-      const results = await Promise.all(
-        pages.map((p) => fetchLatestPhotos(env.UNSPLASH_API_KEY, p, 30))
-      );
+
+      console.log(`🚀 Batch processing pages: ${pages.join(', ')}`);
+      const results = await Promise.all(pages.map((p) => fetchLatestPhotos(env.UNSPLASH_API_KEY, p, 30)));
 
       apiRemaining = results[results.length - 1].remaining;
-      
+
       let batchTotal = 0;
       for (const res of results) {
         if (!res.photos.length) {
@@ -170,9 +163,9 @@ export default {
       }
 
       currentBackfillPage += chunkSize;
-      await updateConfig(env.DB, "backfill_next_page", String(currentBackfillPage));
+      await updateConfig(env.DB, 'backfill_next_page', String(currentBackfillPage));
       console.log(`✅ Batch complete. Found ${batchTotal} new photos. Remaining: ${apiRemaining}`);
-      
+
       if (apiRemaining <= 1) break;
     }
     console.log(`✨ Ingestion cycle finished. Next backfill starts at: ${currentBackfillPage}`);
