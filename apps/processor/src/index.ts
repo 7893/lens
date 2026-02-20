@@ -105,6 +105,7 @@ export default {
     // --- TASK A: Forward Catch-up (Serial, Precise) ---
     console.log(`🔎 Ingestion: Catching up since ${lastSeenId}...`);
     let apiRemaining = 50;
+    let newestIdThisRun: string | null = null;
 
     for (let p = 1; p <= 10; p++) {
       const res = await fetchLatestPhotos(env.UNSPLASH_API_KEY, p, 30);
@@ -112,10 +113,9 @@ export default {
 
       if (!res.photos.length) break;
 
-      // Update top anchor on first page
-      if (p === 1 && res.photos[0].id !== lastSeenId) {
-        await updateConfig(env.DB, 'last_seen_id', res.photos[0].id);
-        console.log(`🌟 Top anchor advanced to: ${res.photos[0].id}`);
+      // Remember the newest ID from first page (will update anchor only after successful boundary hit)
+      if (p === 1) {
+        newestIdThisRun = res.photos[0].id;
       }
 
       // Check if lastSeenId is in current page (true boundary detection)
@@ -123,6 +123,11 @@ export default {
       if (seenIndex !== -1) {
         // Only enqueue photos before the lastSeenId
         await filterAndEnqueue(res.photos.slice(0, seenIndex));
+        // Now safe to update anchor - we found the boundary
+        if (newestIdThisRun && newestIdThisRun !== lastSeenId) {
+          await updateConfig(env.DB, 'last_seen_id', newestIdThisRun);
+          console.log(`🌟 Top anchor advanced to: ${newestIdThisRun}`);
+        }
         console.log(`✅ Forward boundary hit on page ${p}, found ${seenIndex} new photos.`);
         break;
       }
