@@ -289,11 +289,7 @@ app.get('/api/search', async (c) => {
       textMatchIds = textResults.results.map((r) => r.id);
     }
 
-    const embeddingResp = (await c.env.AI.run(
-      '@cf/baai/bge-m3',
-      { text: [expandedQuery] },
-      GATEWAY,
-    )) as {
+    const embeddingResp = (await c.env.AI.run('@cf/baai/bge-m3', { text: [expandedQuery] }, GATEWAY)) as {
       data: number[][];
     };
     const vector = embeddingResp.data[0];
