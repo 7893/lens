@@ -61,6 +61,100 @@ app.use('/api/search', async (c, next) => {
 // 1. Health Check
 app.get('/health', (c) => c.json({ status: 'healthy', name: 'lens' }));
 
+// 1.4 Rebuild vision (re-analyze images with new prompt + metadata)
+app.get('/api/rebuild-vision', async (c) => {
+  const limit = parseInt(c.req.query('limit') || '10');
+  const offset = parseInt(c.req.query('offset') || '0');
+
+  const { results } = await c.env.DB.prepare(
+    'SELECT id, meta_json FROM images ORDER BY created_at ASC LIMIT ? OFFSET ?',
+  )
+    .bind(limit, offset)
+    .all<{ id: string; meta_json: string }>();
+
+  if (results.length === 0) {
+    return c.json({ done: true, processed: 0, offset });
+  }
+
+  let processed = 0;
+  const vectors: { id: string; values: number[]; metadata: { caption: string } }[] = [];
+
+  for (const row of results) {
+    try {
+      const obj = await c.env.R2.get(`display/${row.id}.jpg`);
+      if (!obj) continue;
+
+      // Build context from metadata
+      const meta = JSON.parse(row.meta_json || '{}');
+      const contextParts: string[] = [];
+      if (meta.alt_description) contextParts.push(`Alt: ${meta.alt_description}`);
+      if (meta.description) contextParts.push(`Desc: ${meta.description}`);
+      if (meta.location?.name) contextParts.push(`Location: ${meta.location.name}`);
+      if (meta.user?.name) contextParts.push(`Photographer: ${meta.user.name}`);
+      if (meta.exif?.name) contextParts.push(`Camera: ${meta.exif.name}`);
+      const topics = Object.keys(meta.topic_submissions || {});
+      if (topics.length) contextParts.push(`Topics: ${topics.join(', ')}`);
+      const contextStr = contextParts.length ? `\n\nMETADATA CONTEXT:\n${contextParts.join('\n')}` : '';
+
+      // Re-analyze with new prompt + metadata
+      const imageData = new Uint8Array(await obj.arrayBuffer());
+      const visionResp = (await c.env.AI.run(
+        '@cf/meta/llama-3.2-11b-vision-instruct',
+        {
+          image: [...imageData],
+          prompt: `Analyze this image for a high-precision semantic search engine.${contextStr}
+
+TASK:
+1. DETAILED CAPTION: Write 2-3 concise sentences. Identify the core subject, specific landmarks/brands (if visible), lighting quality (e.g. golden hour, neon, flat), and the overall mood. If significant text is present, transcribe it. Use the metadata context to enhance accuracy.
+2. SEARCH TAGS: List up to 8 specific, non-redundant tags. Focus on entities, materials, and artistic styles.
+
+CONSTRAINTS:
+- Use factual, descriptive language.
+- No buzzwords (e.g., "stunning", "beautiful").
+- Tags must be lowercase only.
+
+OUTPUT FORMAT (Strict):
+CAPTION: [Your description here]
+TAGS: [tag1, tag2, tag3, ...]`,
+          max_tokens: 300,
+        },
+        GATEWAY,
+      )) as { response?: string };
+
+      const text = visionResp.response || '';
+      const captionMatch = text.match(/^\*?\*?CAPTION\*?\*?:\s*(.+?)(?:\n|TAGS|$)/ims);
+      const tagsMatch = text.match(/^\*?\*?TAGS\*?\*?:\s*(.+)/im);
+      const caption = captionMatch?.[1]?.trim().replace(/^\*+\s*/, '') || text.split('\n')[0].trim();
+      const tags = tagsMatch?.[1]
+        ?.split(',')
+        .map((t: string) => t.trim().toLowerCase().replace(/[\[\]]/g, ''))
+        .filter((t: string) => t && t.length > 1)
+        .slice(0, 8) || [];
+
+      // Generate new embedding
+      const embText = tags.length ? `${caption} | Tags: ${tags.join(', ')}` : caption;
+      const embResp = (await c.env.AI.run('@cf/google/embeddinggemma-300m', { text: [embText] }, GATEWAY)) as { data: number[][] };
+      const vector = embResp.data[0];
+
+      // Update D1
+      await c.env.DB.prepare('UPDATE images SET ai_caption = ?, ai_tags = ?, ai_embedding = ? WHERE id = ?')
+        .bind(caption, JSON.stringify(tags), JSON.stringify(vector), row.id)
+        .run();
+
+      vectors.push({ id: row.id, values: vector, metadata: { caption } });
+      processed++;
+    } catch (e) {
+      console.error(`Failed ${row.id}:`, e);
+    }
+  }
+
+  if (vectors.length > 0) {
+    await c.env.VECTORIZE.upsert(vectors);
+  }
+
+  return c.json({ done: false, processed, offset, next_offset: offset + limit });
+});
+
 // 1.5 Rebuild embeddings (one-time migration)
 app.get('/api/rebuild-embeddings', async (c) => {
   const limit = parseInt(c.req.query('limit') || '100');

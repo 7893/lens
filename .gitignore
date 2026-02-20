@@ -26,3 +26,4 @@ terraform/*.tfvars
 
 # API static assets (built from web)
 apps/api/public/
+talk

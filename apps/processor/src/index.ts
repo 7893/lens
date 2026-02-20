@@ -129,7 +129,19 @@ export default {
 
         if (!newestIdThisRun) newestIdThisRun = res.photos[0].id;
         forwardCount += await enqueuePhotos(res.photos);
-        if (apiRemaining < 1) break;
+        if (apiRemaining < 1) {
+          // Quota exhausted without finding boundary - update last_seen_id to prevent repeat
+          if (newestIdThisRun) {
+            await updateConfig(env.DB, 'last_seen_id', newestIdThisRun);
+            console.log(`⚠️ Forward: Quota exhausted, updated last_seen_id to ${newestIdThisRun}`);
+          }
+          break;
+        }
+      }
+      // If loop completed without finding boundary (10 pages), update last_seen_id
+      if (newestIdThisRun && forwardCount > 0) {
+        await updateConfig(env.DB, 'last_seen_id', newestIdThisRun);
+        console.log(`⚠️ Forward: Boundary not found in 10 pages, updated last_seen_id to ${newestIdThisRun}`);
       }
     }
 
@@ -292,7 +304,7 @@ export class LensIngestWorkflow extends WorkflowEntrypoint<Env, IngestionTask> {
     const analysis = await step.do('analyze-vision', retryConfig, async () => {
       const object = await this.env.R2.get(`display/${photoId}.jpg`);
       if (!object) throw new Error('Display image not found');
-      return await analyzeImage(this.env.AI, object.body);
+      return await analyzeImage(this.env.AI, object.body, meta);
     });
 
     const vector = await step.do('generate-embedding', retryConfig, async () => {
