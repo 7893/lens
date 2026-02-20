@@ -96,7 +96,7 @@ app.get('/api/search', async (c) => {
     let expandedQuery = q;
     if (q.split(/\s+/).length <= 4) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const expansion = (await c.env.AI.run('@cf/meta/llama-3.2-11b-vision-instruct' as any, {
+      const expansion = (await c.env.AI.run('@cf/meta/llama-3.2-3b-instruct' as any, {
         prompt: `Expand this image search query with related visual terms. If the query is not in English, translate it to English first, then expand. Reply with ONLY the expanded English query, no explanation. Keep it under 30 words.\nQuery: ${q}`,
         max_tokens: 50,
       })) as { response?: string };
@@ -143,7 +143,7 @@ app.get('/api/search', async (c) => {
     let reranked = candidates;
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const rankResp = (await c.env.AI.run('@cf/meta/llama-3.2-11b-vision-instruct' as any, {
+      const rankResp = (await c.env.AI.run('@cf/meta/llama-3.2-3b-instruct' as any, {
         prompt: `Given the search query "${q}", rank the most relevant images by their index number. Return ONLY a comma-separated list of index numbers from most to least relevant. Only include the top 20 most relevant.\n\nImages:\n${summaries}`,
         max_tokens: 100,
       })) as { response?: string };
