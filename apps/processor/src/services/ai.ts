@@ -30,7 +30,11 @@ CAPTION: [Your description here]
 TAGS: [tag1, tag2, tag3, ...]`;
 }
 
-export async function analyzeImage(ai: Ai, imageStream: ReadableStream, meta?: UnsplashPhoto): Promise<{ caption: string; tags: string[] }> {
+export async function analyzeImage(
+  ai: Ai,
+  imageStream: ReadableStream,
+  meta?: UnsplashPhoto,
+): Promise<{ caption: string; tags: string[] }> {
   const imageData = new Uint8Array(await new Response(imageStream).arrayBuffer());
 
   const response = (await ai.run(
@@ -53,7 +57,7 @@ export async function analyzeImage(ai: Ai, imageStream: ReadableStream, meta?: U
   const tags =
     tagsMatch?.[1]
       ?.split(',')
-      .map((t: string) => t.trim().toLowerCase().replace(/[\[\]\*]/g, '').trim())
+      .map((t: string) => t.trim().toLowerCase().replace(/[[]*]/g, '').trim())
       .filter((t: string) => t && t.length > 1)
       .slice(0, 8) || [];
 
