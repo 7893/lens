@@ -9,6 +9,10 @@ binding = "DB"
 database_name = "lens-d1"
 database_id = "af9a1e43-7c7b-47da-add7-ed16d6de5ee5"
 
+[[kv_namespaces]]
+binding = "SETTINGS"
+id = "22886c458d704579b15981987dca7dc5"
+
 # Workflow (Orchestration)
 [[workflows]]
 binding = "PHOTO_WORKFLOW"

@@ -14,6 +14,7 @@ export interface Env {
   AI: Ai;
   PHOTO_QUEUE: Queue<IngestionTask>;
   PHOTO_WORKFLOW: Workflow;
+  SETTINGS: KVNamespace;
   UNSPLASH_API_KEY: string;
 }
 
@@ -31,7 +32,13 @@ export default {
     console.log('⏰ Greedy Ingestion Triggered');
     if (!env.UNSPLASH_API_KEY) return;
 
-    // 1. Load current state
+    // 1. Load system settings from KV
+    const settingsRaw = await env.SETTINGS.get('config:ingestion');
+    const settings = settingsRaw
+      ? (JSON.parse(settingsRaw) as { backfill_enabled: boolean; backfill_max_pages: number })
+      : { backfill_enabled: true, backfill_max_pages: 2 }; // Safe defaults
+
+    // 2. Load current state from D1
     const configRows = await env.DB.prepare(
       "SELECT key, value FROM system_config WHERE key IN ('last_seen_id', 'backfill_next_page')",
     ).all<{ key: string; value: string }>();
@@ -42,7 +49,7 @@ export default {
 
     // --- TASK A: Ingestion (Forward & Backward) ---
     try {
-      await this.runIngestion(env, lastSeenId, backfillPage);
+      await this.runIngestion(env, lastSeenId, backfillPage, settings);
     } catch (error) {
       console.error('💥 Ingestion Task failed:', error);
     }
@@ -59,7 +66,12 @@ export default {
    * PHASE 1 & 2: Pulling data from Unsplash
    * Optimized for 1500/hr linear boundary ingestion
    */
-  async runIngestion(env: Env, lastSeenId: string, backfillPage: number) {
+  async runIngestion(
+    env: Env,
+    lastSeenId: string,
+    backfillPage: number,
+    settings: { backfill_enabled: boolean; backfill_max_pages: number },
+  ) {
     let currentBackfillPage = backfillPage;
 
     // Helper to check D1 and only enqueue brand new photos.
@@ -137,11 +149,18 @@ export default {
     }
 
     // --- TASK B: Backward Backfill (Seamless Continuation) ---
-    // Linear Strategy: Remaining quota is 100% dedicated to filling the history gap.
-    console.log(`🕯️ Ingestion: Resuming backfill from page ${currentBackfillPage}... (Quota: ${apiRemaining})`);
+    if (!settings.backfill_enabled) {
+      console.log('⏭️ Backfill is disabled via settings. Skipping.');
+      return;
+    }
 
-    while (apiRemaining > 0) {
-      const useParallel = apiRemaining >= 5;
+    console.log(
+      `🕯️ Ingestion: Resuming backfill from page ${currentBackfillPage}... (Quota: ${apiRemaining}, Limit: ${settings.backfill_max_pages} pages)`,
+    );
+
+    let pagesProcessed = 0;
+    while (apiRemaining > 0 && pagesProcessed < settings.backfill_max_pages) {
+      const useParallel = apiRemaining >= 5 && settings.backfill_max_pages - pagesProcessed >= 5;
       const chunkSize = useParallel ? 5 : 1;
       const pages = Array.from({ length: chunkSize }, (_, i) => currentBackfillPage + i);
 
@@ -155,15 +174,17 @@ export default {
           apiRemaining = 0;
           break;
         }
-        // Pre-filter handles the edge case of Unsplash page shifts
         await filterAndEnqueue(res.photos);
       }
 
       currentBackfillPage += chunkSize;
+      pagesProcessed += chunkSize;
       await updateConfig(env.DB, 'backfill_next_page', String(currentBackfillPage));
       if (apiRemaining <= 0) break;
     }
-    console.log(`✨ Ingestion finished. Theoretical 1500/hr goal pursued. Next backfill: ${currentBackfillPage}`);
+    console.log(
+      `✨ Ingestion finished. Next backfill starts at: ${currentBackfillPage} (Processed ${pagesProcessed} pages)`,
+    );
   },
 
   /**
