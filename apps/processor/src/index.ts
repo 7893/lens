@@ -32,11 +32,21 @@ export default {
     console.log('⏰ Greedy Ingestion Triggered');
     if (!env.UNSPLASH_API_KEY) return;
 
+    // Check API quota before proceeding
+    const checkResp = await fetch('https://api.unsplash.com/photos?per_page=1', {
+      headers: { Authorization: `Client-ID ${env.UNSPLASH_API_KEY}` },
+    });
+    const remaining = parseInt(checkResp.headers.get('x-ratelimit-remaining') || '0', 10);
+    if (remaining < 3) {
+      console.log(`⏸️ Skipping: API quota low (${remaining} remaining), wait for hourly reset`);
+      return;
+    }
+
     // 1. Load system settings from KV
     const settingsRaw = await env.SETTINGS.get('config:ingestion');
     const settings = settingsRaw
       ? (JSON.parse(settingsRaw) as { backfill_enabled: boolean; backfill_max_pages: number })
-      : { backfill_enabled: true, backfill_max_pages: 2 }; // Safe defaults
+      : { backfill_enabled: true, backfill_max_pages: 1 }; // Safe defaults
 
     // 2. Load current state from D1
     const configRows = await env.DB.prepare(
