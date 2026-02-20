@@ -5,7 +5,9 @@ export async function analyzeImage(ai: Ai, imageStream: ReadableStream): Promise
 
   // Accept Llama license
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  await ai.run('@cf/meta/llama-3.2-11b-vision-instruct' as any, { prompt: 'agree', max_tokens: 1 }, GATEWAY).catch(() => {});
+  await ai
+    .run('@cf/meta/llama-3.2-11b-vision-instruct' as any, { prompt: 'agree', max_tokens: 1 }, GATEWAY)
+    .catch(() => {});
 
   const response = (await ai.run(
     '@cf/meta/llama-3.2-11b-vision-instruct',
