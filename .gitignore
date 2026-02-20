@@ -27,3 +27,5 @@ terraform/*.tfvars
 # API static assets (built from web)
 apps/api/public/
 talk
+rebuild.log
+run_rebuild.sh
