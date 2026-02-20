@@ -156,7 +156,7 @@ app.get('/api/search', async (c) => {
       if (q.split(/\s+/).length <= 4) {
         const expansion = (await c.env.AI.run(
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          '@cf/meta/llama-3.2-3b-instruct' as any,
+          '@cf/meta/llama-4-scout-17b-16e-instruct' as any,
           {
             prompt: `Expand this image search query with related visual terms. If the query is not in English, translate it to English first, then expand. Reply with ONLY the expanded English query, no explanation. Keep it under 30 words.\nQuery: ${q}`,
             max_tokens: 50,
