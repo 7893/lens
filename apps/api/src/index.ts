@@ -300,7 +300,7 @@ app.get('/api/search', async (c) => {
 
     const vecResults = await c.env.VECTORIZE.query(vector, { topK: 100 });
     const topScore = vecResults.matches[0]?.score || 0;
-    const dynamicThreshold = Math.max(topScore * 0.9, 0.6);
+    const dynamicThreshold = Math.max(topScore * 0.85, 0.35);
     const relevantMatches = vecResults.matches.filter((m) => m.score >= dynamicThreshold);
 
     // Merge: text matches first (exact), then vector matches (semantic)
