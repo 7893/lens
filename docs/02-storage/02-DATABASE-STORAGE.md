@@ -22,7 +22,7 @@ D1 (SQLite) 是系统的“大脑”，负责存储结构化数据和状态游�
 | **meta_json**      | TEXT      | 包含 Unsplash 提供的摄影师、位置、EXIF 等原始 JSON。  |
 | **ai_tags**        | TEXT      | 序列化后的标签数组，用于关键词检索补偿。              |
 | **ai_caption**     | TEXT      | Llama 3.2 Vision 生成的深度语义描述（核心搜索文本）。 |
-| **ai_embedding**   | TEXT      | 1024 维 BGE 向量数组（JSON 形式存储备份）。           |
+| **ai_embedding**   | TEXT      | 1024 维 BGE-M3 向量数组（JSON 形式存储备份）。           |
 | **created_at**     | INTEGER   | 入库 Unix 时间戳，建立 B-Tree 索引以支持快速排序。    |
 
 ### 1.2 `system_config` 表结构
@@ -32,7 +32,7 @@ D1 (SQLite) 是系统的“大脑”，负责存储结构化数据和状态游�
 | 键 (`key`)            | 用途描述                                       | 更新频率    |
 | :-------------------- | :--------------------------------------------- | :---------- |
 | `last_seen_id`        | 记录采集的最前端锚点，用于增量抓取。           | 每小时 1 次 |
-| `backfill_next_page`  | 记录历史回填进度，实现断点续传。               | 每批次 1 次 |
+| `backfill_base_page`  | 记录历史回填进度，实现断点续传。               | 每批次 1 次 |
 | `vectorize_last_sync` | 记录 D1 到 Vectorize 同步的时间戳 checkpoint。 | 增量同步时  |
 
 ---

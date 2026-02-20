@@ -18,9 +18,9 @@ Lens 所有 API 遵循 RESTful 规范，基础端点为 `/api`。
 1.  **Level 1 Cache**: 检查 `caches.default`。命中则直接返回。
 2.  **Level 2 Cache (KV)**: 检查 KV 语义缓存。
     - 若命中，跳过查询扩展 AI 调用。
-    - 若未命中，调用 `llama-3.2-3b` 执行查询扩展，并将结果异步存入 KV。
-3.  **Vector Retrieval**: 调用 `bge-large-en-v1.5` 生成向量，在 `Vectorize` 中检索 Top 100。
-4.  **LLM Re-ranking**: 调用 `llama-3.2-3b` 对 Top 50 候选记录进行深度语义匹配打分。
+    - 若未命中，调用 `llama-4-scout-17b` 执行查询扩展，并将结果异步存入 KV。
+3.  **Vector Retrieval**: 调用 `bge-m3` 生成向量，在 `Vectorize` 中检索 Top 100。
+4.  **LLM Re-ranking**: 调用 `llama-4-scout-17b` 对 Top 50 候选记录进行深度语义匹配打分。
 5.  **Final Response**: 按得分排序并注入 D1 元数据。
 
 ### 1.2 响应示例 (JSON)
