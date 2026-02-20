@@ -4,8 +4,8 @@ export async function analyzeImage(ai: Ai, imageStream: ReadableStream): Promise
   const imageData = new Uint8Array(await new Response(imageStream).arrayBuffer());
 
   // Accept Llama license
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   await ai
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     .run('@cf/meta/llama-3.2-11b-vision-instruct' as any, { prompt: 'agree', max_tokens: 1 }, GATEWAY)
     .catch(() => {});
 
