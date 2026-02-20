@@ -57,14 +57,16 @@ export default {
 
   /**
    * PHASE 1 & 2: Pulling data from Unsplash
-   * Optimized for 1500/hr seamless ingestion
+   * Optimized for 1500/hr linear boundary ingestion
    */
   async runIngestion(env: Env, lastSeenId: string, backfillPage: number) {
     let currentBackfillPage = backfillPage;
 
-    // Helper to check D1 and only enqueue brand new photos
+    // Helper to check D1 and only enqueue brand new photos.
+    // Returns { added: number, hitExisting: boolean } to signal the linear boundary.
     const filterAndEnqueue = async (photos: UnsplashPhoto[]) => {
-      if (!photos.length) return 0;
+      if (!photos.length) return { added: 0, hitExisting: false };
+
       const ids = photos.map((p) => p.id);
       const placeholders = ids.map(() => '?').join(',');
       const { results } = await env.DB.prepare(`SELECT id FROM images WHERE id IN (${placeholders})`)
@@ -74,24 +76,27 @@ export default {
       const existingIds = new Set(results.map((r) => r.id));
       const freshPhotos = photos.filter((p) => !existingIds.has(p.id));
 
-      if (!freshPhotos.length) return 0;
+      // If we found fewer fresh photos than provided, we hit the linear boundary
+      const hitExisting = freshPhotos.length < photos.length;
 
-      const tasks: IngestionTask[] = freshPhotos.map((p) => ({
-        type: 'process-photo' as const,
-        photoId: p.id,
-        downloadUrl: p.urls.raw,
-        displayUrl: p.urls.regular,
-        photographer: p.user.name,
-        source: 'unsplash' as const,
-        meta: p,
-      }));
+      if (freshPhotos.length > 0) {
+        const tasks: IngestionTask[] = freshPhotos.map((p) => ({
+          type: 'process-photo' as const,
+          photoId: p.id,
+          downloadUrl: p.urls.raw,
+          displayUrl: p.urls.regular,
+          photographer: p.user.name,
+          source: 'unsplash' as const,
+          meta: p,
+        }));
+        await env.PHOTO_QUEUE.sendBatch(tasks.map((t) => ({ body: t, contentType: 'json' })));
+      }
 
-      await env.PHOTO_QUEUE.sendBatch(tasks.map((t) => ({ body: t, contentType: 'json' })));
-      return freshPhotos.length;
+      return { added: freshPhotos.length, hitExisting };
     };
 
     // --- STEP 0: Cold Start (Fetch Page 1 to get real quota) ---
-    console.log(`🔎 Ingestion: Starting catch-up from top...`);
+    console.log(`🔎 Ingestion: Probing for new releases (Forward)...`);
     const firstRes = await fetchLatestPhotos(env.UNSPLASH_API_KEY, 1, 30);
     let apiRemaining = firstRes.remaining;
 
@@ -103,44 +108,36 @@ export default {
       console.log(`🌟 Top anchor advanced to: ${firstRes.photos[0].id}`);
     }
 
-    // --- TASK A: Forward Catch-up (Catching new releases) ---
+    // --- TASK A: Forward Catch-up (Catching new releases with minimal quota) ---
     let hitAnchor = false;
-    const firstPageAnchorIdx = lastSeenId ? firstRes.photos.findIndex((x) => x.id === lastSeenId) : -1;
+    const { hitExisting: hitOnPage1 } = await filterAndEnqueue(firstRes.photos);
 
-    if (firstPageAnchorIdx !== -1) {
-      // Small gap: handled in page 1
-      await filterAndEnqueue(firstRes.photos.slice(0, firstPageAnchorIdx));
+    if (hitOnPage1) {
       hitAnchor = true;
-      console.log(`✅ Catch-up finished on page 1.`);
+      console.log(`✅ Forward boundary hit on page 1. All new photos captured.`);
     } else {
       // Large gap: parallel catch-up starting from page 2
-      await filterAndEnqueue(firstRes.photos);
       let forwardPage = 2;
       while (!hitAnchor && forwardPage <= 10 && apiRemaining > 0) {
         const chunkSize = Math.min(5, apiRemaining);
         const pages = Array.from({ length: chunkSize }, (_, i) => forwardPage + i);
-        console.log(`🚀 Forward batch: pages ${pages.join(', ')} (Quota: ${apiRemaining})`);
-
         const results = await Promise.all(pages.map((p) => fetchLatestPhotos(env.UNSPLASH_API_KEY, p, 30)));
-
         apiRemaining = results[results.length - 1].remaining;
         forwardPage += chunkSize;
 
         for (const res of results) {
-          const idx = lastSeenId ? res.photos.findIndex((x) => x.id === lastSeenId) : -1;
-          if (idx !== -1) {
-            await filterAndEnqueue(res.photos.slice(0, idx));
+          const { hitExisting } = await filterAndEnqueue(res.photos);
+          if (hitExisting) {
             hitAnchor = true;
+            console.log(`✅ Forward boundary hit on page ${forwardPage - chunkSize}.`);
             break;
-          } else {
-            await filterAndEnqueue(res.photos);
           }
         }
       }
     }
 
     // --- TASK B: Backward Backfill (Seamless Continuation) ---
-    // No more 'shift' calculation. We strictly continue from where we left off.
+    // Linear Strategy: Remaining quota is 100% dedicated to filling the history gap.
     console.log(`🕯️ Ingestion: Resuming backfill from page ${currentBackfillPage}... (Quota: ${apiRemaining})`);
 
     while (apiRemaining > 0) {
@@ -158,17 +155,15 @@ export default {
           apiRemaining = 0;
           break;
         }
-        // Pre-filter ensures we don't duplicate even if pages shifted
+        // Pre-filter handles the edge case of Unsplash page shifts
         await filterAndEnqueue(res.photos);
       }
 
       currentBackfillPage += chunkSize;
-      // Save progress after each successful batch
       await updateConfig(env.DB, 'backfill_next_page', String(currentBackfillPage));
-
       if (apiRemaining <= 0) break;
     }
-    console.log(`✨ Cycle finished. Next cycle will resume backfill from page: ${currentBackfillPage}`);
+    console.log(`✨ Ingestion finished. Theoretical 1500/hr goal pursued. Next backfill: ${currentBackfillPage}`);
   },
 
   /**
