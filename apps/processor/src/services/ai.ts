@@ -38,6 +38,6 @@ export async function analyzeImage(ai: Ai, imageStream: ReadableStream): Promise
 }
 
 export async function generateEmbedding(ai: Ai, text: string): Promise<number[]> {
-  const response = (await ai.run('@cf/baai/bge-large-en-v1.5', { text: [text] }, GATEWAY)) as { data: number[][] };
+  const response = (await ai.run('@cf/google/embeddinggemma-300m', { text: [text] }, GATEWAY)) as { data: number[][] };
   return response.data[0];
 }

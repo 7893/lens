@@ -61,6 +61,51 @@ app.use('/api/search', async (c, next) => {
 // 1. Health Check
 app.get('/health', (c) => c.json({ status: 'healthy', name: 'lens' }));
 
+// 1.5 Rebuild embeddings (one-time migration)
+app.get('/api/rebuild-embeddings', async (c) => {
+  const limit = parseInt(c.req.query('limit') || '100');
+  const offset = parseInt(c.req.query('offset') || '0');
+
+  // Get images that need re-embedding
+  const { results } = await c.env.DB.prepare(
+    'SELECT id, ai_caption, ai_tags FROM images WHERE ai_caption IS NOT NULL ORDER BY created_at ASC LIMIT ? OFFSET ?',
+  )
+    .bind(limit, offset)
+    .all<{ id: string; ai_caption: string; ai_tags: string }>();
+
+  if (results.length === 0) {
+    return c.json({ done: true, processed: 0, offset });
+  }
+
+  let processed = 0;
+  const vectors: { id: string; values: number[]; metadata: { caption: string } }[] = [];
+
+  for (const row of results) {
+    const tags = JSON.parse(row.ai_tags || '[]');
+    const text = `${row.ai_caption} ${tags.join(' ')}`;
+
+    const embeddingResp = (await c.env.AI.run('@cf/google/embeddinggemma-300m', { text: [text] }, GATEWAY)) as {
+      data: number[][];
+    };
+    const vector = embeddingResp.data[0];
+
+    // Update D1
+    await c.env.DB.prepare('UPDATE images SET ai_embedding = ? WHERE id = ?')
+      .bind(JSON.stringify(vector), row.id)
+      .run();
+
+    vectors.push({ id: row.id, values: vector, metadata: { caption: row.ai_caption || '' } });
+    processed++;
+  }
+
+  // Batch upsert to Vectorize
+  if (vectors.length > 0) {
+    await c.env.VECTORIZE.upsert(vectors);
+  }
+
+  return c.json({ done: false, processed, offset, next_offset: offset + limit });
+});
+
 // 2. Stats
 app.get('/api/stats', async (c) => {
   const { results } = await c.env.DB.prepare(
@@ -128,7 +173,11 @@ app.get('/api/search', async (c) => {
       }
     }
 
-    const embeddingResp = (await c.env.AI.run('@cf/baai/bge-large-en-v1.5', { text: [expandedQuery] }, GATEWAY)) as {
+    const embeddingResp = (await c.env.AI.run(
+      '@cf/google/embeddinggemma-300m',
+      { text: [expandedQuery] },
+      GATEWAY,
+    )) as {
       data: number[][];
     };
     const vector = embeddingResp.data[0];
@@ -157,43 +206,23 @@ app.get('/api/search', async (c) => {
       })
       .filter(Boolean) as { dbImage: DBImage; vecScore: number }[];
 
-    const summaries = candidates
-      .slice(0, 50)
-      .map((c, i) => {
-        const meta = JSON.parse(c.dbImage.meta_json || '{}');
-        return `${i}: ${c.dbImage.ai_caption || ''} | ${meta.alt_description || ''} | ${meta.location?.name || ''}`;
-      })
-      .join('\n');
-
     let reranked = candidates;
     try {
-      const rankResp = (await c.env.AI.run(
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        '@cf/meta/llama-3.2-3b-instruct' as any,
-        {
-          prompt: `Given the search query "${q}", rank the most relevant images by their index number. Return ONLY a comma-separated list of index numbers from most to least relevant. Only include the top 20 most relevant.\n\nImages:\n${summaries}`,
-          max_tokens: 100,
-        },
-        GATEWAY,
-      )) as { response?: string };
+      // Use BGE Reranker for precise relevance scoring
+      const topCandidates = candidates.slice(0, 50);
+      const contexts = topCandidates.map((c) => ({ text: c.dbImage.ai_caption || '' }));
 
-      const rankedIndices =
-        (rankResp.response || '')
-          .match(/\d+/g)
-          ?.map(Number)
-          .filter((i: number) => i < candidates.length) || [];
-      if (rankedIndices.length >= 5) {
-        const seen = new Set<number>();
-        const top: typeof candidates = [];
-        for (const i of rankedIndices) {
-          if (!seen.has(i)) {
-            seen.add(i);
-            top.push(candidates[i]);
-          }
-        }
-        // Append remaining candidates not in re-ranked list
-        const rest = candidates.filter((_, i) => !seen.has(i));
-        reranked = [...top, ...rest];
+      const rerankResp = (await c.env.AI.run(
+        '@cf/baai/bge-reranker-base',
+        { query: expandedQuery, contexts, top_k: 50 },
+        GATEWAY,
+      )) as { response: { index: number; score: number }[] };
+
+      if (rerankResp.response?.length) {
+        const sorted = rerankResp.response.sort((a, b) => b.score - a.score);
+        const rerankedTop = sorted.map((r) => topCandidates[r.index]).filter(Boolean);
+        const rest = candidates.slice(50);
+        reranked = [...rerankedTop, ...rest];
       }
     } catch (e) {
       console.error('Re-rank failed, using vector order:', e);

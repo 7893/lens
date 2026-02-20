@@ -48,4 +48,4 @@ index_name = "lens-vectors"
 
 # Cron Trigger (Scheduler)
 [triggers]
-crons = ["0 * * * *"]
+crons = ["*/15 * * * *"]
