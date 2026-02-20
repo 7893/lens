@@ -85,6 +85,7 @@ Lens 所有 API 遵循 RESTful 规范，基础端点为 `/api`。
 
 - **Endpoint**: `GET /api/stats`
 - **返回**:
+
   ```json
   {
     "total": 18812,
