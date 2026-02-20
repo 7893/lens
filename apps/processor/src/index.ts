@@ -118,11 +118,17 @@ export default {
         console.log(`🌟 Top anchor advanced to: ${res.photos[0].id}`);
       }
 
-      const { hitExisting } = await filterAndEnqueue(res.photos);
-      if (hitExisting) {
-        console.log(`✅ Forward boundary hit on page ${p}.`);
+      // Check if lastSeenId is in current page (true boundary detection)
+      const seenIndex = res.photos.findIndex((p) => p.id === lastSeenId);
+      if (seenIndex !== -1) {
+        // Only enqueue photos before the lastSeenId
+        await filterAndEnqueue(res.photos.slice(0, seenIndex));
+        console.log(`✅ Forward boundary hit on page ${p}, found ${seenIndex} new photos.`);
         break;
       }
+
+      // No boundary found, enqueue all and continue
+      await filterAndEnqueue(res.photos);
       if (apiRemaining < 1) break;
     }
 
