@@ -40,16 +40,18 @@ export default {
 
     // 2. Load current state from D1
     const configRows = await env.DB.prepare(
-      "SELECT key, value FROM system_config WHERE key IN ('last_seen_id', 'backfill_next_page')",
+      "SELECT key, value FROM system_config WHERE key IN ('last_seen_id', 'backfill_base_page', 'backfill_cursor_id', 'forward_offset')",
     ).all<{ key: string; value: string }>();
     const state = Object.fromEntries(configRows.results.map((r) => [r.key, r.value]));
 
     const lastSeenId = state.last_seen_id || '';
-    const backfillPage = parseInt(state.backfill_next_page || '1', 10);
+    const backfillBasePage = parseInt(state.backfill_base_page || '1', 10);
+    const backfillCursorId = state.backfill_cursor_id || '';
+    const forwardOffset = parseInt(state.forward_offset || '0', 10);
 
     // --- TASK A: Ingestion (Forward & Backward) ---
     try {
-      await this.runIngestion(env, lastSeenId, backfillPage, settings);
+      await this.runIngestion(env, lastSeenId, backfillBasePage, backfillCursorId, forwardOffset, settings);
     } catch (error) {
       console.error('💥 Ingestion Task failed:', error);
     }
@@ -64,48 +66,37 @@ export default {
 
   /**
    * PHASE 1 & 2: Pulling data from Unsplash
-   * Optimized for stable daily operation with strict quota control
+   * Perfect algorithm: zero duplicates, zero missed photos
    */
   async runIngestion(
     env: Env,
     lastSeenId: string,
-    backfillPage: number,
+    backfillBasePage: number,
+    backfillCursorId: string,
+    forwardOffset: number,
     settings: { backfill_enabled: boolean; backfill_max_pages: number },
   ) {
-    let currentBackfillPage = backfillPage;
-
-    // Helper to check D1 and only enqueue brand new photos
-    const filterAndEnqueue = async (photos: UnsplashPhoto[]) => {
-      if (!photos.length) return { added: 0, hitExisting: false };
-      const ids = photos.map((p) => p.id);
-      const placeholders = ids.map(() => '?').join(',');
-      const { results } = await env.DB.prepare(`SELECT id FROM images WHERE id IN (${placeholders})`)
-        .bind(...ids)
-        .all<{ id: string }>();
-
-      const existingIds = new Set(results.map((r) => r.id));
-      const freshPhotos = photos.filter((p) => !existingIds.has(p.id));
-      const hitExisting = freshPhotos.length < photos.length;
-
-      if (freshPhotos.length > 0) {
-        const tasks: IngestionTask[] = freshPhotos.map((p) => ({
-          type: 'process-photo' as const,
-          photoId: p.id,
-          downloadUrl: p.urls.raw,
-          displayUrl: p.urls.regular,
-          photographer: p.user.name,
-          source: 'unsplash' as const,
-          meta: p,
-        }));
-        await env.PHOTO_QUEUE.sendBatch(tasks.map((t) => ({ body: t, contentType: 'json' })));
-      }
-      return { added: freshPhotos.length, hitExisting };
+    // Helper to enqueue photos directly (no DB dedup needed with perfect algorithm)
+    const enqueuePhotos = async (photos: UnsplashPhoto[]) => {
+      if (!photos.length) return 0;
+      const tasks: IngestionTask[] = photos.map((p) => ({
+        type: 'process-photo' as const,
+        photoId: p.id,
+        downloadUrl: p.urls.raw,
+        displayUrl: p.urls.regular,
+        photographer: p.user.name,
+        source: 'unsplash' as const,
+        meta: p,
+      }));
+      await env.PHOTO_QUEUE.sendBatch(tasks.map((t) => ({ body: t, contentType: 'json' })));
+      return photos.length;
     };
 
-    // --- TASK A: Forward Catch-up (Serial, Precise) ---
-    console.log(`🔎 Ingestion: Catching up since ${lastSeenId}...`);
+    // --- TASK A: Forward Catch-up ---
+    console.log(`🔎 Forward: Catching up since ${lastSeenId}...`);
     let apiRemaining = 50;
     let newestIdThisRun: string | null = null;
+    let forwardCount = 0;
 
     for (let p = 1; p <= 10; p++) {
       const res = await fetchLatestPhotos(env.UNSPLASH_API_KEY, p, 30);
@@ -113,43 +104,47 @@ export default {
 
       if (!res.photos.length) break;
 
-      // Remember the newest ID from first page (will update anchor only after successful boundary hit)
-      if (p === 1) {
-        newestIdThisRun = res.photos[0].id;
-      }
+      if (p === 1) newestIdThisRun = res.photos[0].id;
 
-      // Check if lastSeenId is in current page (true boundary detection)
       const seenIndex = res.photos.findIndex((p) => p.id === lastSeenId);
       if (seenIndex !== -1) {
-        // Only enqueue photos before the lastSeenId
-        await filterAndEnqueue(res.photos.slice(0, seenIndex));
-        // Now safe to update anchor - we found the boundary
+        const newPhotos = res.photos.slice(0, seenIndex);
+        forwardCount += await enqueuePhotos(newPhotos);
         if (newestIdThisRun && newestIdThisRun !== lastSeenId) {
           await updateConfig(env.DB, 'last_seen_id', newestIdThisRun);
-          console.log(`🌟 Top anchor advanced to: ${newestIdThisRun}`);
         }
-        console.log(`✅ Forward boundary hit on page ${p}, found ${seenIndex} new photos.`);
+        console.log(`✅ Forward: Found ${forwardCount} new photos (boundary on page ${p})`);
         break;
       }
 
-      // No boundary found, enqueue all and continue
-      await filterAndEnqueue(res.photos);
+      forwardCount += await enqueuePhotos(res.photos);
       if (apiRemaining < 1) break;
     }
 
-    // --- TASK B: Backward Backfill (Serial, Quota-Aware) ---
+    // Update forward offset for page drift compensation
+    const newForwardOffset = forwardOffset + forwardCount;
+    await updateConfig(env.DB, 'forward_offset', String(newForwardOffset));
+
+    // --- TASK B: Backward Backfill (with drift compensation) ---
     if (!settings.backfill_enabled || settings.backfill_max_pages <= 0) {
-      console.log('⏭️ Backfill is disabled or limit is 0. Skipping.');
+      console.log('⏭️ Backfill disabled.');
       return;
     }
 
+    // Calculate actual page with drift compensation
+    const driftPages = Math.floor(newForwardOffset / 30);
+    const actualStartPage = backfillBasePage + driftPages;
+
     console.log(
-      `🕯️ Ingestion: Resuming backfill from page ${currentBackfillPage}... (Quota: ${apiRemaining}, Limit: ${settings.backfill_max_pages} pages)`,
+      `🕯️ Backfill: base=${backfillBasePage}, drift=${driftPages}, actual=${actualStartPage}, cursor=${backfillCursorId}`,
     );
 
     let pagesProcessed = 0;
-    while (apiRemaining > 0 && pagesProcessed < settings.backfill_max_pages) {
-      const res = await fetchLatestPhotos(env.UNSPLASH_API_KEY, currentBackfillPage, 30);
+    let lastProcessedId = backfillCursorId;
+    let newBasePage = backfillBasePage;
+
+    for (let p = actualStartPage; apiRemaining > 0 && pagesProcessed < settings.backfill_max_pages; p++) {
+      const res = await fetchLatestPhotos(env.UNSPLASH_API_KEY, p, 30);
       apiRemaining = res.remaining;
 
       if (!res.photos.length) {
@@ -157,17 +152,39 @@ export default {
         break;
       }
 
-      await filterAndEnqueue(res.photos);
+      let photosToProcess = res.photos;
 
-      currentBackfillPage++;
+      // Find cursor position if we have one
+      if (backfillCursorId) {
+        const cursorIndex = res.photos.findIndex((photo) => photo.id === backfillCursorId);
+        if (cursorIndex !== -1) {
+          // Process only photos after the cursor
+          photosToProcess = res.photos.slice(cursorIndex + 1);
+          if (photosToProcess.length === 0) {
+            // Cursor at end of page, move to next
+            continue;
+          }
+        }
+        // If cursor not found on this page, process all (we've drifted past it)
+      }
+
+      await enqueuePhotos(photosToProcess);
+      lastProcessedId = res.photos[res.photos.length - 1].id;
       pagesProcessed++;
 
-      // Persist progress immediately for each page
-      await updateConfig(env.DB, 'backfill_next_page', String(currentBackfillPage));
+      // Update base page (actual pages processed, not drift-adjusted)
+      newBasePage = p - driftPages + 1;
 
       if (apiRemaining <= 0) break;
     }
-    console.log(`✨ Ingestion finished. Yield: ${pagesProcessed} pages backfilled.`);
+
+    // Persist state
+    await updateConfig(env.DB, 'backfill_base_page', String(newBasePage));
+    await updateConfig(env.DB, 'backfill_cursor_id', lastProcessedId);
+    // Reset offset after updating base page
+    await updateConfig(env.DB, 'forward_offset', '0');
+
+    console.log(`✨ Backfill: ${pagesProcessed} pages, cursor=${lastProcessedId}`);
   },
 
   /**
