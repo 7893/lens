@@ -1,80 +1,79 @@
-# 运维与监控 (06-MAINTENANCE-MONITORING)
+# 系统运维与监控手册 (06-MAINTENANCE-MONITORING)
 
-本指南介绍如何监控 Lens 的运行状态、管理 AI 调用成本以及处理常见的系统异常。
-
----
-
-## 1. 成本监控 (AI Tokens & Neurons)
-
-由于 Lens 频繁使用 Llama 3.2 Vision 进行图片分析，AI 调用是系统的核心成本项。
-
-### 1.1 使用 AI Gateway
-
-在 `wrangler.toml` 中，我们配置了 `gateway = { id = "lens-gateway" }`。
-
-- **操作**: 登录 Cloudflare Dashboard -> AI -> AI Gateway。
-- **指标**: 查看请求数、Token 消耗量以及每种模型的响应时长。
-- **缓存**: 您可以在网关层开启 AI 缓存，以减少相同查询扩展带来的重复扣费。
+本手册旨在指导运维人员如何监控 Lens 系统的健康度、控制成本、以及进行故障应急处理。
 
 ---
 
-## 2. 采集任务监控 (Workflows & Queues)
+## 1. 成本调优：KV 动态控制面板
 
-采集管道是全自动运行的。
+Lens 提供了一套基于 KV 的“实时节流阀”，允许你在不重启系统的前提下调整运营策略。
 
-### 2.1 Workflow 状态查看
+### 1.1 操作指令
 
 ```bash
-# 列出最近的工作流实例
+# 获取当前采集设置
+npx wrangler kv key get --namespace-id <KV_ID> "config:ingestion" --remote
+
+# 修改回填限制 (例如增加到 10 页)
+npx wrangler kv key put --namespace-id <KV_ID> "config:ingestion" '{"backfill_enabled": true, "backfill_max_pages": 10}' --remote
+```
+
+### 1.2 参数说明
+
+- **`backfill_max_pages`**: 每小时回填页数。增加此值会加速旧图入库，但会显著增加 Neurons 消耗费。
+- **`backfill_enabled`**: 紧急刹车开关。设为 `false` 可立即停止所有非必要的抓取任务。
+
+---
+
+## 2. 核心指标监控
+
+### 2.1 AI 网关 (AI Gateway)
+
+- **监控点**: 访问 Cloudflare Dashboard -> AI -> AI Gateway -> `lens-gateway`。
+- **关键图表**:
+  - **Success Rate**: 应保持在 99% 以上。
+  - **Token/Neuron Usage**: 结合图片入库数，预估每日账单。
+
+### 2.2 Workflow 任务追踪
+
+```bash
+# 查看最近一小时的图片处理成功率
 npx wrangler workflows list lens-workflow
-# 查看特定实例的执行日志
-npx wrangler workflows instances lens-workflow <INSTANCE_ID>
 ```
 
-### 2.2 队列堆积检查
+---
 
-如果发现 `total_images` 长时间不增加，请检查 Cloudflare Queues 仪表盘。
+## 3. 故障排除指南 (FAQ)
 
-- **生产者状态**: 检查 Processor Worker 每一小时的执行日志。
-- **消费者异常**: 检查是否有大量任务进入了死信队列（Dead Letter Queue）。
+### 3.1 现象：D1 数据涨了，但搜不到新图
+
+- **诊断**: 检查 `vectorize_last_sync` 配置项。
+- **解决**: 向量同步逻辑会在下一个整点自动补全。如需手动修复，可执行本地脚本重触发 `runVectorSync` 逻辑。
+
+### 3.2 现象：Unsplash 采集结果一直是 0
+
+- **诊断**: 检查 Unsplash API 的配额。
+- **解决**: 可能是因为上一周期爆发式回填透支了额度。静待 1 小时自动重置即可。
+
+### 3.3 现象：Search API 返回 500
+
+- **诊断**: 查看网关 Logs。
+- **解决**: 如果错误是 401，请检查 `CLOUDFLARE_API_TOKEN` 的 Secret 是否过期。
 
 ---
 
-## 3. 常见故障处理 (FAQ)
+## 4. 深度维护操作
 
-### 3.1 搜索结果不更新
+### 4.1 重建索引
 
-- **现象**: D1 数据在增加，但搜索不到新图。
-- **原因**: 向量同步 (`runVectorSync`) 可能因为 API 抖动未执行。
-- **解决**: 等待下一个整点 Cron 触发，或者手动在本地触发 `runVectorSync` 逻辑。
+如果修改了 AI 描述逻辑，需要全量更新 Vectorize：
 
-### 3.2 Unsplash API 限流 (403 Forbidden)
+1.  清空 Vectorize 索引。
+2.  在 D1 中将 `system_config` 表的 `vectorize_last_sync` 设为 `0`。
+3.  等待下一个 Cron 周期自动全量同步。
 
-- **现象**: 采集任务报错，`api_remaining` 始终为 0。
-- **解决**: 检查 `UNSPLASH_API_KEY` 是否有效。如果是 Demo 级别 Key，每小时限 50 次请求，请勿手动频繁触发测试。
-
-### 3.3 D1 数据库锁冲突
-
-- **现象**: Workflow 写入 `images` 表时报错 `Database is locked`。
-- **原因**: 并发写入过高。
-- **解决**: 在 `processor` 的 `wrangler.toml` 中调低 `max_concurrency`（默认 5）。
-
----
-
-## 4. 数据库管理与迁移
-
-如果您需要备份或迁移数据：
+### 4.2 数据库导出备份
 
 ```bash
-# 导出整个 D1 到 SQL 文件
-npx wrangler d1 export lens-d1 --remote --output backup.sql
-# 导入数据
-npx wrangler d1 execute lens-d1 --remote --file=backup.sql
+npx wrangler d1 export lens-d1 --remote --output ./backups/lens_db_$(date +%F).sql
 ```
-
----
-
-## 5. 定期维护建议
-
-- **清理 R2 RAW 目录**: 如果存储压力过大，可以考虑仅保留 `display/` 目录，并定期清理 `raw/` 目录。
-- **索引重建**: 如果大幅修改了 AI 描述逻辑，建议使用 `wrangler vectorize delete` 后重新创建索引并全量同步。

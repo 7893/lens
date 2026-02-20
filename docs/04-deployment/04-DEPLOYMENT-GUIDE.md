@@ -1,33 +1,25 @@
-# 全栈部署与 IaC (04-DEPLOYMENT-GUIDE)
+# 全栈部署与 IaC 运维指南 (04-DEPLOYMENT-GUIDE)
 
-Lens 是一个完全基于 Cloudflare Edge 栈的项目。部署分为三个阶段：基础设施创建、代码构建和 GitHub Actions 自动化。
+Lens 的部署完全基于基础设施即代码 (IaC) 的理念，确保环境的可复现性与配置的标准化。
 
 ---
 
-## 1. 基础设施初始化 (IaC)
+## 1. 基础设施初始化
 
-您可以选择通过 Terraform (推荐) 或 Wrangler CLI 手动创建资源。
+### 1.1 准备工作
 
-### 1.1 使用 Terraform (声明式)
+- 安装 [Wrangler CLI](https://developers.cloudflare.com/workers/wrangler/install-cli/)。
+- 申请 [Unsplash API Access Key](https://unsplash.com/developers)。
 
-进入 `lens/infra/terraform` 目录并配置变量：
+### 1.2 手动资源创建 (Wrangler)
 
-```bash
-cp terraform.tfvars.example terraform.tfvars
-# 填写 CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID
-terraform init
-terraform apply
-```
-
-### 1.2 使用 Wrangler CLI (手动式)
-
-在 `lens/` 根目录下运行以下命令：
+请按序执行以下命令以创建云端资源：
 
 1.  **D1 数据库**:
 
     ```bash
     npx wrangler d1 create lens-d1
-    # 记录下返回的 UUID，更新到 apps/api 和 apps/processor 的 wrangler.toml
+    # 运行初始化脚本 (务必注意路径)
     npx wrangler d1 execute lens-d1 --remote --file=lens/apps/processor/schema.sql
     ```
 
@@ -37,73 +29,79 @@ terraform apply
     npx wrangler r2 bucket create lens-r2
     ```
 
-3.  **Vectorize 索引**:
+3.  **Vectorize 向量索引**:
 
     ```bash
+    # 维度必须设为 1024 以匹配 BGE Large 模型
     npx wrangler vectorize create lens-vectors --dimensions=1024 --metric=cosine
     ```
 
-4.  **Queue 队列**:
+4.  **Queue 任务队列**:
+
     ```bash
     npx wrangler queues create lens-queue
     ```
 
+5.  **KV 命名空间**:
+    ```bash
+    npx wrangler kv namespace create lens-kv
+    ```
+
 ---
 
-## 2. 密钥配置 (Secrets)
+## 2. 密钥与配置 (Secrets)
 
-部署前必须在 `processor` 应用中配置 Unsplash API Key：
+### 2.1 Worker 内部机密
+
+为了确保 AI 监控透明化，系统强制通过 HTTPS 网关调用 AI 服务，因此必须在 Worker 侧注入 API 令牌：
 
 ```bash
+# 进入 processor 目录
 cd lens/apps/processor
 npx wrangler secret put UNSPLASH_API_KEY
+npx wrangler secret put CLOUDFLARE_API_TOKEN
+
+# 进入 api 目录
+cd ../api
+npx wrangler secret put CLOUDFLARE_API_TOKEN
 ```
 
-此外，在 GitHub 仓库中配置以下 Secrets 用于 Actions：
+### 2.2 KV 初始设置
 
-- `CLOUDFLARE_API_TOKEN`
-- `CLOUDFLARE_ACCOUNT_ID`
-
----
-
-## 3. 构建与部署 (CI/CD)
-
-Lens 采用了 Monorepo 结构，各组件之间存在构建依赖。
-
-### 3.1 自动化部署 (GitHub Actions)
-
-每次推送至 `main` 分支时，`.github/workflows/deploy.yml` 会自动执行以下步骤：
-
-1. 构建 `@lens/shared` 包。
-2. 构建 `@lens/web` 前端。
-3. 将前端静态产物拷贝至 `apps/api/public`。
-4. 部署 `lens` (API + Frontend) Worker。
-5. 部署 `lens-processor` Worker。
-
-### 3.2 手动部署流程
-
-如果需要手动全栈发布，请在根目录下按序执行：
+部署后，请立即初始化采集节流阀：
 
 ```bash
-# 1. 构建共享包
-pnpm build --filter "@lens/shared"
-
-# 2. 构建前端
-pnpm build --filter "@lens/web"
-
-# 3. 同步前端产物到 API Worker
-cp -r lens/apps/web/dist lens/apps/api/public
-
-# 4. 发布应用
-cd lens/apps/api && npx wrangler deploy
-cd ../processor && npx wrangler deploy
+npx wrangler kv key put --namespace-id <LENS_KV_ID> "config:ingestion" '{"backfill_enabled": true, "backfill_max_pages": 2}' --remote
 ```
 
 ---
 
-## 4. 验证部署
+## 3. 持续集成与交付 (CI/CD)
 
-1.  **健康检查**: `curl https://lens.53.workers.dev/health`
-2.  **触发采集**: 您可以手动触发一次定时任务来测试采集是否正常：
+Lens 使用 GitHub Actions 执行自动化全栈发布。
+
+### 3.1 GitHub Secrets 清单
+
+在 GitHub 仓库设置中配置以下变量：
+
+- `CLOUDFLARE_API_TOKEN`: 具备 Workers, D1, R2, AI 编辑权限的令牌。
+- `CLOUDFLARE_ACCOUNT_ID`: 您的 Cloudflare 账户 ID。
+
+### 3.2 自动化流水线
+
+每次推送至 `main` 分支时：
+
+1.  **Shared 构建**: 编译共享类型包。
+2.  **Web 构建**: 编译 React 前端，产物自动拷贝至 `apps/api/public`。
+3.  **Wrangler 部署**: 自动同步 `wrangler.toml` 配置并热发布至边缘节点。
+
+---
+
+## 4. 故障验证
+
+部署完成后，建议执行以下“冒烟测试”：
+
+1.  **API 连通性**: `curl https://lens.53.workers.dev/health`
+2.  **AI 网关路径**: 搜索一次并检查 Cloudflare AI Gateway 页面是否产生紫色波峰。
+3.  **采集自检**: 手动触发 Cron 测试抓取效率：
     `npx wrangler dev lens/apps/processor/src/index.ts --test-scheduled`
-3.  **监控面板**: 访问 Cloudflare Dashboard 查看 AI Gateway 的 Neurons 消耗。

@@ -1,51 +1,50 @@
 # 完整接口指南 (03-API-REFERENCE)
 
-Lens 所有 API 接口均通过 `https://<your-worker-subdomain>.workers.dev/api` 暴露。
+Lens 所有 API 遵循 RESTful 规范，基础端点为 `/api`。
 
 ---
 
-## 1. 语义搜图 (Search Images)
+## 1. 语义图片搜索 (Semantic Search)
 
-核心检索接口，整合了查询扩展、向量召回和 LLM 重排。
+这是系统的核心接口，集成了三级 AI 搜索增强逻辑。
 
-- **URL**: `GET /api/search`
-- **认证**: 无 (受 IP 限流保护)
-- **查询参数**:
-  - `q` (string, 必传): 搜索词，支持自然语言（如 "下雨天的咖啡馆"）。
-  - `limit` (number, 可选): 返回条数。默认 20，最大 100。
+- **Endpoint**: `GET /api/search`
+- **参数**:
+  - `q` (Required): 搜索关键词或自然语言描述（如 "雨后的东京街头"）。
+  - `limit` (Optional): 返回结果数，默认 20，最大 100。
 
-### 1.1 内部增强逻辑
+### 1.1 搜索全链路拆解
 
-- **LLM 查询扩展**: 4 词以内的短搜索词会自动扩充为视觉特征词。
-- **自动翻译**: 非英文输入会自动转化为英文后进行向量化。
-- **LLM 语义重排**: 利用 Llama 3.2 对 Top 50 结果进行深度相关性分析。
+1.  **Level 1 Cache**: 检查 `caches.default`。命中则直接返回。
+2.  **Level 2 Cache (KV)**: 检查 KV 语义缓存。
+    - 若命中，跳过查询扩展 AI 调用。
+    - 若未命中，调用 `llama-3.2-3b` 执行查询扩展，并将结果异步存入 KV。
+3.  **Vector Retrieval**: 调用 `bge-large-en-v1.5` 生成向量，在 `Vectorize` 中检索 Top 100。
+4.  **LLM Re-ranking**: 调用 `llama-3.2-3b` 对 Top 50 候选记录进行深度语义匹配打分。
+5.  **Final Response**: 按得分排序并注入 D1 元数据。
 
-### 1.2 响应格式
+### 1.2 响应示例 (JSON)
 
 ```json
 {
   "results": [
     {
-      "id": "SLgCDEqHav4",
-      "url": "/image/display/SLgCDEqHav4.jpg",
+      "id": "abc-123",
+      "url": "/image/display/abc-123.jpg",
       "width": 3840,
       "height": 2160,
-      "caption": "A high-contrast photo of a person sitting by a window during rain...",
-      "tags": ["rain", "window", "portrait", "melancholy"],
+      "caption": "A moody scene of Tokyo street...",
+      "tags": ["tokyo", "rain", "neon"],
       "score": 0.98,
-      "photographer": "John Doe",
+      "photographer": "Kento Nomura",
       "blurHash": "L6PZfS.AyE%M%~WBIUWB00WB_3Mx",
       "color": "#1a1a1a",
-      "location": "Seattle, WA",
-      "description": "Rainy afternoon in the cafe",
+      "location": "Shinjuku, Tokyo",
       "exif": {
-        "camera": "Sony A7III",
-        "aperture": "f/1.8",
-        "exposure": "1/125s",
-        "focalLength": "35mm",
-        "iso": 800
-      },
-      "topics": ["nature", "urban"]
+        "camera": "Sony A7RIV",
+        "aperture": "f/1.4",
+        "exposure": "1/100s"
+      }
     }
   ],
   "total": 1,
@@ -55,60 +54,54 @@ Lens 所有 API 接口均通过 `https://<your-worker-subdomain>.workers.dev/api
 
 ---
 
-## 2. 画廊发现 (Latest Gallery)
+## 2. 发现接口 (Discovery)
 
-按入库时间倒序获取最新图片，用于首页展示。
+### 2.1 获取最新图片
 
-- **URL**: `GET /api/latest`
+- **Endpoint**: `GET /api/latest`
+- **返回**: 数据库中最新入库的 100 张图片元数据。
+- **用途**: 首页瀑布流初始加载。
+
+### 2.2 图片详情
+
+- **Endpoint**: `GET /api/images/:id`
+- **返回**: 包含完整的 Unsplash 元数据、AI 分析详情及下载统计。
+
+---
+
+## 3. 图片资源代理 (Image Proxy)
+
+由于 R2 属于私有存储，系统提供安全的文件出口。
+
+- **Endpoint**: `GET /image/:type/:filename`
 - **参数**:
-  - `limit` (number, 可选): 默认 100。
-- **说明**: 仅返回 `ai_caption` 已生成的有效记录。
+  - `type`: `raw` (原图) 或 `display` (优化图)。
+  - `filename`: `{photoId}.jpg`。
+- **缓存策略**: 返回 `immutable` 缓存头，由 Cloudflare 边缘节点提供 1 年期的长效缓存。
 
 ---
 
-## 3. 图片详情 (Get Image Details)
+## 4. 统计接口 (Monitoring)
 
-获取指定图片的完整原始元数据及 AI 分析结果。
-
-- **URL**: `GET /api/images/:id`
-- **响应内容**: 包含详细的摄影师资料、下载统计、位置坐标及 AI 解析。
-
----
-
-## 4. 系统统计 (System Stats)
-
-- **URL**: `GET /api/stats`
+- **Endpoint**: `GET /api/stats`
 - **返回**:
-
   ```json
   {
-    "total": 18035,
-    "recent": 450,
-    "last_at": 1771502728240
+    "total": 18812,
+    "recent": 51,
+    "last_at": 1771581712737
   }
   ```
 
-  - `total`: 数据库中图片总数。
-  - `recent`: 过去 1 小时内新增的图片数量。
+  - `total`: 库中总图片数。
+  - `recent`: 过去 1 小时内新增成功的图片数。
 
 ---
 
-## 5. 图片代理 (Image Proxy)
+## 5. 错误处理与限流
 
-由于 R2 存储桶通常不公开，API 提供安全的图片出口。
-
-- **URL**: `GET /image/:type/:filename`
-- **参数**:
-  - `type`: `raw` 或 `display`。
-  - `filename`: `{id}.jpg`。
-- **特性**:
-  - 自动注入 `ETag`。
-  - 强制 CDN 长效缓存。
-
----
-
-## 6. 错误代码与限流 (Rate Limiting)
-
-- **429 Too Many Requests**: 每个 IP 地址每分钟限制发起 10 次语义搜索。
-- **400 Bad Request**: 缺少 `q` 参数。
-- **500 Internal Server Error**: AI 模型推理超时或 D1 数据库连接异常。
+| 状态码  | 含义              | 原因                                       |
+| :------ | :---------------- | :----------------------------------------- |
+| **429** | Too Many Requests | 单 IP 每分钟搜索超过 10 次。               |
+| **400** | Bad Request       | 缺少必填参数 `q`。                         |
+| **500** | Internal Error    | 通常是 AI Gateway 调用超时或 D1 响应过慢。 |
