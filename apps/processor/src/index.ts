@@ -16,7 +16,6 @@ export interface Env {
   PHOTO_WORKFLOW: Workflow;
   SETTINGS: KVNamespace;
   UNSPLASH_API_KEY: string;
-  CLOUDFLARE_API_TOKEN: string;
 }
 
 async function updateConfig(db: D1Database, key: string, value: string) {
@@ -253,15 +252,11 @@ export class LensIngestWorkflow extends WorkflowEntrypoint<Env, IngestionTask> {
     const analysis = await step.do('analyze-vision', retryConfig, async () => {
       const object = await this.env.R2.get(`display/${photoId}.jpg`);
       if (!object) throw new Error('Display image not found');
-      return await analyzeImage(this.env.AI, object.body, this.env.CLOUDFLARE_API_TOKEN);
+      return await analyzeImage(this.env.AI, object.body);
     });
 
     const vector = await step.do('generate-embedding', retryConfig, async () => {
-      return await generateEmbedding(
-        this.env.AI,
-        buildEmbeddingText(analysis.caption, analysis.tags, meta),
-        this.env.CLOUDFLARE_API_TOKEN,
-      );
+      return await generateEmbedding(this.env.AI, buildEmbeddingText(analysis.caption, analysis.tags, meta));
     });
 
     await step.do('persist-d1', retryConfig, async () => {

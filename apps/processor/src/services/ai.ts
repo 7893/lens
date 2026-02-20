@@ -1,40 +1,18 @@
-const GATEWAY_URL = 'https://gateway.ai.cloudflare.com/v1/ed3e4f0448b71302675f2b436e5e8dd3/lens-gateway/workers-ai';
-
-async function runViaGateway(model: string, apiToken: string, payload: any) {
-  const url = `${GATEWAY_URL}/${model}`;
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiToken}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(payload),
-  });
-
-  if (!response.ok) {
-    const err = await response.text();
-    throw new Error(`AI Gateway error (${response.status}): ${err}`);
-  }
-
-  const result = (await response.json()) as any;
-  return result.result;
-}
-
-export async function analyzeImage(
-  ai: Ai,
-  imageStream: ReadableStream,
-  apiToken: string,
-): Promise<{ caption: string; tags: string[] }> {
+export async function analyzeImage(ai: Ai, imageStream: ReadableStream): Promise<{ caption: string; tags: string[] }> {
   const imageData = new Uint8Array(await new Response(imageStream).arrayBuffer());
 
-  const result = await runViaGateway('@cf/meta/llama-3.2-11b-vision-instruct', apiToken, {
+  // Accept Llama license
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await ai.run('@cf/meta/llama-3.2-11b-vision-instruct' as any, { prompt: 'agree', max_tokens: 1 }).catch(() => {});
+
+  const response = (await ai.run('@cf/meta/llama-3.2-11b-vision-instruct', {
     image: [...imageData],
     prompt:
       'Describe this photo in 2-3 sentences. Then list exactly 5 tags as comma-separated words. Format:\nDescription: <description>\nTags: <tag1>, <tag2>, <tag3>, <tag4>, <tag5>',
     max_tokens: 256,
-  });
+  })) as { description?: string; response?: string };
 
-  const text = result.response || result.description || '';
+  const text = response.response || response.description || '';
 
   // Parse structured output
   const descMatch = text.match(/Description:\s*(.+?)(?:\n|Tags:|$)/is);
@@ -51,10 +29,10 @@ export async function analyzeImage(
   return { caption, tags };
 }
 
-export async function generateEmbedding(ai: Ai, text: string, apiToken: string): Promise<number[]> {
-  const result = await runViaGateway('@cf/baai/bge-large-en-v1.5', apiToken, {
+export async function generateEmbedding(ai: Ai, text: string): Promise<number[]> {
+  const response = (await ai.run('@cf/baai/bge-large-en-v1.5', {
     text: [text],
-  });
+  })) as { data: number[][] };
 
-  return result.data[0];
+  return response.data[0];
 }

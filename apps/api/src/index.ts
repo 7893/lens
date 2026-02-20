@@ -9,32 +9,9 @@ type Bindings = {
   AI: Ai;
   R2: R2Bucket;
   SETTINGS: KVNamespace;
-  CLOUDFLARE_API_TOKEN: string;
 };
 
 const app = new Hono<{ Bindings: Bindings }>();
-
-const GATEWAY_URL = 'https://gateway.ai.cloudflare.com/v1/ed3e4f0448b71302675f2b436e5e8dd3/lens-gateway/workers-ai';
-
-async function runViaGateway(model: string, apiToken: string, payload: any) {
-  const url = `${GATEWAY_URL}/${model}`;
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiToken}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(payload),
-  });
-
-  if (!response.ok) {
-    const err = await response.text();
-    throw new Error(`AI Gateway error (${response.status}): ${err}`);
-  }
-
-  const result = (await response.json()) as any;
-  return result.result;
-}
 
 function toImageResult(img: DBImage, score?: number): ImageResult {
   const meta = JSON.parse(img.meta_json || '{}');
@@ -125,10 +102,11 @@ app.get('/api/search', async (c) => {
     // 2. If not in cache, call AI to expand query
     if (!expandedQuery) {
       if (q.split(/\s+/).length <= 4) {
-        const expansion = await runViaGateway('@cf/meta/llama-3.2-3b-instruct', c.env.CLOUDFLARE_API_TOKEN, {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const expansion = (await c.env.AI.run('@cf/meta/llama-3.2-3b-instruct' as any, {
           prompt: `Expand this image search query with related visual terms. If the query is not in English, translate it to English first, then expand. Reply with ONLY the expanded English query, no explanation. Keep it under 30 words.\nQuery: ${q}`,
           max_tokens: 50,
-        });
+        })) as { response?: string };
         expandedQuery = expansion.response?.trim() || q;
       } else {
         expandedQuery = q;
@@ -144,9 +122,9 @@ app.get('/api/search', async (c) => {
       }
     }
 
-    const embeddingResp = await runViaGateway('@cf/baai/bge-large-en-v1.5', c.env.CLOUDFLARE_API_TOKEN, {
+    const embeddingResp = (await c.env.AI.run('@cf/baai/bge-large-en-v1.5', {
       text: [expandedQuery],
-    });
+    })) as { data: number[][] };
     const vector = embeddingResp.data[0];
 
     const vecResults = await c.env.VECTORIZE.query(vector, { topK: 100 });
@@ -183,10 +161,11 @@ app.get('/api/search', async (c) => {
 
     let reranked = candidates;
     try {
-      const rankResp = await runViaGateway('@cf/meta/llama-3.2-3b-instruct', c.env.CLOUDFLARE_API_TOKEN, {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const rankResp = (await c.env.AI.run('@cf/meta/llama-3.2-3b-instruct' as any, {
         prompt: `Given the search query "${q}", rank the most relevant images by their index number. Return ONLY a comma-separated list of index numbers from most to least relevant. Only include the top 20 most relevant.\n\nImages:\n${summaries}`,
         max_tokens: 100,
-      });
+      })) as { response?: string };
 
       const rankedIndices =
         (rankResp.response || '')

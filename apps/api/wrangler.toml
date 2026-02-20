@@ -23,7 +23,7 @@ index_name = "lens-vectors"
 # Workers AI (Embedding)
 [ai]
 binding = "AI"
-gateway = { id = "lens-gateway" }
+gateway = { id = "ed3e4f0448b71302675f2b436e5e8dd3/lens-gateway" }
 
 # R2 Bucket (Image Storage)
 [[r2_buckets]]
