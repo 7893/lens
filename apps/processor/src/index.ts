@@ -104,19 +104,21 @@ export default {
 
       if (!res.photos.length) break;
 
-      if (p === 1) newestIdThisRun = res.photos[0].id;
-
       const seenIndex = res.photos.findIndex((p) => p.id === lastSeenId);
       if (seenIndex !== -1) {
         const newPhotos = res.photos.slice(0, seenIndex);
-        forwardCount += await enqueuePhotos(newPhotos);
-        if (newestIdThisRun && newestIdThisRun !== lastSeenId) {
+        if (newPhotos.length > 0) {
+          if (!newestIdThisRun) newestIdThisRun = newPhotos[0].id;
+          forwardCount += await enqueuePhotos(newPhotos);
+        }
+        if (newestIdThisRun) {
           await updateConfig(env.DB, 'last_seen_id', newestIdThisRun);
         }
         console.log(`✅ Forward: Found ${forwardCount} new photos (boundary on page ${p})`);
         break;
       }
 
+      if (!newestIdThisRun) newestIdThisRun = res.photos[0].id;
       forwardCount += await enqueuePhotos(res.photos);
       if (apiRemaining < 1) break;
     }
