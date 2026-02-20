@@ -29,3 +29,7 @@ gateway = { id = "lens-gateway" }
 [[r2_buckets]]
 binding = "R2"
 bucket_name = "lens-r2"
+
+[[kv_namespaces]]
+binding = "SETTINGS"
+id = "22886c458d704579b15981987dca7dc5"

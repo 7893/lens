@@ -65,7 +65,7 @@ export default {
 
   /**
    * PHASE 1 & 2: Pulling data from Unsplash
-   * Optimized for 1500/hr linear boundary ingestion
+   * Optimized for stable daily operation with strict quota control
    */
   async runIngestion(
     env: Env,
@@ -75,11 +75,9 @@ export default {
   ) {
     let currentBackfillPage = backfillPage;
 
-    // Helper to check D1 and only enqueue brand new photos.
-    // Returns { added: number, hitExisting: boolean } to signal the linear boundary.
+    // Helper to check D1 and only enqueue brand new photos
     const filterAndEnqueue = async (photos: UnsplashPhoto[]) => {
       if (!photos.length) return { added: 0, hitExisting: false };
-
       const ids = photos.map((p) => p.id);
       const placeholders = ids.map(() => '?').join(',');
       const { results } = await env.DB.prepare(`SELECT id FROM images WHERE id IN (${placeholders})`)
@@ -88,8 +86,6 @@ export default {
 
       const existingIds = new Set(results.map((r) => r.id));
       const freshPhotos = photos.filter((p) => !existingIds.has(p.id));
-
-      // If we found fewer fresh photos than provided, we hit the linear boundary
       const hitExisting = freshPhotos.length < photos.length;
 
       if (freshPhotos.length > 0) {
@@ -104,54 +100,36 @@ export default {
         }));
         await env.PHOTO_QUEUE.sendBatch(tasks.map((t) => ({ body: t, contentType: 'json' })));
       }
-
       return { added: freshPhotos.length, hitExisting };
     };
 
-    // --- STEP 0: Cold Start (Fetch Page 1 to get real quota) ---
-    console.log(`🔎 Ingestion: Probing for new releases (Forward)...`);
-    const firstRes = await fetchLatestPhotos(env.UNSPLASH_API_KEY, 1, 30);
-    let apiRemaining = firstRes.remaining;
+    // --- TASK A: Forward Catch-up (Serial, Precise) ---
+    console.log(`🔎 Ingestion: Catching up since ${lastSeenId}...`);
+    let apiRemaining = 50;
 
-    if (!firstRes.photos.length) return;
+    for (let p = 1; p <= 10; p++) {
+      const res = await fetchLatestPhotos(env.UNSPLASH_API_KEY, p, 30);
+      apiRemaining = res.remaining;
 
-    // 1. Update global top anchor
-    if (firstRes.photos[0].id !== lastSeenId) {
-      await updateConfig(env.DB, 'last_seen_id', firstRes.photos[0].id);
-      console.log(`🌟 Top anchor advanced to: ${firstRes.photos[0].id}`);
-    }
+      if (!res.photos.length) break;
 
-    // --- TASK A: Forward Catch-up (Catching new releases with minimal quota) ---
-    let hitAnchor = false;
-    const { hitExisting: hitOnPage1 } = await filterAndEnqueue(firstRes.photos);
-
-    if (hitOnPage1) {
-      hitAnchor = true;
-      console.log(`✅ Forward boundary hit on page 1. All new photos captured.`);
-    } else {
-      // Large gap: parallel catch-up starting from page 2
-      let forwardPage = 2;
-      while (!hitAnchor && forwardPage <= 10 && apiRemaining > 0) {
-        const chunkSize = Math.min(5, apiRemaining);
-        const pages = Array.from({ length: chunkSize }, (_, i) => forwardPage + i);
-        const results = await Promise.all(pages.map((p) => fetchLatestPhotos(env.UNSPLASH_API_KEY, p, 30)));
-        apiRemaining = results[results.length - 1].remaining;
-        forwardPage += chunkSize;
-
-        for (const res of results) {
-          const { hitExisting } = await filterAndEnqueue(res.photos);
-          if (hitExisting) {
-            hitAnchor = true;
-            console.log(`✅ Forward boundary hit on page ${forwardPage - chunkSize}.`);
-            break;
-          }
-        }
+      // Update top anchor on first page
+      if (p === 1 && res.photos[0].id !== lastSeenId) {
+        await updateConfig(env.DB, 'last_seen_id', res.photos[0].id);
+        console.log(`🌟 Top anchor advanced to: ${res.photos[0].id}`);
       }
+
+      const { hitExisting } = await filterAndEnqueue(res.photos);
+      if (hitExisting) {
+        console.log(`✅ Forward boundary hit on page ${p}.`);
+        break;
+      }
+      if (apiRemaining < 1) break;
     }
 
-    // --- TASK B: Backward Backfill (Seamless Continuation) ---
-    if (!settings.backfill_enabled) {
-      console.log('⏭️ Backfill is disabled via settings. Skipping.');
+    // --- TASK B: Backward Backfill (Serial, Quota-Aware) ---
+    if (!settings.backfill_enabled || settings.backfill_max_pages <= 0) {
+      console.log('⏭️ Backfill is disabled or limit is 0. Skipping.');
       return;
     }
 
@@ -161,31 +139,25 @@ export default {
 
     let pagesProcessed = 0;
     while (apiRemaining > 0 && pagesProcessed < settings.backfill_max_pages) {
-      const useParallel = apiRemaining >= 5 && settings.backfill_max_pages - pagesProcessed >= 5;
-      const chunkSize = useParallel ? 5 : 1;
-      const pages = Array.from({ length: chunkSize }, (_, i) => currentBackfillPage + i);
+      const res = await fetchLatestPhotos(env.UNSPLASH_API_KEY, currentBackfillPage, 30);
+      apiRemaining = res.remaining;
 
-      console.log(`🚀 Backfill batch: pages ${pages.join(', ')}`);
-      const results = await Promise.all(pages.map((p) => fetchLatestPhotos(env.UNSPLASH_API_KEY, p, 30)));
-
-      apiRemaining = results[results.length - 1].remaining;
-
-      for (const res of results) {
-        if (!res.photos.length) {
-          apiRemaining = 0;
-          break;
-        }
-        await filterAndEnqueue(res.photos);
+      if (!res.photos.length) {
+        console.log('✨ Reached end of Unsplash history.');
+        break;
       }
 
-      currentBackfillPage += chunkSize;
-      pagesProcessed += chunkSize;
+      await filterAndEnqueue(res.photos);
+
+      currentBackfillPage++;
+      pagesProcessed++;
+
+      // Persist progress immediately for each page
       await updateConfig(env.DB, 'backfill_next_page', String(currentBackfillPage));
+
       if (apiRemaining <= 0) break;
     }
-    console.log(
-      `✨ Ingestion finished. Next backfill starts at: ${currentBackfillPage} (Processed ${pagesProcessed} pages)`,
-    );
+    console.log(`✨ Ingestion finished. Yield: ${pagesProcessed} pages backfilled.`);
   },
 
   /**

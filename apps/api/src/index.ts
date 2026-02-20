@@ -8,6 +8,7 @@ type Bindings = {
   VECTORIZE: VectorizeIndex;
   AI: Ai;
   R2: R2Bucket;
+  SETTINGS: KVNamespace;
   CLOUDFLARE_API_TOKEN: string;
 };
 
@@ -115,14 +116,32 @@ app.get('/api/search', async (c) => {
   const start = Date.now();
 
   try {
-    // Query expansion: enrich short queries with related terms
-    let expandedQuery = q;
-    if (q.split(/\s+/).length <= 4) {
-      const expansion = await runViaGateway('@cf/meta/llama-3.2-3b-instruct', c.env.CLOUDFLARE_API_TOKEN, {
-        prompt: `Expand this image search query with related visual terms. If the query is not in English, translate it to English first, then expand. Reply with ONLY the expanded English query, no explanation. Keep it under 30 words.\nQuery: ${q}`,
-        max_tokens: 50,
-      });
-      expandedQuery = expansion.response?.trim() || q;
+    const queryKey = q.toLowerCase().trim();
+    const cacheKeyKV = `semantic:cache:${queryKey}`;
+
+    // 1. Level 2 Cache: Try fetching expanded query from KV
+    let expandedQuery = await c.env.SETTINGS.get(cacheKeyKV);
+
+    // 2. If not in cache, call AI to expand query
+    if (!expandedQuery) {
+      if (q.split(/\s+/).length <= 4) {
+        const expansion = await runViaGateway('@cf/meta/llama-3.2-3b-instruct', c.env.CLOUDFLARE_API_TOKEN, {
+          prompt: `Expand this image search query with related visual terms. If the query is not in English, translate it to English first, then expand. Reply with ONLY the expanded English query, no explanation. Keep it under 30 words.\nQuery: ${q}`,
+          max_tokens: 50,
+        });
+        expandedQuery = expansion.response?.trim() || q;
+      } else {
+        expandedQuery = q;
+      }
+
+      // Store in KV for 7 days asynchronously
+      if (expandedQuery && expandedQuery !== q) {
+        c.executionCtx.waitUntil(
+          c.env.SETTINGS.put(cacheKeyKV, expandedQuery, {
+            expirationTtl: 604800,
+          }),
+        );
+      }
     }
 
     const embeddingResp = await runViaGateway('@cf/baai/bge-large-en-v1.5', c.env.CLOUDFLARE_API_TOKEN, {
