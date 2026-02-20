@@ -1,19 +1,40 @@
-export async function analyzeImage(ai: Ai, imageStream: ReadableStream): Promise<{ caption: string; tags: string[] }> {
-  // Use Uint8Array directly to avoid OOM caused by spreading [...] into a large JavaScript array
+const GATEWAY_URL = 'https://gateway.ai.cloudflare.com/v1/ed3e4f0448b71302675f2b436e5e8dd3/lens-gateway/workers-ai';
+
+async function runViaGateway(model: string, apiToken: string, payload: any) {
+  const url = `${GATEWAY_URL}/${model}`;
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const err = await response.text();
+    throw new Error(`AI Gateway error (${response.status}): ${err}`);
+  }
+
+  const result = (await response.json()) as any;
+  return result.result;
+}
+
+export async function analyzeImage(
+  ai: Ai,
+  imageStream: ReadableStream,
+  apiToken: string,
+): Promise<{ caption: string; tags: string[] }> {
   const imageData = new Uint8Array(await new Response(imageStream).arrayBuffer());
 
-  // Accept Llama license (minimal overhead)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  await ai.run('@cf/meta/llama-3.2-11b-vision-instruct' as any, { prompt: 'agree', max_tokens: 1 }).catch(() => {});
-
-  const response = (await ai.run('@cf/meta/llama-3.2-11b-vision-instruct', {
-    image: [...imageData], // wrangler/workers AI currently requires an array for the 'image' field in some environments, but we keep it local to the call
+  const result = await runViaGateway('@cf/meta/llama-3.2-11b-vision-instruct', apiToken, {
+    image: [...imageData],
     prompt:
       'Describe this photo in 2-3 sentences. Then list exactly 5 tags as comma-separated words. Format:\nDescription: <description>\nTags: <tag1>, <tag2>, <tag3>, <tag4>, <tag5>',
     max_tokens: 256,
-  })) as { description?: string; response?: string };
+  });
 
-  const text = response.response || response.description || '';
+  const text = result.response || result.description || '';
 
   // Parse structured output
   const descMatch = text.match(/Description:\s*(.+?)(?:\n|Tags:|$)/is);
@@ -23,17 +44,17 @@ export async function analyzeImage(ai: Ai, imageStream: ReadableStream): Promise
   const tags =
     tagsMatch?.[1]
       ?.split(',')
-      .map((t) => t.trim().toLowerCase())
+      .map((t: string) => t.trim().toLowerCase())
       .filter(Boolean)
       .slice(0, 5) || [];
 
   return { caption, tags };
 }
 
-export async function generateEmbedding(ai: Ai, text: string): Promise<number[]> {
-  const response = (await ai.run('@cf/baai/bge-large-en-v1.5', {
+export async function generateEmbedding(ai: Ai, text: string, apiToken: string): Promise<number[]> {
+  const result = await runViaGateway('@cf/baai/bge-large-en-v1.5', apiToken, {
     text: [text],
-  })) as { data: number[][] };
+  });
 
-  return response.data[0];
+  return result.data[0];
 }
