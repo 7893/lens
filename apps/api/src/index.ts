@@ -179,6 +179,19 @@ app.get('/api/search', async (c) => {
       }
     }
 
+    // Hybrid Search: D1 text match for short queries
+    const wordCount = q.trim().split(/\s+/).length;
+    let textMatchIds: string[] = [];
+    if (wordCount <= 2) {
+      const pattern = `%${q.trim()}%`;
+      const textResults = await c.env.DB.prepare(
+        'SELECT id FROM images WHERE ai_caption LIKE ?1 OR ai_tags LIKE ?1 LIMIT 50',
+      )
+        .bind(pattern)
+        .all<{ id: string }>();
+      textMatchIds = textResults.results.map((r) => r.id);
+    }
+
     const embeddingResp = (await c.env.AI.run(
       '@cf/google/embeddinggemma-300m',
       { text: [expandedQuery] },
@@ -193,22 +206,28 @@ app.get('/api/search', async (c) => {
     const dynamicThreshold = Math.max(topScore * 0.9, 0.6);
     const relevantMatches = vecResults.matches.filter((m) => m.score >= dynamicThreshold);
 
-    if (relevantMatches.length === 0) {
+    // Merge: text matches first (exact), then vector matches (semantic)
+    const vecIds = relevantMatches.map((m) => m.id);
+    const mergedIds = [...new Set([...textMatchIds, ...vecIds])];
+
+    if (mergedIds.length === 0) {
       return c.json<SearchResponse>({ results: [], total: 0, took: Date.now() - start });
     }
 
-    const ids = relevantMatches.map((m) => m.id);
-    const placeholders = ids.map(() => '?').join(',');
+    const placeholders = mergedIds.map(() => '?').join(',');
     const { results } = await c.env.DB.prepare(`SELECT * FROM images WHERE id IN (${placeholders})`)
-      .bind(...ids)
+      .bind(...mergedIds)
       .all<DBImage>();
 
-    // Re-rank: LLM scores relevance of top candidates
-    const candidates = relevantMatches
-      .map((match) => {
-        const dbImage = results.find((r) => r.id === match.id);
+    // Build candidates with source info
+    const candidates = mergedIds
+      .map((id) => {
+        const dbImage = results.find((r) => r.id === id);
         if (!dbImage) return null;
-        return { dbImage, vecScore: match.score };
+        const vecMatch = relevantMatches.find((m) => m.id === id);
+        const isTextMatch = textMatchIds.includes(id);
+        const vecScore = isTextMatch ? 1.0 : (vecMatch?.score || 0);
+        return { dbImage, vecScore };
       })
       .filter(Boolean) as { dbImage: DBImage; vecScore: number }[];
 
