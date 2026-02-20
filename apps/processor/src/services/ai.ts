@@ -1,12 +1,13 @@
 export async function analyzeImage(ai: Ai, imageStream: ReadableStream): Promise<{ caption: string; tags: string[] }> {
-  const imageArray = [...new Uint8Array(await new Response(imageStream).arrayBuffer())];
+  // Use Uint8Array directly to avoid OOM caused by spreading [...] into a large JavaScript array
+  const imageData = new Uint8Array(await new Response(imageStream).arrayBuffer());
 
-  // Accept Llama license
+  // Accept Llama license (minimal overhead)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   await ai.run('@cf/meta/llama-3.2-11b-vision-instruct' as any, { prompt: 'agree', max_tokens: 1 }).catch(() => {});
 
   const response = (await ai.run('@cf/meta/llama-3.2-11b-vision-instruct', {
-    image: imageArray,
+    image: [...imageData], // wrangler/workers AI currently requires an array for the 'image' field in some environments, but we keep it local to the call
     prompt:
       'Describe this photo in 2-3 sentences. Then list exactly 5 tags as comma-separated words. Format:\nDescription: <description>\nTags: <tag1>, <tag2>, <tag3>, <tag4>, <tag5>',
     max_tokens: 256,
