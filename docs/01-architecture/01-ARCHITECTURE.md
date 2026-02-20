@@ -77,7 +77,86 @@ Lens 是一个运行在 Cloudflare 边缘计算栈之上的高度集成的 AI �
 
 ---
 
-## 4. 系统架构图 (ASCII)
+## 4. 多级缓存与成本优化策略
+
+Lens 采用 **三级缓存架构** 实现 AI 调用成本的极致压缩：
+
+### 4.1 缓存层级
+
+| 层级                  | 技术                  | TTL     | 命中效果                   |
+| :-------------------- | :-------------------- | :------ | :------------------------- |
+| **L1 Edge Cache**     | Cloudflare HTTP Cache | 10 分钟 | 跳过全部 AI 调用，直接返回 |
+| **L2 Semantic Cache** | Workers KV            | 7 天    | 跳过 LLM 查询扩展          |
+| **L3 AI Gateway**     | Gateway 内置缓存      | 关闭    | 保留用于未来扩展           |
+
+### 4.2 搜索请求成本分析
+
+单次搜索最多触发 3 次 AI 调用：
+
+```text
+┌─────────────────────────────────────────────────────────┐
+│  搜索请求: "sunset beach"                                │
+├─────────────────────────────────────────────────────────┤
+│  1. Query Expansion (Llama 3B)  →  ~2,000 Neurons       │
+│  2. Embedding (BGE Large)       →  ~1,000 Neurons       │
+│  3. Re-ranking (Llama 3B)       →  ~2,000 Neurons       │
+├─────────────────────────────────────────────────────────┤
+│  总计: ~5,000 Neurons/搜索                               │
+└─────────────────────────────────────────────────────────┘
+```
+
+### 4.3 缓存命中后的成本
+
+| 缓存命中     | AI 调用 | Neurons 消耗 | 节省比例 |
+| :----------- | :------ | :----------- | :------- |
+| 无命中       | 3 次    | ~5,000       | 0%       |
+| L2 KV 命中   | 2 次    | ~3,000       | **40%**  |
+| L1 HTTP 命中 | 0 次    | 0            | **100%** |
+
+### 4.4 实现细节
+
+**L2 Semantic Cache (KV)**:
+
+```typescript
+// Key 格式: semantic:cache:{normalized_query}
+const cacheKey = `semantic:cache:${query.toLowerCase().trim()}`;
+let expandedQuery = await env.SETTINGS.get(cacheKey);
+
+if (!expandedQuery) {
+  // Cache miss: 调用 LLM 扩展
+  expandedQuery = await ai.run('@cf/meta/llama-3.2-3b-instruct', {...});
+  // 异步写入缓存，TTL 7 天
+  ctx.waitUntil(env.SETTINGS.put(cacheKey, expandedQuery, { expirationTtl: 604800 }));
+}
+```
+
+**L1 Edge Cache**:
+
+```typescript
+// 相同查询 10 分钟内直接返回缓存响应
+const cacheKey = new Request(`https://lens-cache/search?q=${encodeURIComponent(q)}`);
+const cached = await caches.default.match(cacheKey);
+if (cached) return cached;
+```
+
+### 4.5 月度成本估算
+
+基于 Workers Paid ($5/月) 的免费额度：
+
+| 指标               | 值                     |
+| :----------------- | :--------------------- |
+| 免费 Neurons       | 300,000/月             |
+| 单次搜索 (无缓存)  | ~5,000 Neurons         |
+| 单次搜索 (KV 命中) | ~3,000 Neurons         |
+| 单张图片处理       | ~10,000 Neurons        |
+| **预估免费搜索量** | 60-100 次/月 (无缓存)  |
+| **预估免费搜索量** | 100-150 次/月 (有缓存) |
+
+> 💡 **设计哲学**: 通过 KV 缓存将高频重复查询的成本降至最低，同时保留 AI Gateway 作为未来扩展点（如添加外部 LLM fallback）。
+
+---
+
+## 5. 系统架构图 (ASCII)
 
 ```text
        用户 (User)
