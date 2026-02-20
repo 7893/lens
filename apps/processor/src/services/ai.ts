@@ -65,6 +65,6 @@ export async function analyzeImage(
 }
 
 export async function generateEmbedding(ai: Ai, text: string): Promise<number[]> {
-  const response = (await ai.run('@cf/google/embeddinggemma-300m', { text: [text] }, GATEWAY)) as { data: number[][] };
+  const response = (await ai.run('@cf/baai/bge-m3', { text: [text] }, GATEWAY)) as { data: number[][] };
   return response.data[0];
 }

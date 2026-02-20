@@ -134,7 +134,7 @@ TAGS: [tag1, tag2, tag3, ...]`,
 
       // Generate new embedding
       const embText = tags.length ? `${caption} | Tags: ${tags.join(', ')}` : caption;
-      const embResp = (await c.env.AI.run('@cf/google/embeddinggemma-300m', { text: [embText] }, GATEWAY)) as {
+      const embResp = (await c.env.AI.run('@cf/baai/bge-m3', { text: [embText] }, GATEWAY)) as {
         data: number[][];
       };
       const vector = embResp.data[0];
@@ -184,7 +184,7 @@ app.get('/api/rebuild-embeddings', async (c) => {
     if (tags.length) parts.push(`Tags: ${tags.join(', ')}`);
     const text = parts.join(' | ');
 
-    const embeddingResp = (await c.env.AI.run('@cf/google/embeddinggemma-300m', { text: [text] }, GATEWAY)) as {
+    const embeddingResp = (await c.env.AI.run('@cf/baai/bge-m3', { text: [text] }, GATEWAY)) as {
       data: number[][];
     };
     const vector = embeddingResp.data[0];
@@ -290,7 +290,7 @@ app.get('/api/search', async (c) => {
     }
 
     const embeddingResp = (await c.env.AI.run(
-      '@cf/google/embeddinggemma-300m',
+      '@cf/baai/bge-m3',
       { text: [expandedQuery] },
       GATEWAY,
     )) as {
@@ -300,7 +300,7 @@ app.get('/api/search', async (c) => {
 
     const vecResults = await c.env.VECTORIZE.query(vector, { topK: 100 });
     const topScore = vecResults.matches[0]?.score || 0;
-    const dynamicThreshold = Math.max(topScore * 0.85, 0.35);
+    const dynamicThreshold = Math.max(topScore * 0.9, 0.6);
     const relevantMatches = vecResults.matches.filter((m) => m.score >= dynamicThreshold);
 
     // Merge: text matches first (exact), then vector matches (semantic)
