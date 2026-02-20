@@ -125,15 +125,18 @@ TAGS: [tag1, tag2, tag3, ...]`,
       const captionMatch = text.match(/^\*?\*?CAPTION\*?\*?:\s*(.+?)(?:\n|TAGS|$)/ims);
       const tagsMatch = text.match(/^\*?\*?TAGS\*?\*?:\s*(.+)/im);
       const caption = captionMatch?.[1]?.trim().replace(/^\*+\s*/, '') || text.split('\n')[0].trim();
-      const tags = tagsMatch?.[1]
-        ?.split(',')
-        .map((t: string) => t.trim().toLowerCase().replace(/[\[\]]/g, ''))
-        .filter((t: string) => t && t.length > 1)
-        .slice(0, 8) || [];
+      const tags =
+        tagsMatch?.[1]
+          ?.split(',')
+          .map((t: string) => t.trim().toLowerCase().replace(/[[\]]/g, ''))
+          .filter((t: string) => t && t.length > 1)
+          .slice(0, 8) || [];
 
       // Generate new embedding
       const embText = tags.length ? `${caption} | Tags: ${tags.join(', ')}` : caption;
-      const embResp = (await c.env.AI.run('@cf/google/embeddinggemma-300m', { text: [embText] }, GATEWAY)) as { data: number[][] };
+      const embResp = (await c.env.AI.run('@cf/google/embeddinggemma-300m', { text: [embText] }, GATEWAY)) as {
+        data: number[][];
+      };
       const vector = embResp.data[0];
 
       // Update D1
@@ -320,7 +323,7 @@ app.get('/api/search', async (c) => {
         if (!dbImage) return null;
         const vecMatch = relevantMatches.find((m) => m.id === id);
         const isTextMatch = textMatchIds.includes(id);
-        const vecScore = isTextMatch ? 1.0 : (vecMatch?.score || 0);
+        const vecScore = isTextMatch ? 1.0 : vecMatch?.score || 0;
         return { dbImage, vecScore };
       })
       .filter(Boolean) as { dbImage: DBImage; vecScore: number }[];
