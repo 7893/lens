@@ -306,8 +306,6 @@ export class LensIngestWorkflow extends WorkflowEntrypoint<Env, IngestionTask> {
           httpMetadata: { contentType: 'image/jpeg' },
         });
       }
-      const dlUrl = meta?.links?.download_location;
-      if (dlUrl) await fetch(`${dlUrl}?client_id=${this.env.UNSPLASH_API_KEY}`);
       return { success: true };
     });
 
