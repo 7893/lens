@@ -93,34 +93,44 @@ export default {
     };
 
     // --- TASK A: Forward Catch-up ---
-    console.log(`🔎 Forward: Catching up since ${lastSeenId}...`);
+    console.log(`🔎 Forward: Catching up since ${lastSeenId || '(first run)'}...`);
     let apiRemaining = 50;
     let newestIdThisRun: string | null = null;
     let forwardCount = 0;
 
-    for (let p = 1; p <= 10; p++) {
-      const res = await fetchLatestPhotos(env.UNSPLASH_API_KEY, p, 30);
+    // First run: only fetch page 1, set last_seen_id, let backfill do the rest
+    if (!lastSeenId) {
+      const res = await fetchLatestPhotos(env.UNSPLASH_API_KEY, 1, 30);
       apiRemaining = res.remaining;
-
-      if (!res.photos.length) break;
-
-      const seenIndex = res.photos.findIndex((p) => p.id === lastSeenId);
-      if (seenIndex !== -1) {
-        const newPhotos = res.photos.slice(0, seenIndex);
-        if (newPhotos.length > 0) {
-          if (!newestIdThisRun) newestIdThisRun = newPhotos[0].id;
-          forwardCount += await enqueuePhotos(newPhotos);
-        }
-        if (newestIdThisRun) {
-          await updateConfig(env.DB, 'last_seen_id', newestIdThisRun);
-        }
-        console.log(`✅ Forward: Found ${forwardCount} new photos (boundary on page ${p})`);
-        break;
+      if (res.photos.length > 0) {
+        await updateConfig(env.DB, 'last_seen_id', res.photos[0].id);
+        console.log(`✅ First run: set last_seen_id to ${res.photos[0].id}`);
       }
+    } else {
+      for (let p = 1; p <= 10; p++) {
+        const res = await fetchLatestPhotos(env.UNSPLASH_API_KEY, p, 30);
+        apiRemaining = res.remaining;
 
-      if (!newestIdThisRun) newestIdThisRun = res.photos[0].id;
-      forwardCount += await enqueuePhotos(res.photos);
-      if (apiRemaining < 1) break;
+        if (!res.photos.length) break;
+
+        const seenIndex = res.photos.findIndex((p) => p.id === lastSeenId);
+        if (seenIndex !== -1) {
+          const newPhotos = res.photos.slice(0, seenIndex);
+          if (newPhotos.length > 0) {
+            if (!newestIdThisRun) newestIdThisRun = newPhotos[0].id;
+            forwardCount += await enqueuePhotos(newPhotos);
+          }
+          if (newestIdThisRun) {
+            await updateConfig(env.DB, 'last_seen_id', newestIdThisRun);
+          }
+          console.log(`✅ Forward: Found ${forwardCount} new photos (boundary on page ${p})`);
+          break;
+        }
+
+        if (!newestIdThisRun) newestIdThisRun = res.photos[0].id;
+        forwardCount += await enqueuePhotos(res.photos);
+        if (apiRemaining < 1) break;
+      }
     }
 
     // Update forward offset for page drift compensation
