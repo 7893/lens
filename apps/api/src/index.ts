@@ -81,8 +81,11 @@ app.get('/api/rebuild-embeddings', async (c) => {
   const vectors: { id: string; values: number[]; metadata: { caption: string } }[] = [];
 
   for (const row of results) {
-    const tags = JSON.parse(row.ai_tags || '[]');
-    const text = `${row.ai_caption} ${tags.join(' ')}`;
+    const tags = JSON.parse(row.ai_tags || '[]') as string[];
+    // Match processor format: caption | Tags: tag1, tag2
+    const parts = [row.ai_caption];
+    if (tags.length) parts.push(`Tags: ${tags.join(', ')}`);
+    const text = parts.join(' | ');
 
     const embeddingResp = (await c.env.AI.run('@cf/google/embeddinggemma-300m', { text: [text] }, GATEWAY)) as {
       data: number[][];
@@ -145,6 +148,8 @@ app.get('/api/search', async (c) => {
 
     // 1. Level 2 Cache: Try fetching expanded query from KV
     let expandedQuery = await c.env.SETTINGS.get(cacheKeyKV);
+    // Strip quotes from cached value
+    if (expandedQuery) expandedQuery = expandedQuery.replace(/^["']|["']$/g, '');
 
     // 2. If not in cache, call AI to expand query
     if (!expandedQuery) {
@@ -158,7 +163,8 @@ app.get('/api/search', async (c) => {
           },
           GATEWAY,
         )) as { response?: string };
-        expandedQuery = expansion.response?.trim() || q;
+        // Strip quotes from LLM response
+        expandedQuery = expansion.response?.trim().replace(/^["']|["']$/g, '') || q;
       } else {
         expandedQuery = q;
       }
@@ -216,11 +222,11 @@ app.get('/api/search', async (c) => {
         '@cf/baai/bge-reranker-base',
         { query: expandedQuery, contexts, top_k: 50 },
         GATEWAY,
-      )) as { response: { index: number; score: number }[] };
+      )) as { response: { id: number; score: number }[] };
 
       if (rerankResp.response?.length) {
         const sorted = rerankResp.response.sort((a, b) => b.score - a.score);
-        const rerankedTop = sorted.map((r) => topCandidates[r.index]).filter(Boolean);
+        const rerankedTop = sorted.map((r) => topCandidates[r.id]).filter(Boolean);
         const rest = candidates.slice(50);
         reranked = [...rerankedTop, ...rest];
       }
