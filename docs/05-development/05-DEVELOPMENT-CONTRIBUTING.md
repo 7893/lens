@@ -1,75 +1,71 @@
 # 开发与扩展指南 (05-DEVELOPMENT-CONTRIBUTING)
 
-Lens 是一个基于 Monorepo 的项目，本指南将帮助您理解其代码结构、开发模式以及核心的 AI 提示词逻辑。
+本指南面向希望深入参与 Lens 核心开发或进行功能扩展的开发者。
 
 ---
 
-## 1. 项目结构 (Monorepo)
+## 1. Monorepo 体系结构
 
-```text
-lens/
-├── apps/
-│   ├── api/          # 核心 API 服务 (Hono + React Frontend)
-│   ├── processor/    # 采集引擎 (Cron + Queue + Workflow)
-│   └── web/          # 前端单页应用源码 (React + Tailwind)
-├── packages/
-│   └── shared/       # 共享类型定义 (D1 Schema, API 契约, DTOs)
-└── docs/             # 完整系统文档
+Lens 采用 pnpm workspaces 驱动的 Monorepo 结构，各组件高度解耦：
+
+- **`packages/shared`**: 整个系统的“骨架”。定义了 D1 表结构接口、API 响应契约及 DTO 类型。
+- **`apps/api`**: Hono 后端。负责流量分发、AI 搜索编排及 KV 缓存管理。
+- **`apps/processor`**: 采集心脏。承载了“线性对撞”算法及 Workflow 状态机。
+- **`apps/web`**: React 前端。实现高性能图片画廊。
+
+---
+
+## 2. 核心 AI 提示词 (Prompts)
+
+AI 表现的优劣取决于提示词的质量。修改提示词前请进行充分回归测试。
+
+### 2.1 采集端：视觉理解 (Llama 3.2 11B Vision)
+
+位于: `apps/processor/src/services/ai.ts`
+
+> `Describe this photo in 2-3 sentences. Then list exactly 5 tags as comma-separated words. Format:\nDescription: <description>\nTags: <tag1>, <tag2>, <tag3>, <tag4>, <tag5>`
+
+### 2.2 搜索端：语义扩展 (Llama 3.2 3B)
+
+位于: `apps/api/src/index.ts`
+
+> `Expand this image search query with related visual terms. If the query is not in English, translate it to English first, then expand. Reply with ONLY the expanded English query, no explanation. Keep it under 30 words.`
+
+---
+
+## 3. 维护规范：代码准则
+
+### 3.1 线性边界原则
+
+在修改 `processor` 的抓取逻辑时，必须确保 **`filterAndEnqueue`** 的返回值被正确处理。
+
+- 严禁在 `Forward` 阶段移除 `hitExisting` 熔断判断，否则会导致 API 配额瞬间枯竭。
+
+### 3.2 内存敏感度
+
+由于边缘 Worker 内存仅 128MB：
+
+- 处理图片时，严禁使用 `Array.from(uint8Array)` 或大范围 `spread [...]` 转换。
+- 应尽量维持 `Uint8Array` 的原始引用。
+
+---
+
+## 4. 本地测试技巧
+
+### 4.1 模拟 D1 行为
+
+```bash
+# 在 apps/api 目录下运行以启动本地 SQLite 模拟环境
+npx wrangler dev --remote --persist
 ```
 
-### 1.1 开发流程
+### 4.2 强校验
 
-1.  **修改 API 契约**: 所有的类型定义都在 `packages/shared/src/index.ts` 中。修改后，必须运行 `pnpm build --filter "@lens/shared"`。
-2.  **前端实时预览**:
-    ```bash
-    cd lens/apps/web && pnpm dev
-    ```
-3.  **API 本地模拟**:
-    ```bash
-    cd lens/apps/api && ppx wrangler dev
-    ```
+在提交 PR 之前，请务必在根目录运行：
 
----
+```bash
+pnpm run lint
+pnpm run typecheck
+```
 
-## 2. AI 提示词工程 (Prompt Engineering)
-
-AI 的表现取决于提示词。Lens 的三级搜索增强逻辑背后是经过精心调优的 Llama 3.2 提示词。
-
-### 2.1 查询扩展提示词 (Query Expansion)
-
-用于将简短关键词转化为视觉丰富词：
-
-> `Expand this image search query with related visual terms. If the query is not in English, translate it to English first, then expand. Reply with ONLY the expanded English query, no explanation. Keep it under 30 words.
-Query: {q}`
-
-### 2.2 结果重排提示词 (Re-ranking)
-
-用于在向量初筛后，根据原查询词进行相关性精修排序：
-
-> `Given the search query "{q}", rank the most relevant images by their index number. Return ONLY a comma-separated list of index numbers from most to least relevant. Only include the top 20 most relevant.
-
-Images:
-{summaries}`
-
-### 2.3 视觉理解 (Captioning)
-
-由 Llama 3.2 Vision 根据图片生成的描述。
-
----
-
-## 3. 模型切换与性能权衡
-
-Lens 默认使用的是 Cloudflare 提供的 **Llama 3.2 11B Vision Instruct**。
-
-如果您希望切换到更轻量的模型或更高精度的外部 API（如 OpenAI gpt-4o-mini）：
-
-1.  **修改 AI 推理入口**: 在 `apps/processor/src/services/ai.ts` 中更新模型 ID。
-2.  **调整 BGE 维度**: 如果更换了文本嵌入模型（Embedding Model），请务必更新 Vectorize 的 `dimensions` 参数（默认 1024）。
-
----
-
-## 4. 编码规范
-
-- **类型安全**: 严格禁止使用 `any`。所有 D1 查询必须通过 `@lens/shared` 中定义的接口进行泛型注解。
-- **异步控制**: 使用 `p-limit` 或 Cloudflare 队列限流，避免瞬时 AI 推理并发导致 Neurons 超出限额。
-- **Workflow 幂等性**: 每个 Workflow 步骤（Step）必须是幂等的，即重复执行不应产生副作用。
+这两个 Quality Gate 是 CI 通过的硬性条件。
