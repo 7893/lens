@@ -138,14 +138,27 @@ app.get('/api/search', async (c) => {
       return c.json<SearchResponse>({ results: [], total: 0, took: Date.now() - start });
     }
 
+    // C2. Dynamic cutoff: find score cliff (>20% drop) or below minimum threshold
+    const scores = vecResults.matches.map((m) => m.score);
+    const minThreshold = 0.5;
+    let cutoffIndex = scores.length;
+    for (let i = 1; i < scores.length; i++) {
+      // Stop at cliff or when score drops below threshold
+      if (scores[i] < scores[i - 1] * 0.8 || scores[i] < minThreshold) {
+        cutoffIndex = i;
+        break;
+      }
+    }
+    const filteredMatches = vecResults.matches.slice(0, Math.max(1, cutoffIndex));
+
     // D. Fetch Metadata
-    const ids = vecResults.matches.map((m) => m.id);
+    const ids = filteredMatches.map((m) => m.id);
     const placeholders = ids.map(() => '?').join(',');
     const { results } = await c.env.DB.prepare(`SELECT * FROM images WHERE id IN (${placeholders})`)
       .bind(...ids)
       .all<DBImage>();
 
-    const candidates = vecResults.matches
+    const candidates = filteredMatches
       .map((match) => {
         const dbImage = results.find((r) => r.id === match.id);
         if (!dbImage) return null;
