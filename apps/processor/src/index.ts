@@ -63,15 +63,18 @@ export default {
       console.error('💥 Vector Sync Task failed:', error);
     }
 
-    // --- TASK C: Self-Evolution (The "Leavings" Refresher) ---
-    // Only run this if we are not currently in a heavy catch-up phase
-    try {
-      const remaining = await getTodayRemainingNeurons(env);
-      if (remaining > 500) {
-        await runSelfEvolution(env, remaining);
+    // --- TASK C: Self-Evolution (only at UTC 23:00, 1 hour before quota reset) ---
+    const currentHour = new Date().getUTCHours();
+    if (currentHour === 23) {
+      try {
+        const remaining = await getTodayRemainingNeurons(env);
+        if (remaining > 0) {
+          console.log(`🧬 UTC 23:00 - Running self-evolution with ${remaining} neurons remaining`);
+          await runSelfEvolution(env, remaining);
+        }
+      } catch (error) {
+        console.error('🧬 Evolution Task failed:', error);
       }
-    } catch (error) {
-      console.error('🧬 Evolution Task failed:', error);
     }
   },
 
