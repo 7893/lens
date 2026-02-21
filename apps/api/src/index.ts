@@ -106,6 +106,7 @@ app.get('/api/search', async (c) => {
     let expandedQuery = await c.env.SETTINGS.get(cacheKeyKV);
     if (!expandedQuery) {
       if (q.split(/\s+/).length <= 4) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const expansion = (await c.env.AI.run(
           TEXT_MODEL as any,
           {

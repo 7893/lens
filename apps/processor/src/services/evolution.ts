@@ -24,7 +24,7 @@ export async function runSelfEvolution(env: Env, remainingNeurons: number) {
     "SELECT * FROM images WHERE ai_model = 'llama-3.2' ORDER BY created_at DESC LIMIT ?",
   )
     .bind(batchSize)
-    .all<any>();
+    .all<{ id: string; meta_json: string }>();
 
   if (results.length === 0) {
     console.log('✨ All images are already on the flagship model.');
