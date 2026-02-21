@@ -49,7 +49,7 @@ npx wrangler kv key put --namespace-id <KV_ID> "config:ingestion" '{"backfill_en
 
 ## 3. 计费参考模型
 
-基于目前 Llama 4 Scout + Gemma 3 的组合，你可以按以下经验公式预估开销：
+基于目前 Llama 4 Scout + BGE-M3 的组合，你可以按以下经验公式预估开销：
 
 | 动作             | 消耗 (Neurons) | 费用 ($)            |
 | :--------------- | :------------- | :------------------ |
