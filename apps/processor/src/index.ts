@@ -242,7 +242,7 @@ export class LensIngestWorkflow extends WorkflowEntrypoint<Env, IngestionTask> {
     const analysis = await step.do('analyze-vision', retryConfig, async () => {
       const result = await analyzeImage(this.env.AI, (await this.env.R2.get(`display/${photoId}.jpg`))!.body);
       // Track neuron usage for NEW image ingestion
-      const cost = NEURON_COSTS.VISION_LLAMA_4 + NEURON_COSTS.EMBEDDING_GEMMA;
+      const cost = NEURON_COSTS.PER_IMAGE;
       await recordNeuronUsage(this.env, cost);
       return result;
     });

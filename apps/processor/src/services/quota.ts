@@ -1,10 +1,27 @@
 import { Env } from '../index';
 
+/**
+ * Neuron costs based on official Cloudflare pricing:
+ * https://developers.cloudflare.com/workers-ai/platform/pricing/
+ *
+ * Llama 4 Scout 17B: 24,545 neurons/M input + 77,273 neurons/M output
+ * BGE-M3: 1,075 neurons/M input tokens
+ * BGE Reranker: 283 neurons/M input tokens
+ */
 export const NEURON_COSTS = {
-  VISION_LLAMA_4: 85, // Conservative estimate per image
-  EMBEDDING_GEMMA: 1.2,
+  // Vision analysis: ~800 input tokens (prompt + image) + ~150 output tokens
+  // Input: 800/1M * 24545 ≈ 20, Output: 150/1M * 77273 ≈ 12
+  VISION_LLAMA_4: 32,
+
+  // Embedding: ~200 tokens input
+  // 200/1M * 1075 ≈ 0.2
+  EMBEDDING_BGE_M3: 0.2,
+
+  // Total per image
+  PER_IMAGE: 32.2,
+
   DAILY_FREE_LIMIT: 10000,
-  RESERVE_FOR_NEW_PHOTOS: 2000, // Safe buffer for fresh catch-up
+  RESERVE_FOR_NEW_PHOTOS: 1000,
 };
 
 /**

@@ -9,7 +9,7 @@ import { buildEmbeddingText } from '../utils/embedding';
  */
 export async function runSelfEvolution(env: Env, remainingNeurons: number) {
   // 1. Calculate how many images we can afford to refresh
-  const costPerImage = NEURON_COSTS.VISION_LLAMA_4 + NEURON_COSTS.EMBEDDING_GEMMA;
+  const costPerImage = NEURON_COSTS.PER_IMAGE;
   const batchSize = Math.floor(remainingNeurons / costPerImage);
 
   if (batchSize <= 0) {
