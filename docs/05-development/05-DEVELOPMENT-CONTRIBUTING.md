@@ -19,13 +19,13 @@ Lens 采用 pnpm workspaces 驱动的 Monorepo 结构，各组件高度解耦：
 
 AI 表现的优劣取决于提示词的质量。修改提示词前请进行充分回归测试。
 
-### 2.1 采集端：视觉理解 (Llama 3.2 11B Vision)
+### 2.1 采集端：视觉理解 (Llama 4 Scout 17B)
 
 位于: `apps/processor/src/services/ai.ts`
 
-> `Describe this photo in 2-3 sentences. Then list exactly 5 tags as comma-separated words. Format:\nDescription: <description>\nTags: <tag1>, <tag2>, <tag3>, <tag4>, <tag5>`
+> `Act as a world-class gallery curator and senior photographer. Analyze this image for deep-index retrieval...`
 
-### 2.2 搜索端：语义扩展 (Llama 3.2 3B)
+### 2.2 搜索端：语义扩展 (Llama 4 Scout 17B)
 
 位于: `apps/api/src/index.ts`
 

@@ -104,9 +104,9 @@ Lens 采用 **三级缓存架构** 实现 AI 调用成本的极致压缩：
 ┌─────────────────────────────────────────────────────────┐
 │  搜索请求: "sunset beach"                                │
 ├─────────────────────────────────────────────────────────┤
-│  1. Query Expansion (Llama 3B)  →  ~2,000 Neurons       │
-│  2. Embedding (BGE Large)       →  ~1,000 Neurons       │
-│  3. Re-ranking (Llama 3B)       →  ~2,000 Neurons       │
+│  1. Query Expansion (Llama 4 Scout)  →  ~2,000 Neurons  │
+│  2. Embedding (BGE-M3)               →  ~1,000 Neurons  │
+│  3. Re-ranking (BGE Reranker)        →  ~2,000 Neurons  │
 ├─────────────────────────────────────────────────────────┤
 │  总计: ~5,000 Neurons/搜索                               │
 └─────────────────────────────────────────────────────────┘
@@ -131,7 +131,7 @@ let expandedQuery = await env.SETTINGS.get(cacheKey);
 
 if (!expandedQuery) {
   // Cache miss: 调用 LLM 扩展
-  expandedQuery = await ai.run('@cf/meta/llama-3.2-3b-instruct', {...});
+  expandedQuery = await ai.run('@cf/meta/llama-4-scout-17b-16e-instruct', {...});
   // 异步写入缓存，TTL 7 天
   ctx.waitUntil(env.SETTINGS.put(cacheKey, expandedQuery, { expirationTtl: 604800 }));
 }
@@ -172,11 +172,11 @@ if (cached) return cached;
 ┌─────────────────────────────────────────┐
 │           Search Pipeline               │
 │                                         │
-│  Query Expansion (3B) ──> Cache (KV)    │
+│  Query Expansion (Llama 4) ──> Cache (KV)│
 │          │                              │
-│  Embedding (BGE) ──> Vectorize Search   │
+│  Embedding (BGE-M3) ──> Vectorize Search │
 │          │                              │
-│  Re-ranking (3B) ──> Final Results      │
+│  Re-ranking (BGE) ──> Final Results     │
 └─────────────────────────────────────────┘
           │           │           │
           ▼           ▼           ▼
@@ -187,7 +187,7 @@ if (cached) return cached;
 ┌─────────────────────────────────────────┐
 │        Ingestion Pipeline (Workflow)    │
 │                                         │
-│  Check D1 ──> Download ──> Vision (11B) │
+│  Check D1 ──> Download ──> Vision (Llama 4)│
 │          │                              │
 │  Generate Vector ──> Atomically Save    │
 └─────────────────────────────────────────┘
