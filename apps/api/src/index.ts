@@ -2,7 +2,12 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { SearchResponse, DBImage, ImageResult } from '@lens/shared';
 
-const GATEWAY = { gateway: { id: 'lens-gateway' } };
+type AiGatewayOptions = { gateway: { id: string } };
+type AiTextResponse = { response?: string };
+type AiEmbeddingResponse = { data: number[][] };
+type AiRerankResponse = { response: { id: number; score: number }[] };
+
+const GATEWAY: AiGatewayOptions = { gateway: { id: 'lens-gateway' } };
 const TEXT_MODEL = '@cf/meta/llama-4-scout-17b-16e-instruct';
 const EMBED_MODEL = '@cf/baai/bge-m3';
 const RERANK_MODEL = '@cf/baai/bge-reranker-base';
@@ -106,15 +111,14 @@ app.get('/api/search', async (c) => {
     let expandedQuery = await c.env.SETTINGS.get(cacheKeyKV);
     if (!expandedQuery) {
       if (q.split(/\s+/).length <= 4) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const expansion = (await c.env.AI.run(
-          TEXT_MODEL as any,
+          TEXT_MODEL,
           {
             prompt: `Expand this image search query with related visual terms. Translate to English if needed. Reply with ONLY the expanded English query. Under 30 words.\nQuery: ${q}`,
             max_tokens: 50,
           },
           GATEWAY,
-        )) as { response?: string };
+        )) as AiTextResponse;
         expandedQuery = expansion.response?.trim() || q;
       } else {
         expandedQuery = q;
@@ -125,7 +129,7 @@ app.get('/api/search', async (c) => {
     }
 
     // B. Embedding with BGE-M3
-    const embeddingResp = (await c.env.AI.run(EMBED_MODEL, { text: [expandedQuery] }, GATEWAY)) as { data: number[][] };
+    const embeddingResp = (await c.env.AI.run(EMBED_MODEL, { text: [expandedQuery] }, GATEWAY)) as AiEmbeddingResponse;
     const vector = embeddingResp.data[0];
 
     // C. Vector Search
@@ -154,9 +158,11 @@ app.get('/api/search', async (c) => {
     try {
       const topCandidates = candidates.slice(0, 50);
       const contexts = topCandidates.map((c) => ({ text: c.dbImage.ai_caption || '' }));
-      const rerankResp = (await c.env.AI.run(RERANK_MODEL, { query: expandedQuery, contexts, top_k: 50 }, GATEWAY)) as {
-        response: { id: number; score: number }[];
-      };
+      const rerankResp = (await c.env.AI.run(
+        RERANK_MODEL,
+        { query: expandedQuery, contexts, top_k: 50 },
+        GATEWAY,
+      )) as AiRerankResponse;
 
       if (rerankResp.response?.length) {
         const sorted = rerankResp.response.sort((a, b) => b.score - a.score);
