@@ -1,70 +1,62 @@
-import { UnsplashPhoto } from '@lens/shared';
-
 const GATEWAY = { gateway: { id: 'lens-gateway' } };
-
-function buildVisionPrompt(meta?: UnsplashPhoto): string {
-  const contextParts: string[] = [];
-  if (meta?.alt_description) contextParts.push(`Alt: ${meta.alt_description}`);
-  if (meta?.description) contextParts.push(`Desc: ${meta.description}`);
-  if (meta?.location?.name) contextParts.push(`Location: ${meta.location.name}`);
-  if (meta?.user?.name) contextParts.push(`Photographer: ${meta.user.name}`);
-  if (meta?.exif?.make) contextParts.push(`Camera: ${meta.exif.make} ${meta.exif.model || ''}`);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const topics = Object.keys((meta as any)?.topic_submissions || {});
-  if (topics.length) contextParts.push(`Topics: ${topics.join(', ')}`);
-  const contextStr = contextParts.length ? `\n\nMETADATA CONTEXT:\n${contextParts.join('\n')}` : '';
-
-  return `Analyze this image for a high-precision semantic search engine.${contextStr}
-
-TASK:
-1. DETAILED CAPTION: Write 2-3 concise sentences. Identify the core subject, specific landmarks/brands (if visible), lighting quality (e.g. golden hour, neon, flat), and the overall mood. If significant text is present, transcribe it. Use the metadata context to enhance accuracy.
-2. SEARCH TAGS: List up to 8 specific, non-redundant tags. Focus on entities, materials, and artistic styles.
-
-CONSTRAINTS:
-- Use factual, descriptive language.
-- No buzzwords (e.g., "stunning", "beautiful").
-- Tags must be lowercase only.
-
-OUTPUT FORMAT (Strict):
-CAPTION: [Your description here]
-TAGS: [tag1, tag2, tag3, ...]`;
-}
+const VISION_MODEL = '@cf/meta/llama-4-scout-17b-16e-instruct';
 
 export async function analyzeImage(
   ai: Ai,
   imageStream: ReadableStream,
-  meta?: UnsplashPhoto,
-): Promise<{ caption: string; tags: string[] }> {
+): Promise<{ caption: string; tags: string[]; quality: number; entities: string[] }> {
   const imageData = new Uint8Array(await new Response(imageStream).arrayBuffer());
 
   const response = (await ai.run(
-    '@cf/meta/llama-3.2-11b-vision-instruct',
+    VISION_MODEL,
     {
       image: [...imageData],
-      prompt: buildVisionPrompt(meta),
-      max_tokens: 300,
+      prompt: `Act as a world-class gallery curator and senior photographer. 
+Analyze this image for deep-index retrieval.
+
+TASKS:
+1. CAPTION: Write a 2-3 sentence narrative. Focus on the core subject, emotional resonance, specific photographic style (e.g. macro, silhouette, brutalism), and the interaction of light/shadow.
+2. QUALITY SCORE: Rate the image quality/aesthetics from 0.0 to 10.0 based on composition and clarity.
+3. ENTITIES: Identify any specific landmarks, notable brands, biological species, or unique objects.
+4. TAGS: Provide up to 8 precise, descriptive lowercase tags.
+
+OUTPUT FORMAT (Must strictly follow):
+CAPTION: [Text]
+QUALITY: [Float, e.g. 8.5]
+ENTITIES: [item1, item2, ...]
+TAGS: [tag1, tag2, ...]`,
+      max_tokens: 512,
     },
     GATEWAY,
-  )) as { description?: string; response?: string };
+  )) as { response?: string };
 
-  const text = response.response || response.description || '';
+  const text = response.response || '';
 
-  // Robust parsing with fallback (handles **CAPTION:** variants)
-  const captionMatch = text.match(/^\*?\*?CAPTION\*?\*?:\s*(.+?)(?:\n|TAGS|$)/ims);
-  const tagsMatch = text.match(/^\*?\*?TAGS\*?\*?:\s*(.+)/im);
+  // Enhanced Regex Parsing with high tolerance
+  const captionMatch = text.match(/^\*?\*?CAPTION\*?\*?:\s*(.+)/im);
+  const qualityMatch = text.match(/^\*?\*?QUALITY\*?\*?:\s*([0-9.]+)/im);
+  const entitiesMatch = text.match(/^\*?\*?ENTITIES\*?\*?:\s*\[?(.*?)\]?$/im);
+  const tagsMatch = text.match(/^\*?\*?TAGS\*?\*?:\s*\[?(.*?)\]?$/im);
 
-  const caption = captionMatch?.[1]?.trim().replace(/^\*+\s*/, '') || text.split('\n')[0].trim();
+  const caption = captionMatch?.[1]?.trim() || text.split('\n')[0].substring(0, 500);
+  const quality = parseFloat(qualityMatch?.[1] || '5.0');
+
+  const entities =
+    entitiesMatch?.[1]
+      ?.split(',')
+      .map((e) => e.replace(/[\[\]"']/g, '').trim())
+      .filter(Boolean) || [];
+
   const tags =
     tagsMatch?.[1]
       ?.split(',')
-      .map((t: string) => t.trim().toLowerCase().replace(/[[]*]/g, '').trim())
-      .filter((t: string) => t && t.length > 1)
-      .slice(0, 8) || [];
+      .map((t) => t.replace(/[\[\]"']/g, '').trim().toLowerCase())
+      .filter(Boolean) || [];
 
-  return { caption, tags };
+  return { caption, tags, quality, entities };
 }
 
 export async function generateEmbedding(ai: Ai, text: string): Promise<number[]> {
-  const response = (await ai.run('@cf/baai/bge-m3', { text: [text] }, GATEWAY)) as { data: number[][] };
+  const response = (await ai.run('@cf/google/embeddinggemma-300m', { text: [text] }, GATEWAY)) as { data: number[][] };
   return response.data[0];
 }

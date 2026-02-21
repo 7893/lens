@@ -30,6 +30,7 @@ async function updateConfig(db: D1Database, key: string, value: string) {
 export default {
   async scheduled(_event: ScheduledEvent, env: Env, _ctx: ExecutionContext): Promise<void> {
     console.log('⏰ Greedy Ingestion Triggered');
+    console.log('DEBUG: this =', typeof this, Object.keys(this || {}));
     if (!env.UNSPLASH_API_KEY) return;
 
     // Check API quota before proceeding
@@ -312,7 +313,7 @@ export class LensIngestWorkflow extends WorkflowEntrypoint<Env, IngestionTask> {
     const analysis = await step.do('analyze-vision', retryConfig, async () => {
       const object = await this.env.R2.get(`display/${photoId}.jpg`);
       if (!object) throw new Error('Display image not found');
-      return await analyzeImage(this.env.AI, object.body, meta);
+      return await analyzeImage(this.env.AI, object.body);
     });
 
     const vector = await step.do('generate-embedding', retryConfig, async () => {
@@ -322,9 +323,15 @@ export class LensIngestWorkflow extends WorkflowEntrypoint<Env, IngestionTask> {
     await step.do('persist-d1', retryConfig, async () => {
       await this.env.DB.prepare(
         `
-        INSERT INTO images (id, width, height, color, raw_key, display_key, meta_json, ai_tags, ai_caption, ai_embedding, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(id) DO UPDATE SET ai_caption = excluded.ai_caption, ai_embedding = excluded.ai_embedding, created_at = excluded.created_at
+        INSERT INTO images (id, width, height, color, raw_key, display_key, meta_json, ai_tags, ai_caption, ai_embedding, ai_model, ai_quality_score, entities_json, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET 
+          ai_caption = excluded.ai_caption, 
+          ai_embedding = excluded.ai_embedding,
+          ai_model = excluded.ai_model,
+          ai_quality_score = excluded.ai_quality_score,
+          entities_json = excluded.entities_json,
+          created_at = excluded.created_at
       `,
       )
         .bind(
@@ -338,6 +345,9 @@ export class LensIngestWorkflow extends WorkflowEntrypoint<Env, IngestionTask> {
           JSON.stringify(analysis.tags),
           analysis.caption,
           JSON.stringify(vector),
+          'llama-4-scout',
+          analysis.quality,
+          JSON.stringify(analysis.entities),
           Date.now(),
         )
         .run();
