@@ -44,13 +44,18 @@ TAGS: [tag1, tag2, ...]`,
   const entities =
     entitiesMatch?.[1]
       ?.split(',')
-      .map((e) => e.replace(/[\[\]"']/g, '').trim())
+      .map((e) => e.replace(/[[\]"']/g, '').trim())
       .filter(Boolean) || [];
 
   const tags =
     tagsMatch?.[1]
       ?.split(',')
-      .map((t) => t.replace(/[\[\]"']/g, '').trim().toLowerCase())
+      .map((t) =>
+        t
+          .replace(/[[\]"']/g, '')
+          .trim()
+          .toLowerCase(),
+      )
       .filter(Boolean) || [];
 
   return { caption, tags, quality, entities };
