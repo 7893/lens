@@ -18,6 +18,9 @@ export interface DBImage {
   // AI Analysis (Stored as JSON string in DB)
   ai_tags: string; // Serialized string[]
   ai_caption: string | null;
+  ai_model: string | null;
+  ai_quality_score: number | null;
+  entities_json: string | null;
 
   created_at: number; // Unix timestamp
 }
@@ -67,6 +70,9 @@ export interface ImageResult {
     iso: number | null;
   } | null;
   topics?: string[];
+  ai_model?: string | null;
+  ai_quality_score?: number | null;
+  entities?: string[];
 }
 
 export interface SearchResponse {
