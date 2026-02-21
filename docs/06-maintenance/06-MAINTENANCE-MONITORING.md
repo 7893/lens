@@ -27,23 +27,39 @@ npx wrangler kv key put --namespace-id <KV_ID> "config:ingestion" '{"backfill_en
 
 ## 2. 核心指标监控
 
-### 2.1 AI 网关 (AI Gateway)
+### 2.1 自我进化进度 (Self-Evolution Progress)
+
+系统会自动利用每日剩余的免费 Neurons 配额，将 `llama-3.2` 的旧数据升级至 `llama-4-scout`。
+
+- **查看进度**:
+  ```sql
+  SELECT ai_model, COUNT(*) FROM images GROUP BY ai_model;
+  ```
+- **监控消耗**: 在 KV 中检查当日已用 Neuron 计数器：
+  `npx wrangler kv key get --namespace-id <KV_ID> "stats:neurons:YYYY-MM-DD" --remote`
+
+### 2.2 AI 网关 (AI Gateway)
 
 - **监控点**: 访问 Cloudflare Dashboard -> AI -> AI Gateway -> `lens-gateway`。
 - **关键图表**:
   - **Success Rate**: 应保持在 99% 以上。
   - **Token/Neuron Usage**: 结合图片入库数，预估每日账单。
 
-### 2.2 Workflow 任务追踪
+---
 
-```bash
-# 查看最近一小时的图片处理成功率
-npx wrangler workflows list lens-workflow
-```
+## 3. 计费参考模型
+
+基于目前 Llama 4 Scout + Gemma 3 的组合，你可以按以下经验公式预估开销：
+
+| 动作             | 消耗 (Neurons) | 费用 ($)            |
+| :--------------- | :------------- | :------------------ |
+| **单张新图入库** | ~85            | $0.0009             |
+| **单次复杂搜索** | ~5,000         | $0.055              |
+| **每日免费额度** | 10,000         | **$0 (抵扣 $0.11)** |
 
 ---
 
-## 3. 故障排除指南 (FAQ)
+## 4. 故障排除指南 (FAQ)
 
 ### 3.1 现象：D1 数据涨了，但搜不到新图
 

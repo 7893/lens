@@ -40,6 +40,9 @@ Lens 所有 API 遵循 RESTful 规范，基础端点为 `/api`。
       "blurHash": "L6PZfS.AyE%M%~WBIUWB00WB_3Mx",
       "color": "#1a1a1a",
       "location": "Shinjuku, Tokyo",
+      "ai_model": "llama-4-scout",
+      "ai_quality_score": 9.2,
+      "entities": ["Shinjuku Station", "Sony Store", "Japanese Rain Tree"],
       "exif": {
         "camera": "Sony A7RIV",
         "aperture": "f/1.4",

@@ -12,18 +12,21 @@ D1 (SQLite) 是系统的“大脑”，负责存储结构化数据和状态游�
 
 该表存储每张图片的指纹、AI 理解结果及索引关键信息。
 
-| 字段               | 类型      | 说明                                                  |
-| :----------------- | :-------- | :---------------------------------------------------- |
-| **id**             | TEXT (PK) | Unsplash 原始 ID，具有全球唯一性。                    |
-| **width / height** | INTEGER   | 图片分辨率，用于前端瀑布流布局计算。                  |
-| **color**          | TEXT      | 图片主色调 HEX 值，用于占位符渲染。                   |
-| **raw_key**        | TEXT      | 对应 R2 中 `raw/` 目录的原始文件路径。                |
-| **display_key**    | TEXT      | 对应 R2 中 `display/` 目录的优化图路径。              |
-| **meta_json**      | TEXT      | 包含 Unsplash 提供的摄影师、位置、EXIF 等原始 JSON。  |
-| **ai_tags**        | TEXT      | 序列化后的标签数组，用于关键词检索补偿。              |
-| **ai_caption**     | TEXT      | Llama 3.2 Vision 生成的深度语义描述（核心搜索文本）。 |
-| **ai_embedding**   | TEXT      | 1024 维 BGE-M3 向量数组（JSON 形式存储备份）。        |
-| **created_at**     | INTEGER   | 入库 Unix 时间戳，建立 B-Tree 索引以支持快速排序。    |
+| 字段                 | 类型      | 说明                                                 |
+| :------------------- | :-------- | :--------------------------------------------------- |
+| **id**               | TEXT (PK) | Unsplash 原始 ID，具有全球唯一性。                   |
+| **width / height**   | INTEGER   | 图片分辨率，用于前端瀑布流布局计算。                 |
+| **color**            | TEXT      | 图片主色调 HEX 值，用于占位符渲染。                  |
+| **raw_key**          | TEXT      | 对应 R2 中 `raw/` 目录的原始文件路径。               |
+| **display_key**      | TEXT      | 对应 R2 中 `display/` 目录的优化图路径。             |
+| **meta_json**        | TEXT      | 包含 Unsplash 提供的摄影师、位置、EXIF 等原始 JSON。 |
+| **ai_tags**          | TEXT      | 序列化后的标签数组，用于关键词检索补偿。             |
+| **ai_caption**       | TEXT      | Llama 4 Scout 生成的深度语义描述（核心搜索文本）。   |
+| **ai_embedding**     | TEXT      | 1024 维 BGE-M3 向量数组（JSON 形式存储备份）。       |
+| **ai_model**         | TEXT      | 记录生成该记录的 AI 模型版本（如 `llama-4-scout`）。 |
+| **ai_quality_score** | REAL      | 0-10 的图片审美评分，用于前端质量加权排序。          |
+| **entities_json**    | TEXT      | 存储识别出的具体实体（地标、品牌等）的 JSON 数组。   |
+| **created_at**       | INTEGER   | 入库 Unix 时间戳，建立 B-Tree 索引以支持快速排序。   |
 
 ### 1.2 `system_config` 表结构
 
@@ -48,7 +51,15 @@ KV 承担了两项关键任务：**系统节流阀** 和 **全球语义缓存**�
 - `backfill_enabled` (boolean): 历史回填功能总开关。
 - `backfill_max_pages` (number): **每小时生产配额**。例如设为 2，则每小时最多回填 60 张图。
 
-### 2.2 搜索语义缓存 (`semantic:cache:<query>`)
+### 2.2 消耗追踪器 (`stats:neurons:{YYYY-MM-DD}`)
+
+用于实现“余粮自进化”算法的离线计费。
+
+- **内容**: 存储当日已消耗的预估 Neurons 总量。
+- **TTL**: 48 小时自动清理。
+- **用途**: 在 `scheduled` 任务开始时计算余额，决定是否开启老图升级。
+
+### 2.3 搜索语义缓存 (`semantic:cache:<query>`)
 
 - **Key**: 用户原始查询词的标准化格式（Lowercase/Trim）。
 - **Value**: Llama 3.2 生成的视觉扩展文本。
