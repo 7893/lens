@@ -1,139 +1,70 @@
-# 系统运维与监控手册 (06-MAINTENANCE-MONITORING)
+# 运维监控、成本管理与灾难恢复手册 (06-MAINTENANCE-MONITORING)
 
-本手册旨在指导运维人员如何监控 Lens 系统的健康度、控制成本、以及进行故障应急处理。
-
----
-
-## 1. 成本调优：KV 动态控制面板
-
-Lens 提供了一套基于 KV 的“实时节流阀”，允许你在不重启系统的前提下调整运营策略。
-
-### 1.1 操作指令
-
-```bash
-# 获取当前采集设置
-npx wrangler kv key get --namespace-id <KV_ID> "config:ingestion" --remote
-
-# 修改回填限制 (例如增加到 10 页)
-npx wrangler kv key put --namespace-id <KV_ID> "config:ingestion" '{"backfill_enabled": true, "backfill_max_pages": 10}' --remote
-```
-
-### 1.2 参数说明
-
-- **`backfill_max_pages`**: 每小时回填页数。增加此值会加速旧图入库，但会显著增加 Neurons 消耗费。
-- **`backfill_enabled`**: 紧急刹车开关。设为 `false` 可立即停止所有非必要的抓取任务。
+本手册是 Lens 系统的“飞行手册”，旨在指导运维人员如何通过数据监控来确保系统的长期健康，并在此基础上将 AI 运行成本压缩至极限。
 
 ---
 
-## 2. 核心指标监控
+## 1. 成本控制核心：动态节流体系
 
-### 2.1 自我进化进度 (Self-Evolution Progress)
+Lens 并不是一辆“刹车失灵”的赛车，我们通过 KV (SETTINGS) 实现了一套极其精密的实时控制系统。
 
-系统会自动利用每日剩余的免费 Neurons 配额，将 `llama-3.2` 的旧数据升级至 `llama-4-scout`。
+### 1.1 `config:ingestion` 实时调节
 
-- **查看进度**:
+通过修改 KV 中的 JSON 配置，你可以即时改变采集引擎的行为：
+
+- **`backfill_enabled`**：一旦发现 Unsplash 配额异常或云端费用激增，将其设为 `false` 可立即熔断所有历史抓取任务。
+- **`backfill_max_pages`**：这是你的“生产速率”。设为 2 代表每 10 分钟处理约 60 张历史图。通过增加此值，你可以让全库入库速度提升，但需警惕 Neurons 消耗。
+
+### 1.2 离线 Neurons 水表监控
+
+由于 Cloudflare 并没有实时账单 API，我们通过 KV `stats:neurons:YYYY-MM-DD` 记录当日预估消耗。
+
+- **查看指令**：`npx wrangler kv key get --namespace-id <KV_ID> "stats:neurons:2026-02-22" --remote`
+- **预警线**：若该值接近 10,000，系统会自动减少自进化（Evolution）任务，确保全天处于免费区。
+
+---
+
+## 2. 系统健康指标 (KPIs)
+
+### 2.1 采集流动性 (Ingestion Flow)
+
+- **SQL 观察**：`SELECT ai_model, COUNT(*) FROM images GROUP BY ai_model;`
+  - **正常表现**：`llama-4-scout` 的数量应在每个小时的 0 分、10 分、20 分... 准时跳变。
+- **日志观察**：使用 `wrangler tail lens-processor`。
+  - **关键信号**：寻找 `🌟 Global anchor advanced to`。这代表高水位线已成功前移。
+
+### 2.2 自进化爆发观察 (The 23:00 Peak)
+
+在 **UTC 23:00** 这一小时，是 Lens 的“高光时刻”。
+
+- 系统会清算全天剩余配额，并启动大规模的老图刷新。
+- **监控要点**：此时 D1 的 CPU 时间片消耗会达到峰值，应通过 Cloudflare Dashboard 关注数据库的查询延迟。
+
+---
+
+## 3. 常见故障模型与“手术级”恢复
+
+### 3.1 采集系统“血栓” (Anchor Deadlock)
+
+- **现象**：定时任务在跑，但图片数不涨。
+- **诊断**：`last_seen_id` 指向了一张并不存在的图，或者由于排序抖动导致系统认为“已经处理过了”。
+- **修复**：手动将 `last_seen_id` 回拨到 D1 中最后一张已知图的 ID：
   ```sql
-  SELECT ai_model, COUNT(*) FROM images GROUP BY ai_model;
+  UPDATE system_config SET value = (SELECT id FROM images ORDER BY created_at DESC LIMIT 1) WHERE key = 'last_seen_id';
   ```
-- **监控消耗**: 在 KV 中检查当日已用 Neuron 计数器：
-  `npx wrangler kv key get --namespace-id <KV_ID> "stats:neurons:YYYY-MM-DD" --remote`
-- **观察进化波峰**: 自进化仅在 **UTC 23:00** 触发。在此期间，可通过 `wrangler tail lens-processor` 观察 `🧬 UTC 23:00 - Running self-evolution` 日志。
 
-### 2.2 AI 网关 (AI Gateway)
+### 3.2 Workflow 实例积压
 
-- **监控点**: 访问 Cloudflare Dashboard -> AI -> AI Gateway -> `lens-gateway`。
-- **关键图表**:
-  - **Success Rate**: 应保持在 99% 以上。
-  - **Token/Neuron Usage**: 结合图片入库数，预估每日账单。
+- **诊断**：大量实例处于 `Failed` 或 `Running`。
+- **对策**：检查 `wrangler secret` 是否过期（特别是 `CLOUDFLARE_API_TOKEN`）。更新密钥后，存量 Workflow 会自动利用指数退避机制完成自愈。
 
 ---
 
-## 3. 计费参考模型
+## 4. 数据重塑与索引迁移
 
-基于目前 Llama 4 Scout + BGE-M3 的组合，你可以按以下经验公式预估开销：
+当你决定修改 AI 分析逻辑（例如从 8 个 Tags 增加到 20 个）时：
 
-| 动作             | 消耗 (Neurons) | 费用 ($)            |
-| :--------------- | :------------- | :------------------ |
-| **单张新图入库** | ~85            | $0.0009             |
-| **单次复杂搜索** | ~5,000         | $0.055              |
-| **每日免费额度** | 10,000         | **$0 (抵扣 $0.11)** |
-
----
-
-## 4. 故障排除指南 (FAQ)
-
-### 3.1 现象：D1 数据涨了，但搜不到新图
-
-- **诊断**: 检查 `vectorize_last_sync` 配置项。
-- **解决**: 向量同步逻辑会在下一个整点自动补全。如需手动修复，可执行本地脚本重触发 `runVectorSync` 逻辑。
-
-### 3.2 现象：Unsplash 采集结果一直是 0
-
-- **诊断**: 检查 Unsplash API 的配额。
-- **解决**: 可能是因为上一周期爆发式回填透支了额度。静待 1 小时自动重置即可。
-
-### 3.3 现象：Search API 返回 500
-
-- **诊断**: 查看网关 Logs。
-- **解决**: 如果错误是 401，请检查 `CLOUDFLARE_API_TOKEN` 的 Secret 是否过期。
-
----
-
-## 4. 深度维护操作
-
-### 4.1 重建索引
-
-如果修改了 AI 描述逻辑，需要全量更新 Vectorize：
-
-1.  清空 Vectorize 索引。
-2.  在 D1 中将 `system_config` 表的 `vectorize_last_sync` 设为 `0`。
-3.  等待下一个 Cron 周期自动全量同步。
-
-### 4.2 数据库导出备份
-
-```bash
-npx wrangler d1 export lens-d1 --remote --output ./backups/lens_db_$(date +%F).sql
-```
-
----
-
-## 5. 故障案例库
-
-### 5.1 Workflow 实例 ID 冲突
-
-**现象**: Cron 正常触发，Queue 消息被消费，但没有新 Workflow 实例创建，图片不入库。
-
-**根因**: Cloudflare Workflows 的实例 ID 必须全局唯一。如果使用 `photoId` 作为实例 ID，当同一张图片的 Workflow 曾经创建过（即使失败或完成），再次创建会静默失败。
-
-**解决方案**: 使用 `${photoId}-${Date.now()}` 作为实例 ID，确保唯一性。
-
-```typescript
-await env.PHOTO_WORKFLOW.create({
-  id: `${msg.body.photoId}-${Date.now()}`,
-  params: msg.body,
-});
-```
-
-**诊断方法**:
-
-```bash
-# 检查特定 photoId 是否有历史 Workflow 实例
-curl "https://api.cloudflare.com/client/v4/accounts/{account_id}/workflows/lens-workflow/instances/{photoId}" \
-  -H "Authorization: Bearer {token}"
-```
-
-### 5.2 last_seen_id 与数据库不一致
-
-**现象**: `last_seen_id` 指向的图片不在数据库中。
-
-**根因**: `last_seen_id` 在 cron 开始时更新，但后续 Workflow 处理失败。
-
-**解决方案**: 代码已修复为在处理完成后才更新 `last_seen_id`。如需手动修复，可重置为数据库中最新图片的 ID：
-
-```sql
--- 查找最新入库图片
-SELECT id FROM images ORDER BY created_at DESC LIMIT 1;
-
--- 重置 last_seen_id
-UPDATE system_config SET value = '{id}' WHERE key = 'last_seen_id';
-```
+1.  **重置同步标记**：将 D1 中 `system_config` 表的 `vectorize_last_sync` 设为 `0`。
+2.  **清空旧索引**：`npx wrangler vectorize delete lens-vectors`。
+3.  **触发同步**：系统会在下一个小时自动扫描 D1 全表并重建 Vectorize 索引。
+4.  **模型漂移补救**：利用 `Self-Evolution` 模块，系统会在未来几周内利用免费额度，悄悄完成全量数据的逻辑升级。
