@@ -37,6 +37,7 @@ npx wrangler kv key put --namespace-id <KV_ID> "config:ingestion" '{"backfill_en
   ```
 - **监控消耗**: 在 KV 中检查当日已用 Neuron 计数器：
   `npx wrangler kv key get --namespace-id <KV_ID> "stats:neurons:YYYY-MM-DD" --remote`
+- **观察进化波峰**: 自进化仅在 **UTC 23:00** 触发。在此期间，可通过 `wrangler tail lens-processor` 观察 `🧬 UTC 23:00 - Running self-evolution` 日志。
 
 ### 2.2 AI 网关 (AI Gateway)
 
@@ -53,7 +54,7 @@ npx wrangler kv key put --namespace-id <KV_ID> "config:ingestion" '{"backfill_en
 
 | 动作             | 消耗 (Neurons) | 费用 ($)            |
 | :--------------- | :------------- | :------------------ |
-| **单张新图入库** | ~32            | $0.00035            |
+| **单张新图入库** | ~85            | $0.0009             |
 | **单次复杂搜索** | ~5,000         | $0.055              |
 | **每日免费额度** | 10,000         | **$0 (抵扣 $0.11)** |
 
