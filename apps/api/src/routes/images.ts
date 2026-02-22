@@ -20,10 +20,61 @@ images.get('/:id', async (c) => {
   if (!image) return c.json({ error: 'Not found' }, 404);
 
   const meta = JSON.parse(image.meta_json || '{}');
+  const user = meta.user || {};
+
   return c.json({
-    ...toImageResult(image),
-    stats: { views: meta.views, downloads: meta.downloads, likes: meta.likes },
-    source: meta.links?.html,
+    id: image.id,
+    urls: { raw: `/images/raw/${image.id}.jpg`, display: `/images/display/${image.id}.jpg` },
+    width: image.width,
+    height: image.height,
+    color: image.color,
+    blurHash: meta.blur_hash || null,
+    description: meta.description || null,
+    altDescription: meta.alt_description || null,
+    createdAt: meta.created_at || null,
+    promotedAt: meta.promoted_at || null,
+    photographer: {
+      name: user.name || null,
+      username: user.username || null,
+      bio: user.bio || null,
+      location: user.location || null,
+      profile: user.links?.html || null,
+      profileImage: user.profile_image?.medium || null,
+      instagram: user.instagram_username || null,
+      twitter: user.twitter_username || null,
+      portfolio: user.portfolio_url || null,
+      totalPhotos: user.total_photos || null,
+    },
+    exif: meta.exif
+      ? {
+          make: meta.exif.make || null,
+          model: meta.exif.model || null,
+          camera: meta.exif.name || null,
+          aperture: meta.exif.aperture ? `f/${meta.exif.aperture}` : null,
+          exposure: meta.exif.exposure_time || null,
+          focalLength: meta.exif.focal_length ? `${meta.exif.focal_length}mm` : null,
+          iso: meta.exif.iso || null,
+        }
+      : null,
+    location: meta.location
+      ? {
+          name: meta.location.name || null,
+          city: meta.location.city || null,
+          country: meta.location.country || null,
+          latitude: meta.location.position?.latitude || null,
+          longitude: meta.location.position?.longitude || null,
+        }
+      : null,
+    topics: Object.keys(meta.topic_submissions || {}),
+    stats: { views: meta.views || null, downloads: meta.downloads || null, likes: meta.likes || null },
+    ai: {
+      caption: image.ai_caption,
+      tags: JSON.parse(image.ai_tags || '[]'),
+      model: image.ai_model,
+      qualityScore: image.ai_quality_score,
+      entities: image.entities_json ? JSON.parse(image.entities_json) : [],
+    },
+    source: meta.links?.html || null,
   });
 });
 
