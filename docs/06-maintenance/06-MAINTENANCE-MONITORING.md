@@ -53,7 +53,7 @@ npx wrangler kv key put --namespace-id <KV_ID> "config:ingestion" '{"backfill_en
 
 | 动作             | 消耗 (Neurons) | 费用 ($)            |
 | :--------------- | :------------- | :------------------ |
-| **单张新图入库** | ~32            | $0.00035             |
+| **单张新图入库** | ~32            | $0.00035            |
 | **单次复杂搜索** | ~5,000         | $0.055              |
 | **每日免费额度** | 10,000         | **$0 (抵扣 $0.11)** |
 
@@ -114,6 +114,7 @@ await env.PHOTO_WORKFLOW.create({
 ```
 
 **诊断方法**:
+
 ```bash
 # 检查特定 photoId 是否有历史 Workflow 实例
 curl "https://api.cloudflare.com/client/v4/accounts/{account_id}/workflows/lens-workflow/instances/{photoId}" \
