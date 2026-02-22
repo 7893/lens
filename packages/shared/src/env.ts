@@ -9,8 +9,8 @@ export interface BaseBindings {
   SETTINGS: KVNamespace;
 }
 
-// API worker bindings
-export interface ApiBindings extends BaseBindings {}
+// API worker bindings (same as base for now)
+export type ApiBindings = BaseBindings;
 
 // Processor worker bindings
 export interface ProcessorBindings extends BaseBindings {

@@ -46,7 +46,12 @@ TAGS: [tag1, tag2, ...]`,
   const tags =
     tagsMatch?.[1]
       ?.split(',')
-      .map((t) => t.replace(/[[\]"']/g, '').trim().toLowerCase())
+      .map((t) =>
+        t
+          .replace(/[[\]"']/g, '')
+          .trim()
+          .toLowerCase(),
+      )
       .filter(Boolean) || [];
 
   return { caption, tags, quality, entities };
