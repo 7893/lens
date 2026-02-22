@@ -105,3 +105,28 @@ Lens 使用 GitHub Actions 执行自动化全栈发布。
 2.  **AI 网关路径**: 搜索一次并检查 Cloudflare AI Gateway 页面是否产生紫色波峰。
 3.  **采集自检**: 手动触发 Cron 测试抓取效率：
     `npx wrangler dev lens/apps/processor/src/index.ts --test-scheduled`
+
+---
+
+## 5. GitHub 安全配置
+
+### 5.1 分支保护
+
+`main` 分支已启用保护规则：
+- 禁止 force push
+- 禁止删除分支
+
+### 5.2 自动化安全扫描
+
+| 工具 | 触发条件 | 作用 |
+|------|----------|------|
+| **CodeQL** | push/PR + 每周一 | 静态代码安全分析 |
+| **Dependabot** | 自动 | 依赖漏洞检测与自动 PR |
+| **Secret Scanning** | 实时 | 检测意外提交的密钥 |
+
+### 5.3 CI/CD 流水线
+
+每次 push 到 `main` 触发 **Deploy Lens** workflow：
+
+1. **Quality Gate** - lint + typecheck + test
+2. **Deploy to Cloudflare** - 构建并部署 API 和 Processor
