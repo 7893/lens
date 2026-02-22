@@ -15,7 +15,25 @@ Lens 采用 pnpm workspaces 驱动的 Monorepo 结构，各组件高度解耦：
 
 ---
 
-## 2. 核心 AI 提示词 (Prompts)
+## 2. 工程化代码架构
+
+为了应对日益复杂的 AI 业务逻辑，系统采用了高度模块化的目录结构：
+
+### 2.1 Processor (采集端) 职责划分
+
+- **`src/handlers/`**: 包含定时任务 (`scheduled.ts`)、队列消费 (`queue.ts`) 和核心状态机 (`workflow.ts`)。
+- **`src/services/`**: 原子化服务层。包含 AI 接口封装、Neurons 计费器 (`quota.ts`) 及自进化逻辑 (`evolution.ts`)。
+- **`src/utils/`**: 工具类。负责 Unsplash 协议对接、R2 流处理等。
+
+### 2.2 API (服务端) 职责划分
+
+- **`src/routes/`**: 基于 Hono 的路由拆分（Search, Stats, Images）。
+- **`src/middleware/`**: 包含全局限流器、CORS 策略等。
+- **`src/utils/transform.ts`**: 负责将 D1 原始记录映射为旗舰版 API 响应格式。
+
+---
+
+## 3. 核心 AI 提示词 (Prompts)
 
 AI 表现的优劣取决于提示词的质量。修改提示词前请进行充分回归测试。
 
