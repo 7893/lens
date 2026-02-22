@@ -1,5 +1,4 @@
-const GATEWAY = { gateway: { id: 'lens-gateway' } };
-const VISION_MODEL = '@cf/meta/llama-4-scout-17b-16e-instruct';
+import { AI_MODELS, AI_GATEWAY } from '@lens/shared';
 
 export async function analyzeImage(
   ai: Ai,
@@ -8,7 +7,7 @@ export async function analyzeImage(
   const imageData = new Uint8Array(await new Response(imageStream).arrayBuffer());
 
   const response = (await ai.run(
-    VISION_MODEL,
+    AI_MODELS.TEXT,
     {
       image: [...imageData],
       prompt: `Act as a world-class gallery curator and senior photographer. 
@@ -27,12 +26,11 @@ ENTITIES: [item1, item2, ...]
 TAGS: [tag1, tag2, ...]`,
       max_tokens: 512,
     },
-    GATEWAY,
+    AI_GATEWAY,
   )) as { response?: string };
 
   const text = response.response || '';
 
-  // Enhanced Regex Parsing with high tolerance
   const captionMatch = text.match(/^\*?\*?CAPTION\*?\*?:\s*(.+)/im);
   const qualityMatch = text.match(/^\*?\*?QUALITY\*?\*?:\s*([0-9.]+)/im);
   const entitiesMatch = text.match(/^\*?\*?ENTITIES\*?\*?:\s*\[?(.*?)\]?$/im);
@@ -40,28 +38,21 @@ TAGS: [tag1, tag2, ...]`,
 
   const caption = captionMatch?.[1]?.trim() || text.split('\n')[0].substring(0, 500);
   const quality = parseFloat(qualityMatch?.[1] || '5.0');
-
   const entities =
     entitiesMatch?.[1]
       ?.split(',')
       .map((e) => e.replace(/[[\]"']/g, '').trim())
       .filter(Boolean) || [];
-
   const tags =
     tagsMatch?.[1]
       ?.split(',')
-      .map((t) =>
-        t
-          .replace(/[[\]"']/g, '')
-          .trim()
-          .toLowerCase(),
-      )
+      .map((t) => t.replace(/[[\]"']/g, '').trim().toLowerCase())
       .filter(Boolean) || [];
 
   return { caption, tags, quality, entities };
 }
 
 export async function generateEmbedding(ai: Ai, text: string): Promise<number[]> {
-  const response = (await ai.run('@cf/baai/bge-m3', { text: [text] }, GATEWAY)) as { data: number[][] };
+  const response = (await ai.run(AI_MODELS.EMBED, { text: [text] }, AI_GATEWAY)) as { data: number[][] };
   return response.data[0];
 }

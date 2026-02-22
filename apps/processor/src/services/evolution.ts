@@ -1,14 +1,9 @@
-import { Env } from '../index';
+import { ProcessorBindings, NEURON_COSTS } from '@lens/shared';
 import { analyzeImage, generateEmbedding } from './ai';
-import { recordNeuronUsage, NEURON_COSTS } from './quota';
+import { recordNeuronUsage } from './quota';
 import { buildEmbeddingText } from '../utils/embedding';
 
-/**
- * Picks a batch of old images (Llama 3.2) and upgrades them to Llama 4
- * using the remaining free Neuron quota.
- */
-export async function runSelfEvolution(env: Env, remainingNeurons: number) {
-  // 1. Calculate how many images we can afford to refresh
+export async function runSelfEvolution(env: ProcessorBindings, remainingNeurons: number) {
   const costPerImage = NEURON_COSTS.PER_IMAGE;
   const batchSize = Math.floor(remainingNeurons / costPerImage);
 
@@ -19,7 +14,6 @@ export async function runSelfEvolution(env: Env, remainingNeurons: number) {
 
   console.log(`🧬 Self-Evolution: Attempting to refresh ${batchSize} images...`);
 
-  // 2. Query D1 for old version images
   const { results } = await env.DB.prepare(
     "SELECT * FROM images WHERE ai_model = 'llama-3.2' ORDER BY created_at DESC LIMIT ?",
   )
@@ -31,7 +25,6 @@ export async function runSelfEvolution(env: Env, remainingNeurons: number) {
     return;
   }
 
-  // 3. Process each image (Sequential to stay within Worker memory limits)
   for (const img of results) {
     try {
       console.log(`🔄 Refreshing image: ${img.id}`);
@@ -43,16 +36,8 @@ export async function runSelfEvolution(env: Env, remainingNeurons: number) {
       const meta = JSON.parse(img.meta_json || '{}');
       const vector = await generateEmbedding(env.AI, buildEmbeddingText(analysis.caption, analysis.tags, meta));
 
-      // 4. Update D1 with flagship data
       await env.DB.prepare(
-        `UPDATE images SET 
-          ai_caption = ?, 
-          ai_tags = ?, 
-          ai_embedding = ?, 
-          ai_model = ?, 
-          ai_quality_score = ?, 
-          entities_json = ? 
-         WHERE id = ?`,
+        `UPDATE images SET ai_caption = ?, ai_tags = ?, ai_embedding = ?, ai_model = ?, ai_quality_score = ?, entities_json = ? WHERE id = ?`,
       )
         .bind(
           analysis.caption,
@@ -65,7 +50,6 @@ export async function runSelfEvolution(env: Env, remainingNeurons: number) {
         )
         .run();
 
-      // 5. Deduct quota
       await recordNeuronUsage(env, costPerImage);
     } catch (error) {
       console.error(`❌ Evolution failed for ${img.id}:`, error);
