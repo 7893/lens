@@ -120,24 +120,38 @@ export default {
     // --- TASK A: Forward Catch-up ---
     console.log(`🔎 Ingestion: Catching up since ${lastSeenId}...`);
     let apiRemaining = 50;
+    let newTopId: string | null = null;
 
     for (let p = 1; p <= 10; p++) {
       const res = await fetchLatestPhotos(env.UNSPLASH_API_KEY, p, 30);
       apiRemaining = res.remaining;
       if (!res.photos.length) break;
 
+      // Capture the absolute latest ID on the first page
       if (p === 1 && res.photos[0].id !== lastSeenId) {
-        await updateConfig(env.DB, 'last_seen_id', res.photos[0].id);
+        newTopId = res.photos[0].id;
       }
 
       const seenIndex = res.photos.findIndex((p) => p.id === lastSeenId);
       if (seenIndex !== -1) {
-        await filterAndEnqueue(res.photos.slice(0, seenIndex));
+        // We found the old boundary
+        const freshOnPage = res.photos.slice(0, seenIndex);
+        if (freshOnPage.length > 0) {
+          await filterAndEnqueue(freshOnPage);
+        }
+        console.log(`✅ Forward boundary hit on page ${p}, found ${freshOnPage.length} new photos.`);
         break;
       }
 
+      // No boundary found on this page, enqueue everything
       await filterAndEnqueue(res.photos);
       if (apiRemaining < 1) break;
+    }
+
+    // ONLY update the global anchor once we've successfully processed the batch
+    if (newTopId) {
+      await updateConfig(env.DB, 'last_seen_id', newTopId);
+      console.log(`🌟 Global anchor advanced to: ${newTopId}`);
     }
 
     // --- TASK B: Backward Backfill ---
