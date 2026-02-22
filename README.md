@@ -1,147 +1,94 @@
-# Lens
+# Lens: 边缘原生视觉智能引擎 (Edge-Native Visual Intelligence Engine)
 
-**AI-Powered Semantic Image Search on Cloudflare Edge**
-
-> 你搜"孤独感"，它给你一条雪夜独行的小巷。你搜"温暖"，它给你壁炉旁的猫。
-> 不是关键词匹配 — 是 AI 真的看懂了每一张图。
+> **"这是一个懂得审美、能够识别实体、并在零成本边际下实现数据自我进化的视觉知识系统。"**
 
 [![Live Demo](https://img.shields.io/badge/Live-lens.53.workers.dev-F38020?logo=cloudflare&logoColor=white)](https://lens.53.workers.dev)
-[![TypeScript](https://img.shields.io/badge/100%25-TypeScript-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Architecture](https://img.shields.io/badge/架构-事件驱动型服务器-blueviolet)](docs/01-architecture/01-ARCHITECTURE.md)
+[![Model](https://img.shields.io/badge/核心大脑-Llama%204%20Scout%2017B-blue)](https://developers.cloudflare.com/workers-ai/)
+[![License](https://img.shields.io/badge/许可证-MIT-green)](LICENSE)
+
+Lens 不仅仅是一个图片搜索工具，它是运行在 Cloudflare 边缘节点上的 **全自动视觉智能系统**。通过集成最新的 **Llama 4 Scout (17B)** MoE 架构模型与自研的 **“线性对撞 (Linear Boundary)”** 采集算法，Lens 在维持工业级语义检索精度的同时，将运行成本死死压在了 Serverless 的免费配额之内。
 
 ---
 
-## 这是什么
+## 🌟 为什么 Lens 截然不同？
 
-Lens 是一个**全自动、语义驱动**的 AI 图片搜索引擎。
+### 1. 策展人级的感知力 (Curator-Level Perception)
+传统 AI 搜索只看“物体”（如：一只猫，一辆车）。Lens 能够理解**叙事与审美**：
+*   **审美自动打分**：AI 对每一张图片的构图、光影、清晰度进行 0-10 分的深度评测。你可以搜“电影感的大片”，而不仅仅是相关结果。
+*   **硬核实体提取**：精准识别地标（如：新宿站）、品牌（如：Nike）及生物品种，实现基于“实体”的精准召回。
+*   **情绪语义对齐**：理解“孤独感”、“赛博朋克”、“极简主义”等抽象概念，并将其转化为高维空间的坐标。
 
-传统图片搜索靠标签、文件名、关键词。Lens 不一样 — 它让 AI 真正"看"每一张图，理解画面里的情绪、氛围、故事，甚至能**识别具体的品牌、地标，并对图片的审美质量进行打分**。
+### 2. 自我进化引擎 (The Self-Evolution Engine)
+Lens 是一个“活”的系统。它不仅在摄取数据，还在**打磨数据**：
+*   **UTC 23:00 爆发策略**：每天 UTC 23:00（配额重置前 1 小时），系统会自动清算今日剩余的免费 AI 神经元 (Neurons)。
+*   **零成本质量升级**：利用这些“余粮”，系统会自动重刷那些使用旧模型（如 Llama 3.2）处理的存量数据，将其升级为 Llama 4 旗舰版描述。
+*   **成果**：你的数据库每天都在变聪明，而你无需为此多付一分钱。
 
-你可以搜"那种让人心碎的落日"、"带耐克标志的运动街拍"、"极简主义风格的建筑"，它都能精准捕捉。
-
----
-
-## 为什么牛逼
-
-### 🧠 三级搜索管道
-
-不是简单的向量匹配就完事了：
-
-1. **查询扩展** — 你输入"猫"，AI 自动补充"毛茸茸、慵懒、宠物、温馨"
-2. **向量检索** — 1024 维语义向量，从万级图库中毫秒级召回
-3. **LLM 重排** — 大模型逐个审视候选结果，按相关性重新排序
-
-三层漏斗，层层过滤，结果就是比普通向量搜索准得多。
-
-### ⚡ 零运维架构
-
-没有服务器。没有容器。没有 K8s。没有 GPU 实例。
-
-整个系统跑在 Cloudflare Edge 上：
-
-- **Workers** 处理请求，全球边缘节点，延迟极低
-- **D1** 存元数据，SQLite 内核，就近访问
-- **R2** 存图片，S3 兼容，零出口流量费
-- **Vectorize** 存向量，原生向量数据库
-- **Workflows** 跑后台任务，持久化执行，自动重试
-
-部署一次，永远在线。不用半夜爬起来修服务器。
-
-### 🤖 全自动数据采集与进化
-
-系统自己会"长大"，且不断变聪明：
-
-- 每 10 分钟自动从 Unsplash 抓取最新图片
-- 支持历史数据回填（可通过 KV 配置开关）
-- **数据自进化**：利用每日剩余免费 AI 额度，自动将旧版描述升级为旗舰级理解。
-- 不需要人工干预，7x24 小时运转
-
-### 🔄 双管道解耦
-
-搜索和采集完全分离：
-
-- **搜索管道**：同步，毫秒级响应，用户体验优先
-- **采集管道**：异步，后台慢慢跑，不影响前台
-
-采集任务堆积？没关系，搜索照样快。这就是工程上的解耦。
-
-### 💰 成本控制
-
-精打细算每一分钱：
-
-- Unsplash API 免费版每小时 50 次，算法设计充分利用每一次配额
-- Workflow 第一步检查图片是否已存在，重复的直接跳过，不浪费 AI 调用
-- R2 零出口费，图片随便访问不心疼
-- 整套系统跑在 Cloudflare 免费额度内
-
-### 🛡️ 数据一致性
-
-三个存储，三份数据，必须一致：
-
-- D1 存元数据
-- R2 存图片文件
-- Vectorize 存向量
-
-每次写入都是原子操作，Workflow 保证要么全成功，要么全失败。不会出现"图片有了但搜不到"的尴尬。
+### 3. 极致成本工程 (Extreme Cost Engineering)
+在数万张图片上运行 17B 参数的大模型通常价格不菲。Lens 通过严苛的工程手段实现了“白嫖”：
+*   **线性对撞算法**：一种“撞墙即停”的抓取逻辑，确保 0% 的 Unsplash API 配额浪费。
+*   **动态相关性截断**：通过数学上的“断崖检测”算法，精准在相关度下降点截断结果，节省昂贵的重排成本。
+*   **边缘优先架构**：没有容器，没有持久化服务器。资源仅在事件（Cron 或 Request）触发时瞬间分配。
 
 ---
 
-## 技术亮点
+## 🏗️ 系统架构图 (Architecture)
 
-| 特性           | 实现                                     |
-| :------------- | :--------------------------------------- |
-| 语义搜索       | Llama 4 Scout + BGE-M3 1024 维向量       |
-| 查询理解       | LLM 自动扩展、翻译、视觉词汇补全         |
-| 结果重排       | BGE Reranker Base 专用精排模型           |
-| 图片理解       | Llama 4 Scout 17B 生成审美评分与实体识别 |
-| 持久化任务     | Cloudflare Workflows，自动重试最多 10 次 |
-| 数据进化       | 异步余粮算法，自动升级存量索引版本       |
-| 边缘部署       | 全球 300+ 节点，就近响应                 |
-| 基础设施即代码 | Terraform 管理，一键重建                 |
-
----
-
-## 系统架构 (Architecture)
+Lens 采用 **双管道解耦架构**，确保海量数据采集压力永远不会波及搜索端的毫秒级响应。
 
 ```text
-       用户 (User)
-          │
-          ▼
-┌─────────────────────────────────────────┐
-│           Search API (Hono)             │
-│                                         │
-│  查询扩展 → 向量检索 → LLM重排 → 返回   │
-└─────────────────────────────────────────┘
-          │           │           │
-          ▼           ▼           ▼
-      D1 Database  Vectorize   R2 Bucket
-      (元数据)      (向量索引)  (图片存储)
-          ▲           ▲           ▲
-          │           │           │
-┌─────────────────────────────────────────┐
-│        数据采集管道 (Ingestion)         │
-│                                         │
-│  检查存在 → 下载 → AI分析 → 写入同步    │
-└─────────────────────────────────────────┘
-          ▲           ▲
-          │           │
-      Cloudflare    Cron任务
-        Queue      (每小时)
+       用户查询 (User Query)                          数据源 (Unsplash)
+           │                                                │
+           ▼                                                ▼
+┌──────────────────────┐                      ┌──────────────────────────┐
+│    搜索管道 (Search)  │                      │    采集管道 (Ingestion)   │
+│     (同步 / 毫秒级)    │                      │      (异步 / 批量)       │
+├──────────────────────┤                      ├──────────────────────────┤
+│ 1. 查询扩展          │                      │ 1. 边界对撞探测          │
+│    (Llama 4 Scout)   │                      │    (线性对撞算法)        │
+│          │           │                      │            │             │
+│ 2. 向量检索          │                      │ 2. 深度视觉推理          │
+│    (BGE-M3 1024d)    │                      │    (Llama 4 Vision)      │
+│          │           │                      │            │             │
+│ 3. 语义精排          │                      │ 3. 原子化持久化          │
+│    (BGE Reranker)    │                      │    (D1 + Vectorize)      │
+└──────────────────────┘                      └──────────────────────────┘
+           │                                                │
+           └───────────────>  数据存储层  <─────────────────┘
+                       (D1 / R2 / Vectorize)
 ```
 
----
-
-## 📚 文档中心 (Documentation Index)
-
-- [**01. 系统架构与算法详解**](docs/01-architecture/01-ARCHITECTURE.md) — 深度剖析双管道解耦与高水位线采集算法。
-- [**02. 存储与数据模型**](docs/02-storage/02-DATABASE-STORAGE.md) — D1、R2 与 Vectorize 的表结构与一致性策略。
-- [**03. 完整接口指南**](docs/03-api/03-API-REFERENCE.md) — 详细的 API 字段定义与交互示例。
-- [**04. 全栈部署与 IaC**](docs/04-deployment/04-DEPLOYMENT-GUIDE.md) — 修正后的手动部署与 GitHub Actions 流程。
-- [**05. 开发与扩展指南**](docs/05-development/05-DEVELOPMENT-CONTRIBUTING.md) — AI 提示词工程、Monorepo 模式与模型切换。
-- [**06. 运维与监控**](docs/06-maintenance/06-MAINTENANCE-MONITORING.md) — AI 成本控制、故障排查与数据库管理。
+> **深度阅读**：参阅 [架构与算法详解](docs/01-architecture/01-ARCHITECTURE.md) 了解我们如何解决分布式死锁与配额泄漏。
 
 ---
 
-## License
+## ⚡ 技术栈与性能规格
 
-MIT
+| 组件 | 技术选型 | 职责 |
+| :--- | :--- | :--- |
+| **视觉大脑** | **Llama 4 Scout 17B** | 多模态推理、审美打分与实体识别。 |
+| **向量底座** | **BGE-M3** | 1024 维高密度向量，支持多语言跨模态对齐。 |
+| **重排序器** | **BGE Reranker Base** | 基于 Cross-attention 消除向量空间的幻觉误报。 |
+| **持久化大脑** | **Cloudflare D1** | 存储旗舰版元数据、审美分与实体 JSON。 |
+| **资产存储** | **Cloudflare R2** | 采用 Raw/Display 分层存储策略优化内存与流量。 |
+| **任务编排** | **Workflows** | 管理具备自动重试能力的复杂、多阶段采集流水线。 |
+
+---
+
+## 📚 文档中心 (Documentation)
+
+我们坚信“文档即代码”。我们的文档涵盖了从数学原理到运维实战的所有细节：
+
+*   [**01. 架构与算法**](docs/01-architecture/01-ARCHITECTURE.md) - 深入剖析线性对撞与自进化逻辑的数学模型。
+*   [**02. 存储与数据模型**](docs/02-storage/02-DATABASE-STORAGE.md) - 详解 D1 表结构设计与 R2 分层战略。
+*   [**03. 完整接口指南**](docs/03-api/03-API-REFERENCE.md) - 包含旗舰版响应示例的 REST API 规范。
+*   [**04. 全栈部署手册**](docs/04-deployment/04-DEPLOYMENT-GUIDE.md) - 15 分钟内从零拉起完整的生产环境。
+*   [**05. 开发与扩展指南**](docs/05-development/05-DEVELOPMENT-CONTRIBUTING.md) - 模块化架构解析与提示词工程秘籍。
+*   [**06. 运维与成本管理**](docs/06-maintenance/06-MAINTENANCE-MONITORING.md) - 如何监控进化波峰并精算每分钱。
+
+---
+
+## 许可证 (License)
+
+MIT © 2026 Lens 贡献者.
