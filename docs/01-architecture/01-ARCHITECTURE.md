@@ -46,7 +46,7 @@ for (let i = 1; i < scores.length; i++) {
 
 ### 1.2 采集管道 (Ingestion Pipeline) - 异步链路
 
-- **调度**: 每小时触发的 Cron 定时任务。
+- **调度**: 每 10 分钟触发的 Cron 定时任务。
 - **缓冲**: Cloudflare Queues 实现任务削峰。
 - **执行**: Cloudflare Workflows 提供持久化状态机保障。
 - **节点**:

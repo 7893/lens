@@ -8,7 +8,7 @@
 
 Lens 采用 pnpm workspaces 驱动的 Monorepo 结构，各组件高度解耦：
 
-- **`packages/shared`**: 整个系统的“骨架”。定义了 D1 表结构接口、API 响应契约及 DTO 类型。
+- **`packages/shared`**: 整个系统的“骨架”。定义了 D1 表结构接口、API 响应契约、环境绑定类型及共享配置常量。
 - **`apps/api`**: Hono 后端。负责流量分发、AI 搜索编排及 KV 缓存管理。
 - **`apps/processor`**: 采集心脏。承载了“线性对撞”算法及 Workflow 状态机。
 - **`apps/web`**: React 前端。实现高性能图片画廊。
