@@ -112,7 +112,16 @@ interface ImageDetail {
   description: string | null;
   altDescription: string | null;
   createdAt: string | null;
+  updatedAt: string | null;
   promotedAt: string | null;
+  alternativeTitles: Record<string, string> | null;
+  sponsorship: {
+    name: string;
+    tagline: string;
+    url: string;
+    logo: string | null;
+    profile: string | null;
+  } | null;
   photographer: {
     name: string;
     username: string;
@@ -123,7 +132,11 @@ interface ImageDetail {
     instagram: string | null;
     twitter: string | null;
     portfolio: string | null;
+    forHire: boolean;
     totalPhotos: number | null;
+    totalLikes: number | null;
+    totalCollections: number | null;
+    totalPromotedPhotos: number | null;
   };
   exif: {
     make: string | null;
@@ -143,7 +156,13 @@ interface ImageDetail {
   } | null;
   topics: string[];
   stats: { views: number | null; downloads: number | null; likes: number | null };
-  ai: { caption: string | null; tags: string[] };
+  ai: {
+    caption: string | null;
+    tags: string[];
+    model: string | null;
+    qualityScore: number | null;
+    entities: string[];
+  };
   source: string | null;
 }
 
@@ -200,28 +219,80 @@ function ImageModal({ image, score, onClose }: { image: ImageResult; score?: num
         </div>
 
         <div className="md:w-1/3 p-6 overflow-y-auto space-y-5 max-h-[90vh]">
+          {/* Sponsorship */}
+          {detail?.sponsorship && (
+            <div className="flex items-center gap-3 p-3 bg-amber-50 rounded-lg border border-amber-200">
+              {detail.sponsorship.logo && <img src={detail.sponsorship.logo} alt="" className="w-8 h-8 rounded-full" />}
+              <div className="flex-1 min-w-0">
+                <p className="text-[10px] text-amber-600 uppercase tracking-wide">Sponsored</p>
+                <a
+                  href={detail.sponsorship.url || detail.sponsorship.profile || '#'}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-sm font-medium text-amber-800 hover:underline truncate block"
+                >
+                  {detail.sponsorship.name}
+                </a>
+                {detail.sponsorship.tagline && <p className="text-xs text-amber-600">{detail.sponsorship.tagline}</p>}
+              </div>
+            </div>
+          )}
+
+          {/* Photographer */}
           {detail?.photographer?.name && (
             <div className="flex items-start gap-3">
               {detail.photographer.profileImage && (
                 <img src={detail.photographer.profileImage} alt="" className="w-10 h-10 rounded-full" />
               )}
-              <div>
-                <a
-                  href={detail.photographer.profile || '#'}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="font-medium text-gray-800 hover:text-blue-600 transition-colors"
-                >
-                  {detail.photographer.name}
-                </a>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <a
+                    href={detail.photographer.profile || '#'}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-medium text-gray-800 hover:text-blue-600 transition-colors"
+                  >
+                    {detail.photographer.name}
+                  </a>
+                  {detail.photographer.forHire && (
+                    <span className="text-[10px] px-1.5 py-0.5 bg-green-100 text-green-700 rounded-full">
+                      Available for hire
+                    </span>
+                  )}
+                </div>
                 {detail.photographer.location && (
                   <p className="text-xs text-gray-400">{detail.photographer.location}</p>
                 )}
-                {detail.photographer.bio && <p className="text-xs text-gray-500 mt-0.5">{detail.photographer.bio}</p>}
+                {detail.photographer.bio && (
+                  <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{detail.photographer.bio}</p>
+                )}
+                <div className="flex flex-wrap gap-x-2 gap-y-0.5 mt-1 text-[10px] text-gray-400">
+                  {detail.photographer.totalPhotos && (
+                    <span>{detail.photographer.totalPhotos.toLocaleString()} photos</span>
+                  )}
+                  {detail.photographer.totalLikes && (
+                    <span>{detail.photographer.totalLikes.toLocaleString()} likes</span>
+                  )}
+                  {detail.photographer.totalCollections && (
+                    <span>{detail.photographer.totalCollections} collections</span>
+                  )}
+                  {detail.photographer.totalPromotedPhotos && detail.photographer.totalPromotedPhotos > 0 && (
+                    <span>⭐ {detail.photographer.totalPromotedPhotos} featured</span>
+                  )}
+                </div>
                 <div className="flex gap-2 mt-1 text-[10px] text-gray-400">
-                  {detail.photographer.totalPhotos && <span>{detail.photographer.totalPhotos} photos</span>}
                   {detail.photographer.instagram && <span>IG: @{detail.photographer.instagram}</span>}
                   {detail.photographer.twitter && <span>X: @{detail.photographer.twitter}</span>}
+                  {detail.photographer.portfolio && (
+                    <a
+                      href={detail.photographer.portfolio}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-400 hover:underline"
+                    >
+                      Portfolio
+                    </a>
+                  )}
                 </div>
               </div>
             </div>
@@ -249,11 +320,27 @@ function ImageModal({ image, score, onClose }: { image: ImageResult; score?: num
 
           {detail?.ai?.caption && (
             <div>
-              <div className="flex items-center gap-1.5 text-xs text-gray-400 mb-1.5">
-                <Sparkles className="w-3.5 h-3.5" />
-                <span>AI Description</span>
+              <div className="flex items-center justify-between text-xs text-gray-400 mb-1.5">
+                <div className="flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>AI Analysis</span>
+                </div>
+                {detail.ai.qualityScore && (
+                  <span className="text-[10px] px-1.5 py-0.5 bg-purple-50 text-purple-600 rounded-full">
+                    Quality: {detail.ai.qualityScore}/10
+                  </span>
+                )}
               </div>
               <p className="text-sm text-gray-700 leading-relaxed">{detail.ai.caption}</p>
+              {detail.ai.entities && detail.ai.entities.length > 0 && (
+                <div className="flex flex-wrap gap-1 mt-2">
+                  {detail.ai.entities.map((e) => (
+                    <span key={e} className="text-[10px] px-1.5 py-0.5 bg-orange-50 text-orange-600 rounded-full">
+                      {e}
+                    </span>
+                  ))}
+                </div>
+              )}
               {detail.ai.tags.length > 0 && (
                 <div className="flex flex-wrap gap-1 mt-2">
                   {detail.ai.tags.map((t) => (
@@ -263,6 +350,7 @@ function ImageModal({ image, score, onClose }: { image: ImageResult; score?: num
                   ))}
                 </div>
               )}
+              {detail.ai.model && <p className="text-[10px] text-gray-400 mt-2">Model: {detail.ai.model}</p>}
             </div>
           )}
 
@@ -305,12 +393,32 @@ function ImageModal({ image, score, onClose }: { image: ImageResult; score?: num
             </div>
           )}
 
+          {/* Alternative Titles */}
+          {detail?.alternativeTitles && Object.keys(detail.alternativeTitles).length > 0 && (
+            <div className="border-t pt-4">
+              <p className="text-[10px] text-gray-400 mb-2">Titles in other languages</p>
+              <div className="space-y-1 max-h-24 overflow-y-auto">
+                {Object.entries(detail.alternativeTitles)
+                  .slice(0, 5)
+                  .map(([lang, title]) => (
+                    <p key={lang} className="text-[10px] text-gray-500">
+                      <span className="uppercase text-gray-400 w-6 inline-block">{lang}</span> {title}
+                    </p>
+                  ))}
+              </div>
+            </div>
+          )}
+
           <div className="space-y-1.5 text-xs text-gray-400 border-t pt-4">
             <div>
               {detail?.width || image.width} × {detail?.height || image.height}
             </div>
             {score !== undefined && <div>Relevance: {(score * 100).toFixed(1)}%</div>}
-            {detail?.createdAt && <div>Taken: {new Date(detail.createdAt).toLocaleDateString()}</div>}
+            {detail?.createdAt && <div>Uploaded: {new Date(detail.createdAt).toLocaleDateString()}</div>}
+            {detail?.promotedAt && (
+              <div className="text-green-600">⭐ Featured: {new Date(detail.promotedAt).toLocaleDateString()}</div>
+            )}
+            {detail?.updatedAt && <div>Updated: {new Date(detail.updatedAt).toLocaleDateString()}</div>}
             {detail?.color && (
               <div className="flex items-center gap-2">
                 Color:{' '}
