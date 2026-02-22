@@ -21,7 +21,11 @@ export function useSearch() {
 
   const searchUrl = debouncedQuery ? `/api/search?q=${encodeURIComponent(debouncedQuery)}` : null;
 
-  const { data, isLoading } = useSWR<SearchResponse>(searchUrl, fetcher, { keepPreviousData: true });
+  const { data, isLoading } = useSWR<SearchResponse>(searchUrl, fetcher, {
+    keepPreviousData: true,
+    revalidateOnFocus: false,
+    revalidateOnReconnect: false,
+  });
 
   const all = debouncedQuery ? data?.results || [] : [];
   const results = all.slice(0, visible);
