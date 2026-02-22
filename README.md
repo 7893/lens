@@ -3,7 +3,7 @@
 > **"这是一个懂得审美、能够识别实体、并在零成本边际下实现数据自我进化的视觉知识系统。"**
 
 [![Live Demo](https://img.shields.io/badge/Live-lens.53.workers.dev-F38020?logo=cloudflare&logoColor=white)](https://lens.53.workers.dev)
-[![Architecture](https://img.shields.io/badge/架构-事件驱动型服务器-blueviolet)](docs/01-architecture/01-ARCHITECTURE.md)
+[![Architecture](https://img.shields.io/badge/架构-事件驱动型服务器-blueviolet)](docs/ARCHITECTURE.md)
 [![Model](https://img.shields.io/badge/核心大脑-Llama%204%20Scout%2017B-blue)](https://developers.cloudflare.com/workers-ai/)
 [![License](https://img.shields.io/badge/许可证-MIT-green)](LICENSE)
 
@@ -88,7 +88,7 @@ Lens 是一个“活”的系统。它不仅在摄取数据，还在**打磨数�
               └────────────┘                        └──────────────┘
 ```
 
-> **深度阅读**：参阅 [架构与算法详解](docs/01-architecture/01-ARCHITECTURE.md) 了解我们如何解决分布式死锁与配额泄漏。
+> **深度阅读**：参阅 [架构与算法详解](docs/ARCHITECTURE.md) 了解我们如何解决分布式死锁与配额泄漏。
 
 ---
 
@@ -110,12 +110,12 @@ Lens 是一个“活”的系统。它不仅在摄取数据，还在**打磨数�
 
 我们坚信“文档即代码”。我们的文档涵盖了从数学原理到运维实战的所有细节：
 
-- [**01. 架构与算法**](docs/01-architecture/01-ARCHITECTURE.md) - 深入剖析线性对撞与自进化逻辑的数学模型。
-- [**02. 存储与数据模型**](docs/02-storage/02-DATABASE-STORAGE.md) - 详解 D1 表结构设计与 R2 分层战略。
-- [**03. 完整接口指南**](docs/03-api/03-API-REFERENCE.md) - 包含旗舰版响应示例的 REST API 规范。
-- [**04. 全栈部署手册**](docs/04-deployment/04-DEPLOYMENT-GUIDE.md) - 15 分钟内从零拉起完整的生产环境。
-- [**05. 开发与扩展指南**](docs/05-development/05-DEVELOPMENT-CONTRIBUTING.md) - 模块化架构解析与提示词工程秘籍。
-- [**06. 运维与成本管理**](docs/06-maintenance/06-MAINTENANCE-MONITORING.md) - 如何监控进化波峰并精算每分钱。
+- [**01. 架构与算法**](docs/ARCHITECTURE.md) - 深入剖析线性对撞与自进化逻辑的数学模型。
+- [**02. 存储与数据模型**](docs/DATABASE.md) - 详解 D1 表结构设计与 R2 分层战略。
+- [**03. 完整接口指南**](docs/API.md) - 包含旗舰版响应示例的 REST API 规范。
+- [**04. 全栈部署手册**](docs/DEPLOYMENT.md) - 15 分钟内从零拉起完整的生产环境。
+- [**05. 开发与扩展指南**](docs/DEVELOPMENT.md) - 模块化架构解析与提示词工程秘籍。
+- [**06. 运维与成本管理**](docs/MAINTENANCE.md) - 如何监控进化波峰并精算每分钱。
 
 ---
 
