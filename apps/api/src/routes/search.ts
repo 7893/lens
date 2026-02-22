@@ -26,12 +26,12 @@ search.get('/', async (c) => {
     const queryKey = q.toLowerCase().trim();
     const cacheKeyKV = `semantic:cache:${queryKey}`;
 
-    // Query Expansion
+    // Query Expansion (use fast 3B model)
     let expandedQuery = await c.env.SETTINGS.get(cacheKeyKV);
     if (!expandedQuery) {
       if (q.split(/\s+/).length <= 4) {
         const expansion = (await c.env.AI.run(
-          AI_MODELS.TEXT,
+          AI_MODELS.TEXT_FAST,
           {
             prompt: `Expand this image search query with related visual terms. Translate to English if needed. Reply with ONLY the expanded English query. Under 30 words.\nQuery: ${q}`,
             max_tokens: 50,
@@ -72,9 +72,9 @@ search.get('/', async (c) => {
       }
     }
     const filteredMatches = vecResults.matches.slice(0, Math.max(1, cutoffIndex));
-
-    // Fetch Metadata
     const ids = filteredMatches.map((m) => m.id);
+
+    // Fetch Metadata (parallel with re-rank prep)
     const placeholders = ids.map(() => '?').join(',');
     const { results } = await c.env.DB.prepare(`SELECT * FROM images WHERE id IN (${placeholders})`)
       .bind(...ids)
@@ -88,22 +88,24 @@ search.get('/', async (c) => {
       })
       .filter(Boolean) as { dbImage: DBImage; vecScore: number }[];
 
-    // Re-rank
+    // Re-rank only top 20 for speed
     let reranked = candidates;
     try {
-      const topCandidates = candidates.slice(0, 50);
-      const contexts = topCandidates.map((c) => ({ text: c.dbImage.ai_caption || '' }));
-      const rerankResp = (await c.env.AI.run(
-        AI_MODELS.RERANK,
-        { query: expandedQuery, contexts, top_k: 50 },
-        AI_GATEWAY,
-      )) as AiRerankResponse;
+      const topCandidates = candidates.slice(0, 20);
+      if (topCandidates.length > 1) {
+        const contexts = topCandidates.map((c) => ({ text: c.dbImage.ai_caption || '' }));
+        const rerankResp = (await c.env.AI.run(
+          AI_MODELS.RERANK,
+          { query: expandedQuery, contexts, top_k: 20 },
+          AI_GATEWAY,
+        )) as AiRerankResponse;
 
-      if (rerankResp.response?.length) {
-        const sorted = rerankResp.response.sort((a, b) => b.score - a.score);
-        const rerankedTop = sorted.map((r) => topCandidates[r.id]).filter(Boolean);
-        const rest = candidates.slice(50);
-        reranked = [...rerankedTop, ...rest];
+        if (rerankResp.response?.length) {
+          const sorted = rerankResp.response.sort((a, b) => b.score - a.score);
+          const rerankedTop = sorted.map((r) => topCandidates[r.id]).filter(Boolean);
+          const rest = candidates.slice(20);
+          reranked = [...rerankedTop, ...rest];
+        }
       }
     } catch (e) {
       console.error('Re-rank failed:', e);
