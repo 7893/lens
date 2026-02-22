@@ -1,89 +1,72 @@
-# 开发与扩展指南 (05-DEVELOPMENT-CONTRIBUTING)
+# 开发规范、工程架构与技术演进指南 (05-DEVELOPMENT-CONTRIBUTING)
 
-本指南面向希望深入参与 Lens 核心开发或进行功能扩展的开发者。
-
----
-
-## 1. Monorepo 体系结构
-
-Lens 采用 pnpm workspaces 驱动的 Monorepo 结构，各组件高度解耦：
-
-- **`packages/shared`**: 整个系统的“骨架”。定义了 D1 表结构接口、API 响应契约、环境绑定类型及共享配置常量。
-- **`apps/api`**: Hono 后端。负责流量分发、AI 搜索编排及 KV 缓存管理。
-- **`apps/processor`**: 采集心脏。承载了“线性对撞”算法及 Workflow 状态机。
-- **`apps/web`**: React 前端。实现高性能图片画廊。
+Lens 是一个追求极致性能与长期可维护性的 AI 项目。为了让这个分布式的边缘系统能够被多人协同维护，我们制定了严苛的工程规范。
 
 ---
 
-## 2. 工程化代码架构
+## 1. 工程化架构设计
 
-为了应对日益复杂的 AI 业务逻辑，系统采用了高度模块化的目录结构：
+系统弃用了单一文件的简单写法，全面转向模块化架构。
 
-### 2.1 Processor (采集端) 职责划分
+### 1.1 模块职责地图 (Responsibility Map)
 
-- **`src/handlers/`**: 包含定时任务 (`scheduled.ts`)、队列消费 (`queue.ts`) 和核心状态机 (`workflow.ts`)。
-- **`src/services/`**: 原子化服务层。包含 AI 接口封装、Neurons 计费器 (`quota.ts`) 及自进化逻辑 (`evolution.ts`)。
-- **`src/utils/`**: 工具类。负责 Unsplash 协议对接、R2 流处理等。
-
-### 2.2 API (服务端) 职责划分
-
-- **`src/routes/`**: 基于 Hono 的路由拆分（Search, Stats, Images）。
-- **`src/middleware/`**: 包含全局限流器、CORS 策略等。
-- **`src/utils/transform.ts`**: 负责将 D1 原始记录映射为旗舰版 API 响应格式。
+- **`apps/processor/src/handlers/`**：系统的“门卫”。负责解析触发信号（Queue 或 Cron）并转发给逻辑核心。
+- **`apps/processor/src/services/`**：系统的“逻辑核心”。这里是 AI 调用、余额计算、自进化算法的所在地。
+- **`apps/api/src/routes/`**：系统的“对外窗口”。基于 Hono 的路由拆分，确保每个端点的代码逻辑不超过 200 行。
+- **`packages/shared/`**：系统的“契约中心”。定义了全库通用的模型 ID、计费权重、以及数据库表结构映射。
 
 ---
 
-## 3. 核心 AI 提示词 (Prompts)
+## 2. 深度提示词工程 (Prompt Engineering)
 
-AI 表现的优劣取决于提示词的质量。修改提示词前请进行充分回归测试。
+在 Lens 中，提示词不仅是文字，更是**控制数据流向的指令**。
 
-### 2.1 采集端：视觉理解 (Llama 4 Scout 17B)
+### 2.1 针对 Llama 4 Scout 的调优逻辑
 
-位于: `apps/processor/src/services/ai.ts`
+在 `apps/processor/src/services/ai.ts` 中，我们并没有使用通用的问答 Prompt，而是采用了 **“结构化约束 Prompt”**：
 
-> `Act as a world-class gallery curator and senior photographer. Analyze this image for deep-index retrieval...`
-
-### 2.2 搜索端：语义扩展 (Llama 4 Scout 17B)
-
-位于: `apps/api/src/index.ts`
-
-> `Expand this image search query with related visual terms. If the query is not in English, translate it to English first, then expand. Reply with ONLY the expanded English query, no explanation. Keep it under 30 words.`
+1.  **角色暗示**：通过 `Act as a world-class curator` 强制模型切换到更专业的语义词库。
+2.  **负向约束**：严禁使用 `beautiful` 等主观修饰词，保证搜索索引的客观性。
+3.  **正则锚点**：强制输出 `CAPTION:` 和 `TAGS:`，为后端的正则表达式提供 100% 可预测的切片标记。
 
 ---
 
-## 3. 维护规范：代码准则
+## 3. 防御性边缘编程准则
 
-### 3.1 线性边界原则
+边缘环境（Cloudflare Workers）资源极度稀缺，开发者必须遵循以下“戒律”：
 
-在修改 `processor` 的抓取逻辑时，必须确保 **`filterAndEnqueue`** 的返回值被正确处理。
+### 3.1 内存红线 (Memory Limit)
 
-- 严禁在 `Forward` 阶段移除 `hitExisting` 熔断判断，否则会导致 API 配额瞬间枯竭。
+- **禁止操作大数组**：严禁将 `Uint8Array` 使用 `Array.from()` 展开。这会将内存占用瞬间翻倍。
+- **流式处理**：处理来自 R2 或 Unsplash 的图片数据时，必须始终优先使用 `ReadableStream` 进行管道式传输。
 
-### 3.2 内存敏感度
+### 3.2 异步与重试 (Idempotency)
 
-由于边缘 Worker 内存仅 128MB：
-
-- 处理图片时，严禁使用 `Array.from(uint8Array)` 或大范围 `spread [...]` 转换。
-- 应尽量维持 `Uint8Array` 的原始引用。
+- **Workflow 原子性**：在编写新的 Workflow Step 时，必须假设该 Step 可能会在中途崩溃。
+- **幂等写入**：所有的数据库写入必须使用 `ON CONFLICT DO UPDATE`。这保证了即使系统重试一百次，最终数据也只有一份最新的。
 
 ---
 
-## 4. 本地测试技巧
+## 4. 全栈一致性与类型安全
 
-### 4.1 模拟 D1 行为
+我们利用 TypeScript 的 **Workspaces** 特性实现了全链路类型对齐。
+
+- **单一事实来源**：当你在 D1 中增加一个字段时，必须首先在 `packages/shared/src/index.ts` 的 `DBImage` 接口中声明。
+- **自动传导**：修改 `shared` 后，运行 `pnpm build`，前端 React 应用和后端 Worker 将立即感知到字段的变化，并在编译阶段拦截所有潜在的空指针错误。
+
+---
+
+## 5. 本地开发流 (Local Workflow)
 
 ```bash
-# 在 apps/api 目录下运行以启动本地 SQLite 模拟环境
-npx wrangler dev --remote --persist
+# 1. 启动本地 API 仿真
+cd apps/api && npx wrangler dev --remote --persist
+
+# 2. 启动前端实时热更新
+cd apps/web && pnpm dev
+
+# 3. 执行强制质量门禁
+pnpm lint && pnpm typecheck
 ```
 
-### 4.2 强校验
-
-在提交 PR 之前，请务必在根目录运行：
-
-```bash
-pnpm run lint
-pnpm run typecheck
-```
-
-这两个 Quality Gate 是 CI 通过的硬性条件。
+> 💡 **专家提示**：利用 `wrangler dev --remote` 可以让你在本地调试时，直接连接云端的真实 D1 数据库，这对排查复杂的 SQL 性能问题非常有帮助。

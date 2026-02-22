@@ -1,133 +1,85 @@
-# 全栈部署与 IaC 运维指南 (04-DEPLOYMENT-GUIDE)
+# 全栈部署、IaC 配置与自动化运维 (04-DEPLOYMENT-GUIDE)
 
-Lens 的部署完全基于基础设施即代码 (IaC) 的理念，确保环境的可复现性与配置的标准化。
-
----
-
-## 1. 基础设施初始化
-
-### 1.1 准备工作
-
-- 安装 [Wrangler CLI](https://developers.cloudflare.com/workers/wrangler/install-cli/)。
-- 申请 [Unsplash API Access Key](https://unsplash.com/developers)。
-
-### 1.2 手动资源创建 (Wrangler)
-
-请按序执行以下命令以创建云端资源：
-
-1.  **D1 数据库**:
-
-    ```bash
-    npx wrangler d1 create lens-d1
-    # 运行初始化脚本 (务必注意路径)
-    npx wrangler d1 execute lens-d1 --remote --file=lens/apps/processor/schema.sql
-    ```
-
-2.  **R2 存储桶**:
-
-    ```bash
-    npx wrangler r2 bucket create lens-r2
-    ```
-
-3.  **Vectorize 向量索引**:
-
-    ```bash
-    # 维度必须设为 1024 以匹配 BGE Large 模型
-    npx wrangler vectorize create lens-vectors --dimensions=1024 --metric=cosine
-    ```
-
-4.  **Queue 任务队列**:
-
-    ```bash
-    npx wrangler queues create lens-queue
-    ```
-
-5.  **KV 命名空间**:
-    ```bash
-    npx wrangler kv namespace create lens-kv
-    ```
+Lens 的部署哲学是“云端原生 (Cloudflare Native)”。系统所有的组件都通过代码定义，通过 CLI 或 CI/CD 进行生命周期管理。本指南将带你从零开始，在 15 分钟内构建出一套完整的 Lens 生产环境。
 
 ---
 
-## 2. 密钥与配置 (Secrets)
+## 1. 核心资源创建：从命令行开始
 
-### 2.1 Worker 内部机密
+虽然可以使用 Terraform 进行声明式管理，但对于快速迭代，我们推荐使用 Wrangler CLI 手动初始化核心存储。
 
-为了确保 AI 监控透明化，系统强制通过 HTTPS 网关调用 AI 服务，因此必须在 Worker 侧注入 API 令牌：
+### 1.1 D1 数据库初始化
+
+D1 是 Lens 的持久化大脑。创建后，你需要将返回的 UUID 填入 `wrangler.toml`。
 
 ```bash
-# 进入 processor 目录
-cd lens/apps/processor
-npx wrangler secret put UNSPLASH_API_KEY
-npx wrangler secret put CLOUDFLARE_API_TOKEN
-
-# 进入 api 目录
-cd ../api
-npx wrangler secret put CLOUDFLARE_API_TOKEN
+npx wrangler d1 create lens-d1
+# 必须执行 Schema 初始化，否则采集引擎会因为找不到 images 表而崩溃
+npx wrangler d1 execute lens-d1 --remote --file=lens/apps/processor/schema.sql
 ```
 
-### 2.2 KV 初始设置
+### 1.2 R2 存储桶与 Vectorize 索引
 
-部署后，请立即初始化采集节流阀：
+Vectorize 的维度必须严格对齐 BGE-M3 模型的输出（1024 维），否则会触发写入失败。
 
 ```bash
-npx wrangler kv key put --namespace-id <LENS_KV_ID> "config:ingestion" '{"backfill_enabled": true, "backfill_max_pages": 2}' --remote
+npx wrangler r2 bucket create lens-r2
+npx wrangler vectorize create lens-vectors --dimensions=1024 --metric=cosine
 ```
 
 ---
 
-## 3. 持续集成与交付 (CI/CD)
+## 2. 密钥注入与环境隔离
 
-Lens 使用 GitHub Actions 执行自动化全栈发布。
+Lens 依赖外部 Unsplash API 和 Cloudflare 自身的 API Token 来实现 AI Gateway 的透明调用。
 
-### 3.1 GitHub Secrets 清单
+### 2.1 生产 Secrets 清单
 
-在 GitHub 仓库设置中配置以下变量：
+在发布 Worker 之前，必须在 `processor` 目录下注入以下密钥：
 
-- `CLOUDFLARE_API_TOKEN`: 具备 Workers, D1, R2, AI 编辑权限的令牌。
-- `CLOUDFLARE_ACCOUNT_ID`: 您的 Cloudflare 账户 ID。
+- `UNSPLASH_API_KEY`：你的 Unsplash 开发者 Key。
+- `CLOUDFLARE_API_TOKEN`：必须具备 `Workers AI: Read/Write` 权限。
 
-### 3.2 自动化流水线
+### 2.2 环境绑定原理
 
-每次推送至 `main` 分支时：
+在 `wrangler.toml` 中，我们使用了 `[[d1_databases]]`、`[[r2_buckets]]` 和 `[[vectorize]]` 的绑定。
 
-1.  **Shared 构建**: 编译共享类型包。
-2.  **Web 构建**: 编译 React 前端，产物自动拷贝至 `apps/api/public`。
-3.  **Wrangler 部署**: 自动同步 `wrangler.toml` 配置并热发布至边缘节点。
+- **为何必须绑定？** Cloudflare 并不是通过网络请求访问这些资源，而是将这些资源的句柄直接挂载到 Worker 的运行环境 `env` 中。这实现了极低延迟的资源访问。
 
 ---
 
-## 4. 故障验证
+## 3. GitHub Actions：工业级持续交付 (CI/CD)
 
-部署完成后，建议执行以下“冒烟测试”：
+Lens 采用 Monorepo 结构，其构建顺序至关重要。
 
-1.  **API 连通性**: `curl https://lens.53.workers.dev/health`
-2.  **AI 网关路径**: 搜索一次并检查 Cloudflare AI Gateway 页面是否产生紫色波峰。
-3.  **采集自检**: 手动触发 Cron 测试抓取效率：
-    `npx wrangler dev lens/apps/processor/src/index.ts --test-scheduled`
+### 3.1 自动化工作流流程
+
+每次推送至 `main` 分支时，`.github/workflows/deploy.yml` 会被触发：
+
+1.  **Shared Build**：首先编译 `@lens/shared`。因为 `api` 和 `processor` 都引用了它的类型和常量。
+2.  **Web Assets Sync**：编译 React 前端，并将其静态产物同步到 `apps/api/public`。
+3.  **Atomic Deployment**：并行发布 API Worker 和 Processor Worker。
+
+### 3.2 环境变量同步
+
+确保在 GitHub 仓库设置中配置了 `CLOUDFLARE_API_TOKEN` 和 `CLOUDFLARE_ACCOUNT_ID`。
 
 ---
 
-## 5. GitHub 安全配置
+## 4. 部署后验证：黄金 10 分钟
 
-### 5.1 分支保护
+系统上线后的前 10 分钟是观测健康的黄金期：
 
-`main` 分支已启用保护规则：
+1.  **健康检查 (Instant)**：
+    访问 `https://lens.53.workers.dev/health`。如果返回 `{"status": "healthy"}`，说明 Hono 路由已拉起。
+2.  **监控 AI 脉冲 (3 min)**：
+    触发一次搜索请求，观察 Cloudflare AI Gateway 仪表盘。你应该看到一条代表 Llama 4 或 BGE-M3 调用的紫色曲线。
+3.  **验证采集流动性 (10 min)**：
+    等待第一个 Cron 周期触发。通过 SQL `SELECT COUNT(*) FROM images;` 确认数字是否开始跳动。如果数字没变，请立即运行 `wrangler tail lens-processor` 检查 Unsplash API 的返回码。
 
-- 禁止 force push
-- 禁止删除分支
+---
 
-### 5.2 自动化安全扫描
+## 5. 系统回滚与扩容
 
-| 工具                | 触发条件         | 作用                  |
-| ------------------- | ---------------- | --------------------- |
-| **CodeQL**          | push/PR + 每周一 | 静态代码安全分析      |
-| **Dependabot**      | 自动             | 依赖漏洞检测与自动 PR |
-| **Secret Scanning** | 实时             | 检测意外提交的密钥    |
-
-### 5.3 CI/CD 流水线
-
-每次 push 到 `main` 触发 **Deploy Lens** workflow：
-
-1. **Quality Gate** - lint + typecheck + test
-2. **Deploy to Cloudflare** - 构建并部署 API 和 Processor
+- **快速回滚**：利用 GitHub Actions 的历史任务，可以一键重新发布上一个 Stable 版本。
+- **Vectorize 扩容**：目前的 `lens-vectors` 索引采用标准版。如果图片量突破 100 万，需要在配置文件中调整索引的扩容策略。
