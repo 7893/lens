@@ -21,6 +21,7 @@ images.get('/:id', async (c) => {
 
   const meta = JSON.parse(image.meta_json || '{}');
   const user = meta.user || {};
+  const sponsor = meta.sponsorship?.sponsor;
 
   return c.json({
     id: image.id,
@@ -32,7 +33,25 @@ images.get('/:id', async (c) => {
     description: meta.description || null,
     altDescription: meta.alt_description || null,
     createdAt: meta.created_at || null,
+    updatedAt: meta.updated_at || null,
     promotedAt: meta.promoted_at || null,
+    alternativeTitles: meta.alternative_slugs
+      ? Object.fromEntries(
+          Object.entries(meta.alternative_slugs as Record<string, string>).map(([lang, slug]) => [
+            lang,
+            slug.split('-').slice(0, -1).join(' '),
+          ]),
+        )
+      : null,
+    sponsorship: sponsor
+      ? {
+          name: sponsor.name,
+          tagline: meta.sponsorship.tagline,
+          url: meta.sponsorship.tagline_url,
+          logo: sponsor.profile_image?.medium,
+          profile: sponsor.links?.html,
+        }
+      : null,
     photographer: {
       name: user.name || null,
       username: user.username || null,
@@ -43,7 +62,11 @@ images.get('/:id', async (c) => {
       instagram: user.instagram_username || null,
       twitter: user.twitter_username || null,
       portfolio: user.portfolio_url || null,
+      forHire: user.for_hire || false,
       totalPhotos: user.total_photos || null,
+      totalLikes: user.total_likes || null,
+      totalCollections: user.total_collections || null,
+      totalPromotedPhotos: user.total_promoted_photos || null,
     },
     exif: meta.exif
       ? {
