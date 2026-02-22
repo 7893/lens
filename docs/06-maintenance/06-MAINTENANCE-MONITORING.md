@@ -93,3 +93,45 @@ npx wrangler kv key put --namespace-id <KV_ID> "config:ingestion" '{"backfill_en
 ```bash
 npx wrangler d1 export lens-d1 --remote --output ./backups/lens_db_$(date +%F).sql
 ```
+
+---
+
+## 5. 故障案例库
+
+### 5.1 Workflow 实例 ID 冲突
+
+**现象**: Cron 正常触发，Queue 消息被消费，但没有新 Workflow 实例创建，图片不入库。
+
+**根因**: Cloudflare Workflows 的实例 ID 必须全局唯一。如果使用 `photoId` 作为实例 ID，当同一张图片的 Workflow 曾经创建过（即使失败或完成），再次创建会静默失败。
+
+**解决方案**: 使用 `${photoId}-${Date.now()}` 作为实例 ID，确保唯一性。
+
+```typescript
+await env.PHOTO_WORKFLOW.create({
+  id: `${msg.body.photoId}-${Date.now()}`,
+  params: msg.body,
+});
+```
+
+**诊断方法**:
+```bash
+# 检查特定 photoId 是否有历史 Workflow 实例
+curl "https://api.cloudflare.com/client/v4/accounts/{account_id}/workflows/lens-workflow/instances/{photoId}" \
+  -H "Authorization: Bearer {token}"
+```
+
+### 5.2 last_seen_id 与数据库不一致
+
+**现象**: `last_seen_id` 指向的图片不在数据库中。
+
+**根因**: `last_seen_id` 在 cron 开始时更新，但后续 Workflow 处理失败。
+
+**解决方案**: 代码已修复为在处理完成后才更新 `last_seen_id`。如需手动修复，可重置为数据库中最新图片的 ID：
+
+```sql
+-- 查找最新入库图片
+SELECT id FROM images ORDER BY created_at DESC LIMIT 1;
+
+-- 重置 last_seen_id
+UPDATE system_config SET value = '{id}' WHERE key = 'last_seen_id';
+```
