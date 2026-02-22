@@ -20,7 +20,7 @@ Lens 的 API 设计遵循“极简输入，极丰输出”的原则。系统通�
 3.  **Semantic Enrichment**：检查 KV 缓存。如果没有该词的扩展，则启动 Llama 4 Scout 将其“视觉化”。
 4.  **Vector Retrieval**：BGE-M3 生成 1024 维向量，在 Vectorize 中进行高速空间检索。
 5.  **Dynamic Cutoff**：执行断崖截断算法，过滤掉语义漂移的干扰项。
-6.  **Contextual Re-ranking**：将剩余的前 50 张图连同其 Caption 丢给 BGE Reranker 进行交叉注意力打分。
+6.  **Contextual Re-ranking**：将剩余的前 20 张图连同其 Caption 丢给 BGE Reranker 进行交叉注意力打分。
 7.  **Data Hydration**：从 D1 捞取最新的审美分和实体信息，完成最终 JSON 组装。
 
 ### 1.3 响应结构示例与业务含义
