@@ -17,42 +17,50 @@ Lens 是一个追求极致性能与长期可维护性的 AI 项目。为了让�
 
 ---
 
-## 2. 深度提示词工程 (Prompt Engineering)
+## 2. 工程化代码架构
+
+为了应对日益复杂的 AI 业务逻辑，系统采用了高度模块化的目录结构：
+
+### 2.1 Processor (采集端) 职责划分
+
+- **`src/handlers/`**: 包含定时任务 (`scheduled.ts`)、队列消费 (`queue.ts`) 和核心状态机 (`workflow.ts`)。
+- **`src/services/`**: 原子化服务层。包含 AI 接口封装、Neurons 计费器 (`quota.ts`) 及自进化逻辑 (`evolution.ts`)。
+- **`src/utils/`**: 工具类。负责 Unsplash 协议对接、R2 流处理等。
+
+### 2.2 API (服务端) 职责划分
+
+- **`src/routes/`**: 基于 Hono 的路由拆分（Search, Stats, Images）。
+- **`src/middleware/`**: 包含全局限流器、CORS 策略等。
+- **`src/utils/transform.ts`**: 负责将 D1 原始记录映射为旗舰版 API 响应格式。
+
+---
+
+## 3. 深度提示词工程 (Prompt Engineering)
 
 在 Lens 中，提示词不仅是文字，更是**控制数据流向的指令**。
 
-### 2.1 针对 Llama 4 Scout 的调优逻辑
+### 3.1 针对 Llama 4 Scout 的调优逻辑
 
-在 `apps/processor/src/services/ai.ts` 中，我们并没有使用通用的问答 Prompt，而是采用了 **“结构化约束 Prompt”**：
+在 `apps/processor/src/services/ai.ts` 中，我们采用了 **“JSON 强约束 Prompt”**：
 
 1.  **角色暗示**：通过 `Act as a world-class curator` 强制模型切换到更专业的语义词库。
-2.  **负向约束**：严禁使用 `beautiful` 等主观修饰词，保证搜索索引的客观性。
-3.  **正则锚点**：强制输出 `CAPTION:` 和 `TAGS:`，为后端的正则表达式提供 100% 可预测的切片标记。
+2.  **JSON 声明**：明确要求输出 `{ "caption": "...", ... }` 格式，并利用 Llama 4 极强的 Schema 遵循能力。
 
 ---
 
-## 3. 防御性边缘编程准则
+## 4. 防御性边缘编程准则
 
 边缘环境（Cloudflare Workers）资源极度稀缺，开发者必须遵循以下“戒律”：
 
-### 3.1 内存红线 (Memory Limit)
+### 4.1 内存红线 (Memory Limit)
 
-- **禁止操作大数组**：严禁将 `Uint8Array` 使用 `Array.from()` 展开。这会将内存占用瞬间翻倍。
-- **流式处理**：处理来自 R2 或 Unsplash 的图片数据时，必须始终优先使用 `ReadableStream` 进行管道式传输。
+- **禁止操作大数组**：严禁将 `Uint8Array` 使用 `Array.from()` 展开。
+- **流式处理**：始终优先使用 `ReadableStream` 进行管道式传输。
 
-### 3.2 异步与重试 (Idempotency)
+### 4.2 异步与重试 (Idempotency)
 
-- **Workflow 原子性**：在编写新的 Workflow Step 时，必须假设该 Step 可能会在中途崩溃。
-- **幂等写入**：所有的数据库写入必须使用 `ON CONFLICT DO UPDATE`。这保证了即使系统重试一百次，最终数据也只有一份最新的。
-
----
-
-## 4. 全栈一致性与类型安全
-
-我们利用 TypeScript 的 **Workspaces** 特性实现了全链路类型对齐。
-
-- **单一事实来源**：当你在 D1 中增加一个字段时，必须首先在 `packages/shared/src/index.ts` 的 `DBImage` 接口中声明。
-- **自动传导**：修改 `shared` 后，运行 `pnpm build`，前端 React 应用和后端 Worker 将立即感知到字段的变化，并在编译阶段拦截所有潜在的空指针错误。
+- **Workflow 原子性**：每一个 Step 必须是幂等的。
+- **幂等写入**：所有的数据库写入必须使用 `ON CONFLICT DO UPDATE`。
 
 ---
 
@@ -69,4 +77,16 @@ cd apps/web && pnpm dev
 pnpm lint && pnpm typecheck
 ```
 
-> 💡 **专家提示**：利用 `wrangler dev --remote` 可以让你在本地调试时，直接连接云端的真实 D1 数据库，这对排查复杂的 SQL 性能问题非常有帮助。
+---
+
+## 6. 基于 Zod 的确定性工程实践 (Deterministic AI)
+
+在处理 LLM 输出时，最大的挑战在于其“概率性”产生的非结构化文本。Lens 通过 Zod 强契约层解决了这一问题。
+
+### 6.1 强制模式校验 (Contract Enforcement)
+
+我们定义了 `VisionResponseSchema`，它规定了 AI 必须返回包含 `caption`, `quality`, `entities`, `tags` 的 JSON。如果 Llama 4 返回了 Markdown 或乱码，Zod 会在解析阶段立即抛出异常。
+
+### 6.2 异常自愈与降级
+
+配合 Workflow 的重试机制，当 Zod 校验失败时，系统会触发自动重试或执行优雅降级（逻辑位于 `ai.ts`）。这种“守门员”式的设计，确保了进入数据库的每一条数据都是符合业务逻辑的“确定性”资产。

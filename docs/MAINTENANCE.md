@@ -13,7 +13,7 @@ Lens 并不是一辆“刹车失灵”的赛车，我们通过 KV (SETTINGS) 实
 通过修改 KV 中的 JSON 配置，你可以即时改变采集引擎的行为：
 
 - **`backfill_enabled`**：一旦发现 Unsplash 配额异常或云端费用激增，将其设为 `false` 可立即熔断所有历史抓取任务。
-- **`backfill_max_pages`**：这是你的“生产速率”。设为 2 代表每 10 分钟处理约 60 张历史图。通过增加此值，你可以让全库入库速度提升，但需警惕 Neurons 消耗。
+- **`daily_evolution_limit_usd`**：这是你的“财务刹车”。设为 0.15 代表每天愿意花费约 1 元人民币用于系统进化。系统会自动审计官方账单，确保不超支。
 
 ### 1.2 官方账单审计 (The Oracle)
 
@@ -32,6 +32,15 @@ Lens 并不是一辆“刹车失灵”的赛车，我们通过 KV (SETTINGS) 实
   - **正常表现**: `llama-4-scout` 的数量应在每个整点（或 10 分钟周期）准时跳变。
 - **进化窗口**: 自进化爆发仅在 **UTC 23:00** 的第一个 10 分钟窗口触发，以确保利用全天最后的 Neurons 余额。
 
+### 2.2 AI 网关 (AI Gateway)
+
+- **监控点**: 访问 Cloudflare Dashboard -> AI -> AI Gateway -> `lens-gateway`。
+- **关键图表**:
+  - **Success Rate**: 应保持在 99% 以上。
+  - **Token/Neuron Usage**: 结合图片入库数，预估每日账单。
+
+---
+
 ## 3. 故障追踪实战 (Trace-ID)
 
 利用 Lens 的链路追踪系统，你可以实现分钟级的精准故障定位。
@@ -41,34 +50,39 @@ Lens 并不是一辆“刹车失灵”的赛车，我们通过 KV (SETTINGS) 实
 如果你收到用户反馈某个搜索请求异常：
 
 1.  **获取 Trace-ID**: 在 `wrangler tail` 或 Cloudflare Logs 中找到对应的 `[SEARCH-xxxx]` 标记。
-2.  **全量检索**: 使用该 ID 作为关键词过滤日志。
+2.  **全量检索**: 使用 该 ID 作为关键词过滤日志。
 3.  **分析原因**: 观察该 ID 下的所有步骤，确定是 `Query Expansion` 阶段的 AI 故障，还是最后的 `Reranker` 逻辑错误。
 
 ---
 
 ## 4. 常见故障模型与“手术级”恢复
 
-### 3.1 采集系统“血栓” (Anchor Deadlock)
+### 4.1 采集系统“血栓” (Anchor Deadlock)
 
 - **现象**：定时任务在跑，但图片数不涨。
-- **诊断**：`last_seen_id` 指向了一张并不存在的图，或者由于排序抖动导致系统认为“已经处理过了”。
 - **修复**：手动将 `last_seen_id` 回拨到 D1 中最后一张已知图的 ID：
   ```sql
   UPDATE system_config SET value = (SELECT id FROM images ORDER BY created_at DESC LIMIT 1) WHERE key = 'last_seen_id';
   ```
 
-### 3.2 Workflow 实例积压
+### 4.2 Workflow 实例积压
 
-- **诊断**：大量实例处于 `Failed` 或 `Running`。
-- **对策**：检查 `wrangler secret` 是否过期（特别是 `CLOUDFLARE_API_TOKEN`）。更新密钥后，存量 Workflow 会自动利用指数退避机制完成自愈。
+- **对策**：检查 `wrangler secret` 是否过期。更新密钥后，存量 Workflow 会自动利用指数退避机制完成自愈。
 
 ---
 
-## 4. 数据重塑与索引迁移
+## 5. 极致成本精算模型 (AI Cost Modeling)
 
-当你决定修改 AI 分析逻辑（例如从 8 个 Tags 增加到 20 个）时：
+Lens 实现了一套基于“实付金额”的闭环反馈系统，确保 AI 运营成本永远不会失控。
 
-1.  **重置同步标记**：将 D1 中 `system_config` 表的 `vectorize_last_sync` 设为 `0`。
-2.  **清空旧索引**：`npx wrangler vectorize delete lens-vectors`。
-3.  **触发同步**：系统会在下一个小时自动扫描 D1 全表并重建 Vectorize 索引。
-4.  **模型漂移补救**：利用 `Self-Evolution` 模块，系统会在未来几周内利用免费额度，悄悄完成全量数据的逻辑升级。
+### 5.1 精算公式
+
+系统在执行自进化任务前，会通过以下公式计算今日“捡漏”容量：
+$$ Capacity = \frac{(DailyLimit - CurrentSpend) \times 0.95}{UnitCost} $$
+
+- **0.95 (安全边际)**: 预留 5% 的冗余，用于抵消 GraphQL API 的分钟级数据聚合延迟。
+- **UnitCost ($0.001)**: 基于 Llama 4 Scout 17B 在边缘侧的平均输入/输出 Token 消耗折算的单图成本。
+
+### 5.2 零成本进化原理
+
+由于老图的资产已存储在 R2 中，重刷过程不产生额外的网络传输费或 Unsplash API 费。系统本质上是在利用 Cloudflare 已付月费（Paid Plan）中的闲置 Neurons 资源进行**“资产重塑”**。
