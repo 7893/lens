@@ -3,21 +3,31 @@ import { IngestionTask, ProcessorBindings } from '@lens/shared';
 import { streamToR2 } from '../services/downloader';
 import { analyzeImage, generateEmbedding } from '../services/ai';
 import { buildEmbeddingText } from '../utils/embedding';
+import { Logger, createTrace } from '@lens/shared';
 
 export class LensIngestWorkflow extends WorkflowEntrypoint<ProcessorBindings, IngestionTask> {
   async run(event: WorkflowEvent<IngestionTask>, step: WorkflowStep) {
     const task = event.payload;
     const { photoId, displayUrl, meta } = task;
 
+    // Inject Trace for Workflow Lifecycle
+    const trace = createTrace(`WF-${photoId}`);
+    const logger = new Logger(trace);
+
     const exists = await step.do('check-exists', async () => {
       const row = await this.env.DB.prepare('SELECT id FROM images WHERE id = ?').bind(photoId).first();
       return !!row;
     });
-    if (exists) return;
+
+    if (exists) {
+      logger.info('Image already indexed. Skipping.');
+      return;
+    }
 
     const retryConfig = { retries: { limit: 10, delay: '30 seconds' as const, backoff: 'constant' as const } };
 
     await step.do('download-and-store', retryConfig, async () => {
+      logger.info('Starting asset persistence to R2');
       await streamToR2(task.downloadUrl, `raw/${photoId}.jpg`, this.env.R2);
       if (displayUrl) {
         const displayResp = await fetch(displayUrl);
@@ -31,16 +41,18 @@ export class LensIngestWorkflow extends WorkflowEntrypoint<ProcessorBindings, In
       return { success: true };
     });
 
-    const analysis = await step.do('analyze-vision', retryConfig, async () => {
+    const analysis = await step.do('analyze-vision-contract', retryConfig, async () => {
+      logger.info('Invoking Llama 4 Scout with Zod Contract');
       const img = await this.env.R2.get(`display/${photoId}.jpg`);
-      return await analyzeImage(this.env.AI, img!.body);
+      return await analyzeImage(this.env.AI, img!.body, logger);
     });
 
     const vector = await step.do('generate-embedding', retryConfig, async () => {
       return await generateEmbedding(this.env.AI, buildEmbeddingText(analysis.caption, analysis.tags, meta));
     });
 
-    await step.do('persist-d1', retryConfig, async () => {
+    await step.do('persist-d1-flagship', retryConfig, async () => {
+      logger.info('Committing flagship metadata to D1');
       await this.env.DB.prepare(
         `INSERT INTO images (id, width, height, color, raw_key, display_key, meta_json, ai_tags, ai_caption, ai_embedding, ai_model, ai_quality_score, entities_json, created_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -73,6 +85,7 @@ export class LensIngestWorkflow extends WorkflowEntrypoint<ProcessorBindings, In
           metadata: { url: `display/${photoId}.jpg`, caption: analysis.caption || '' },
         },
       ]);
+      logger.info('Indexing complete.');
     });
   }
 }

@@ -2,10 +2,11 @@ import { Hono } from 'hono';
 import { ApiBindings, DBImage, SearchResponse, AI_MODELS, AI_GATEWAY } from '@lens/shared';
 import { toImageResult } from '../utils/transform';
 import { rateLimit } from '../middleware/rateLimit';
+import { createTrace, Logger } from '@lens/shared';
 
 type AiTextResponse = { response?: string };
 type AiEmbeddingResponse = { data: number[][] };
-type AiRerankResponse = { response: { id: number; index?: number; score: number }[] };
+type AiRerankResponse = { response: { id: number; score: number }[] };
 
 const search = new Hono<{ Bindings: ApiBindings }>();
 
@@ -15,10 +16,18 @@ search.get('/', async (c) => {
   const q = c.req.query('q');
   if (!q) return c.json({ error: 'Missing query param "q"' }, 400);
 
+  const trace = createTrace('SEARCH');
+  const logger = new Logger(trace);
+
+  logger.info(`Incoming search request: "${q}"`);
+
   const cacheKey = new Request(`https://lens-cache/search?q=${encodeURIComponent(q.toLowerCase().trim())}`);
   const cache = caches.default;
   const cached = await cache.match(cacheKey);
-  if (cached) return cached;
+  if (cached) {
+    logger.info('Edge Cache Hit');
+    return cached;
+  }
 
   const start = Date.now();
 
@@ -26,9 +35,10 @@ search.get('/', async (c) => {
     const queryKey = q.toLowerCase().trim();
     const cacheKeyKV = `semantic:cache:${queryKey}`;
 
-    // Query Expansion (use fast 3B model)
+    // 1. Query Expansion (use fast 3B model)
     let expandedQuery = await c.env.SETTINGS.get(cacheKeyKV);
     if (!expandedQuery) {
+      logger.info('Query Expansion Start');
       if (q.split(/\s+/).length <= 4) {
         const expansion = (await c.env.AI.run(
           AI_MODELS.TEXT_FAST,
@@ -47,7 +57,7 @@ search.get('/', async (c) => {
       }
     }
 
-    // Embedding
+    // 2. Embedding with BGE-M3
     const embeddingResp = (await c.env.AI.run(
       AI_MODELS.EMBED,
       { text: [expandedQuery] },
@@ -55,13 +65,13 @@ search.get('/', async (c) => {
     )) as AiEmbeddingResponse;
     const vector = embeddingResp.data[0];
 
-    // Vector Search
+    // 3. Vector Search
     const vecResults = await c.env.VECTORIZE.query(vector, { topK: 100 });
     if (vecResults.matches.length === 0) {
       return c.json<SearchResponse>({ results: [], total: 0, took: Date.now() - start });
     }
 
-    // Dynamic cutoff
+    // 4. Dynamic Cutoff (Mathematical Cliff Detection)
     const scores = vecResults.matches.map((m) => m.score);
     const minThreshold = 0.5;
     let cutoffIndex = scores.length;
@@ -72,9 +82,10 @@ search.get('/', async (c) => {
       }
     }
     const filteredMatches = vecResults.matches.slice(0, Math.max(1, cutoffIndex));
-    const ids = filteredMatches.map((m) => m.id);
+    logger.info(`Vectorized召回: ${vecResults.matches.length} -> 截断后: ${filteredMatches.length}`);
 
-    // Fetch Metadata (parallel with re-rank prep)
+    // 5. Fetch Metadata from D1
+    const ids = filteredMatches.map((m) => m.id);
     const placeholders = ids.map(() => '?').join(',');
     const { results } = await c.env.DB.prepare(`SELECT * FROM images WHERE id IN (${placeholders})`)
       .bind(...ids)
@@ -88,7 +99,7 @@ search.get('/', async (c) => {
       })
       .filter(Boolean) as { dbImage: DBImage; vecScore: number }[];
 
-    // Re-rank only top 20 for speed
+    // 6. Rerank only top 20 for speed with Defensive Checks
     let reranked = candidates;
     try {
       const topCandidates = candidates.slice(0, 20);
@@ -103,8 +114,8 @@ search.get('/', async (c) => {
         if (rerankResp.response?.length) {
           const sorted = rerankResp.response.sort((a, b) => b.score - a.score);
           const rerankedTop = sorted
-            .map((r) => {
-              const idx = typeof r.id === 'number' ? r.id : (r.index ?? -1);
+            .map((r: { id: number; score: number }) => {
+              const idx = r.id;
               return idx >= 0 && idx < topCandidates.length ? topCandidates[idx] : null;
             })
             .filter(Boolean) as typeof candidates;
@@ -115,7 +126,7 @@ search.get('/', async (c) => {
         }
       }
     } catch (e) {
-      console.error('Re-rank failed:', e);
+      logger.error('Rerank logic failure', e);
     }
 
     const images = reranked.map((c, i) => {
@@ -127,9 +138,11 @@ search.get('/', async (c) => {
       headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=600' },
     });
     c.executionCtx.waitUntil(cache.put(cacheKey, resp.clone()));
+
+    logger.info('Search request fulfilled', { took: Date.now() - start });
     return resp;
   } catch (err) {
-    console.error('Search error:', err);
+    logger.error('Fatal Search Error', err);
     return c.json({ error: 'Internal Server Error' }, 500);
   }
 });

@@ -131,3 +131,8 @@ export interface IngestionSettings {
   backfill_max_pages: number;
   daily_evolution_limit_usd: number;
 }
+
+export interface D1EvolutionRecord {
+  id: string;
+  meta_json: string;
+}
