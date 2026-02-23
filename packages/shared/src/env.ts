@@ -17,4 +17,6 @@ export interface ProcessorBindings extends BaseBindings {
   PHOTO_QUEUE: Queue<IngestionTask>;
   PHOTO_WORKFLOW: Workflow;
   UNSPLASH_API_KEY: string;
+  CLOUDFLARE_API_TOKEN: string;
+  CLOUDFLARE_ACCOUNT_ID: string;
 }

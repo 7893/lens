@@ -15,12 +15,12 @@ Lens 并不是一辆“刹车失灵”的赛车，我们通过 KV (SETTINGS) 实
 - **`backfill_enabled`**：一旦发现 Unsplash 配额异常或云端费用激增，将其设为 `false` 可立即熔断所有历史抓取任务。
 - **`backfill_max_pages`**：这是你的“生产速率”。设为 2 代表每 10 分钟处理约 60 张历史图。通过增加此值，你可以让全库入库速度提升，但需警惕 Neurons 消耗。
 
-### 1.2 离线 Neurons 水表监控
+### 1.2 官方账单审计 (The Oracle)
 
-由于 Cloudflare 并没有实时账单 API，我们通过 KV `stats:neurons:YYYY-MM-DD` 记录当日预估消耗。
+由于 Cloudflare 并没有实时账单 API，我们通过 **AI Gateway GraphQL API** 实时探测 `lens-gateway` 产生的真实 USD 开销。
 
-- **查看指令**：`npx wrangler kv key get --namespace-id <KV_ID> "stats:neurons:2026-02-22" --remote`
-- **预警线**：若该值接近 10,000，系统会自动减少自进化（Evolution）任务，确保全天处于免费区。
+- **计费隔离**: 系统会自动排除用户搜索产生的费用，仅统计由 Llama 4 Scout (旗舰模型) 产生的系统性开销（抓新图与进化）。
+- **安全缓冲**: 预算计算逻辑内置了 5% 的安全余量，防止由于计费延迟导致的超支。
 
 ---
 
@@ -28,17 +28,9 @@ Lens 并不是一辆“刹车失灵”的赛车，我们通过 KV (SETTINGS) 实
 
 ### 2.1 采集流动性 (Ingestion Flow)
 
-- **SQL 观察**：`SELECT ai_model, COUNT(*) FROM images GROUP BY ai_model;`
-  - **正常表现**：`llama-4-scout` 的数量应在每个小时的 0 分、10 分、20 分... 准时跳变。
-- **日志观察**：使用 `wrangler tail lens-processor`。
-  - **关键信号**：寻找 `🌟 Global anchor advanced to`。这代表高水位线已成功前移。
-
-### 2.2 自进化爆发观察 (The 23:00 Peak)
-
-在 **UTC 23:00** 这一小时，是 Lens 的“高光时刻”。
-
-- 系统会清算全天剩余配额，并启动大规模的老图刷新。
-- **监控要点**：此时 D1 的 CPU 时间片消耗会达到峰值，应通过 Cloudflare Dashboard 关注数据库的查询延迟。
+- **SQL 观察**: `SELECT ai_model, COUNT(*) FROM images GROUP BY ai_model;`
+  - **正常表现**: `llama-4-scout` 的数量应在每个整点（或 10 分钟周期）准时跳变。
+- **进化窗口**: 自进化爆发仅在 **UTC 23:00** 的第一个 10 分钟窗口触发，以确保利用全天最后的 Neurons 余额。
 
 ---
 

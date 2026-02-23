@@ -121,3 +121,13 @@ export interface UnsplashPhoto {
     country: string;
   };
 }
+
+// ==========================================
+// 5. System Settings (KV)
+// ==========================================
+
+export interface IngestionSettings {
+  backfill_enabled: boolean;
+  backfill_max_pages: number;
+  daily_evolution_limit_usd: number;
+}

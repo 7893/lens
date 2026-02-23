@@ -1,13 +1,7 @@
-import { ProcessorBindings, IngestionTask, UnsplashPhoto } from '@lens/shared';
+import { ProcessorBindings, IngestionTask, UnsplashPhoto, IngestionSettings } from '@lens/shared';
 import { fetchLatestPhotos } from '../utils/unsplash';
 import { setConfig } from '../utils/config';
-import { getTodayRemainingNeurons } from '../services/quota';
 import { runSelfEvolution } from '../services/evolution';
-
-interface IngestionSettings {
-  backfill_enabled: boolean;
-  backfill_max_pages: number;
-}
 
 async function filterAndEnqueue(env: ProcessorBindings, photos: UnsplashPhoto[]) {
   if (!photos.length) return { added: 0, hitExisting: false };
@@ -95,84 +89,82 @@ async function runIngestion(
 
 async function runVectorSync(env: ProcessorBindings) {
   console.log('🔄 Sync: Synchronizing vectors to index...');
-  let batchesProcessed = 0;
+  const lastSyncConfig = await env.DB.prepare(
+    "SELECT value FROM system_config WHERE key = 'vectorize_last_sync'",
+  ).first<{ value: string }>();
+  const lastSync = parseInt(lastSyncConfig?.value || '0', 10);
 
-  while (batchesProcessed < 10) {
-    const lastSyncConfig = await env.DB.prepare(
-      "SELECT value FROM system_config WHERE key = 'vectorize_last_sync'",
-    ).first<{ value: string }>();
-    const lastSync = parseInt(lastSyncConfig?.value || '0', 10);
+  const { results } = await env.DB.prepare(
+    'SELECT id, ai_caption, ai_embedding, created_at FROM images WHERE ai_embedding IS NOT NULL AND created_at > ? ORDER BY created_at ASC LIMIT 100',
+  )
+    .bind(lastSync)
+    .all<{ id: string; ai_caption: string; ai_embedding: string; created_at: number }>();
 
-    const syncRows = await env.DB.prepare(
-      'SELECT id, ai_caption, ai_embedding, created_at FROM images WHERE ai_embedding IS NOT NULL AND created_at > ? ORDER BY created_at ASC LIMIT 100',
-    )
-      .bind(lastSync)
-      .all<{ id: string; ai_caption: string; ai_embedding: string; created_at: number }>();
+  if (results.length === 0) return;
 
-    if (syncRows.results.length === 0) break;
+  const vectors = results
+    .map((r) => {
+      try {
+        return {
+          id: r.id,
+          values: JSON.parse(r.ai_embedding),
+          metadata: { url: `display/${r.id}.jpg`, caption: r.ai_caption || '' },
+        };
+      } catch {
+        return null;
+      }
+    })
+    .filter(Boolean) as VectorizeVector[];
 
-    const vectors = syncRows.results
-      .map((r) => {
-        try {
-          return {
-            id: r.id,
-            values: JSON.parse(r.ai_embedding),
-            metadata: { url: `display/${r.id}.jpg`, caption: r.ai_caption || '' },
-          };
-        } catch {
-          return null;
-        }
-      })
-      .filter(Boolean) as VectorizeVector[];
-
-    await env.VECTORIZE.upsert(vectors);
-
-    const newLastSync = syncRows.results[syncRows.results.length - 1].created_at;
-    await setConfig(env.DB, 'vectorize_last_sync', String(newLastSync));
-    batchesProcessed++;
-  }
+  await env.VECTORIZE.upsert(vectors);
+  const newLastSync = results[results.length - 1].created_at;
+  await setConfig(env.DB, 'vectorize_last_sync', String(newLastSync));
 }
 
-export async function handleScheduled(env: ProcessorBindings): Promise<void> {
+export async function handleScheduled(env: ProcessorBindings) {
   console.log('⏰ Greedy Ingestion Triggered');
   if (!env.UNSPLASH_API_KEY) return;
 
-  // Load settings
+  // 1. Load system settings from KV
   const settingsRaw = await env.SETTINGS.get('config:ingestion');
-  const settings: IngestionSettings = settingsRaw
-    ? JSON.parse(settingsRaw)
-    : { backfill_enabled: true, backfill_max_pages: 2 };
+  const settings = settingsRaw
+    ? (JSON.parse(settingsRaw) as IngestionSettings)
+    : { backfill_enabled: true, backfill_max_pages: 2, daily_evolution_limit_usd: 0.11 };
 
-  // Load state
+  // 2. Load current state from D1
   const configRows = await env.DB.prepare(
     "SELECT key, value FROM system_config WHERE key IN ('last_seen_id', 'backfill_next_page')",
   ).all<{ key: string; value: string }>();
   const state = Object.fromEntries(configRows.results.map((r) => [r.key, r.value]));
+
   const lastSeenId = state.last_seen_id || '';
   const backfillPage = parseInt(state.backfill_next_page || '1', 10);
 
-  // Task A: Ingestion
+  // --- TASK A: Ingestion (Forward & Backward) ---
   try {
     await runIngestion(env, lastSeenId, backfillPage, settings);
   } catch (error) {
     console.error('💥 Ingestion Task failed:', error);
   }
 
-  // Task B: Vector Sync
+  // --- TASK B: Vectorize Sync (Clearing the Backlog) ---
   try {
     await runVectorSync(env);
   } catch (error) {
     console.error('💥 Vector Sync Task failed:', error);
   }
 
-  // Task C: Self-Evolution (UTC 23:00)
-  if (new Date().getUTCHours() === 23) {
+  // --- TASK C: Self-Evolution (Daily Budget Pulse) ---
+  const now = new Date();
+  const currentHour = now.getUTCHours();
+  const currentMinute = now.getUTCMinutes();
+
+  // Specifically triggered at UTC 23:00, only in the first window (0-9 min)
+  // This prevents multiple triggers in a 10-min CRON cycle due to billing lag.
+  if (currentHour === 23 && currentMinute < 10) {
     try {
-      const remaining = await getTodayRemainingNeurons(env);
-      if (remaining > 0) {
-        console.log(`🧬 UTC 23:00 - Running self-evolution with ${remaining} neurons remaining`);
-        await runSelfEvolution(env, remaining);
-      }
+      const dailyLimit = settings.daily_evolution_limit_usd ?? 0.11;
+      await runSelfEvolution(env, dailyLimit);
     } catch (error) {
       console.error('🧬 Evolution Task failed:', error);
     }

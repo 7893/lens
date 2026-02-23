@@ -5,7 +5,7 @@ import { rateLimit } from '../middleware/rateLimit';
 
 type AiTextResponse = { response?: string };
 type AiEmbeddingResponse = { data: number[][] };
-type AiRerankResponse = { response: { id: number; score: number }[] };
+type AiRerankResponse = { response: { id: number; index?: number; score: number }[] };
 
 const search = new Hono<{ Bindings: ApiBindings }>();
 
@@ -102,8 +102,15 @@ search.get('/', async (c) => {
 
         if (rerankResp.response?.length) {
           const sorted = rerankResp.response.sort((a, b) => b.score - a.score);
-          const rerankedTop = sorted.map((r) => topCandidates[r.id]).filter(Boolean);
-          const rest = candidates.slice(20);
+          const rerankedTop = sorted
+            .map((r) => {
+              const idx = typeof r.id === 'number' ? r.id : (r.index ?? -1);
+              return idx >= 0 && idx < topCandidates.length ? topCandidates[idx] : null;
+            })
+            .filter(Boolean) as typeof candidates;
+
+          const seenIds = new Set(rerankedTop.map((c) => c.dbImage.id));
+          const rest = candidates.filter((c) => !seenIds.has(c.dbImage.id));
           reranked = [...rerankedTop, ...rest];
         }
       }
