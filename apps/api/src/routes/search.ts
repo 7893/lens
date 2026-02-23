@@ -17,7 +17,7 @@ search.get('/', async (c) => {
   if (!q) return c.json({ error: 'Missing query param "q"' }, 400);
 
   const trace = createTrace('SEARCH');
-  const logger = new Logger(trace);
+  const logger = new Logger(trace, c.env.TELEMETRY);
 
   logger.info(`Incoming search request: "${q}"`);
 
@@ -134,15 +134,18 @@ search.get('/', async (c) => {
       return toImageResult(c.dbImage, score);
     });
 
-    const resp = new Response(JSON.stringify({ results: images, total: images.length, took: Date.now() - start }), {
+    const took = Date.now() - start;
+    const resp = new Response(JSON.stringify({ results: images, total: images.length, took }), {
       headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=600' },
     });
     c.executionCtx.waitUntil(cache.put(cacheKey, resp.clone()));
 
-    logger.info('Search request fulfilled', { took: Date.now() - start });
+    logger.info('Search request fulfilled', { took });
+    logger.metric('search_complete', [took, images.length]);
     return resp;
   } catch (err) {
     logger.error('Fatal Search Error', err);
+    logger.metric('search_error');
     return c.json({ error: 'Internal Server Error' }, 500);
   }
 });

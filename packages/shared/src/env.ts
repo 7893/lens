@@ -7,6 +7,7 @@ export interface BaseBindings {
   VECTORIZE: VectorizeIndex;
   AI: Ai;
   SETTINGS: KVNamespace;
+  TELEMETRY: AnalyticsEngineDataset;
 }
 
 // API worker bindings (same as base for now)

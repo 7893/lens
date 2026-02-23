@@ -33,3 +33,8 @@ bucket_name = "lens-r2"
 [[kv_namespaces]]
 binding = "SETTINGS"
 id = "22886c458d704579b15981987dca7dc5"
+
+# Analytics Engine (Telemetry)
+[[analytics_engine_datasets]]
+binding = "TELEMETRY"
+dataset = "lens_telemetry"

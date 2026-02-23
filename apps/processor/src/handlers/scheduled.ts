@@ -93,7 +93,7 @@ async function runIngestion(
 
 export async function handleScheduled(env: ProcessorBindings) {
   const trace = createTrace('CRON');
-  const logger = new Logger(trace);
+  const logger = new Logger(trace, env.TELEMETRY);
 
   logger.info('Scheduled Ingestion Pulse Started');
 

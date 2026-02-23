@@ -1,7 +1,10 @@
 import { TraceContext } from '../schemas';
 
 export class Logger {
-  constructor(private context: TraceContext) {}
+  constructor(
+    private context: TraceContext,
+    private telemetry?: AnalyticsEngineDataset,
+  ) {}
 
   info(message: string, data?: unknown) {
     console.log(`[INFO][${this.context.traceId}] ${message}`, data ? JSON.stringify(data) : '');
@@ -13,6 +16,15 @@ export class Logger {
 
   warn(message: string, data?: unknown) {
     console.warn(`[WARN][${this.context.traceId}] ${message}`, data ? JSON.stringify(data) : '');
+  }
+
+  /** Write metrics to Analytics Engine */
+  metric(event: string, doubles: number[] = [], blobs: string[] = []) {
+    this.telemetry?.writeDataPoint({
+      indexes: [this.context.traceId],
+      blobs: [event, ...blobs],
+      doubles: [Date.now() - this.context.startTime, ...doubles],
+    });
   }
 }
 

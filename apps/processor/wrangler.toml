@@ -49,3 +49,8 @@ index_name = "lens-vectors"
 # Cron Trigger (Scheduler)
 [triggers]
 crons = ["*/10 * * * *"]
+
+# Analytics Engine (Telemetry)
+[[analytics_engine_datasets]]
+binding = "TELEMETRY"
+dataset = "lens_telemetry"
