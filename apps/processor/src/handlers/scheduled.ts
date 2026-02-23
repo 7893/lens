@@ -52,6 +52,8 @@ async function runIngestion(
     apiRemaining = res.remaining;
     if (!res.photos.length) break;
 
+    // Capture the absolute latest ID on the first page
+    // But we will only commit it if the process doesn't crash
     if (p === 1 && res.photos[0].id !== lastSeenId) {
       newTopId = res.photos[0].id;
     }
@@ -59,18 +61,27 @@ async function runIngestion(
     const seenIndex = res.photos.findIndex((photo) => photo.id === lastSeenId);
     if (seenIndex !== -1) {
       const freshOnPage = res.photos.slice(0, seenIndex);
-      if (freshOnPage.length > 0) await filterAndEnqueue(env, freshOnPage, logger);
+      if (freshOnPage.length > 0) {
+        await filterAndEnqueue(env, freshOnPage, logger);
+      }
+
+      // CRITICAL: Only move the high-water mark if we successfully enqueued everything up to the boundary
+      if (newTopId) {
+        await setConfig(env.DB, 'last_seen_id', newTopId);
+        logger.info(`High-water mark advanced to: ${newTopId}`);
+      }
+
       logger.info(`Boundary hit on page ${p}. Stop.`);
       break;
     }
 
+    // No boundary found on this page, enqueue everything and continue
     await filterAndEnqueue(env, res.photos, logger);
-    if (apiRemaining < 1) break;
-  }
-
-  if (newTopId) {
-    await setConfig(env.DB, 'last_seen_id', newTopId);
-    logger.info(`High-water mark advanced to: ${newTopId}`);
+    if (apiRemaining < 1) {
+      // If we ran out of quota before hitting the boundary,
+      // do NOT advance the global anchor yet to avoid holes.
+      break;
+    }
   }
 
   // Backward backfill
