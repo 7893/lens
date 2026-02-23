@@ -10,12 +10,12 @@ Lens 的部署哲学是“云端原生 (Cloudflare Native)”。系统所有的�
 
 ### 1.1 D1 数据库初始化
 
-D1 是 Lens 的持久化大脑。创建后，你需要将返回的 UUID 填入 `wrangler.toml`。
+D1 是 Lens 的持久化大脑。Lens 采用 **Wrangler Migrations** 进行版本化的表结构管理。
 
 ```bash
 npx wrangler d1 create lens-d1
-# 必须执行 Schema 初始化，否则采集引擎会因为找不到 images 表而崩溃
-npx wrangler d1 execute lens-d1 --remote --file=lens/apps/processor/schema.sql
+# 应用所有待处理的迁移脚本 (GitOps 体系)
+npx wrangler d1 migrations apply lens-d1 --remote
 ```
 
 ### 1.2 R2 存储桶与 Vectorize 索引

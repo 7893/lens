@@ -8,7 +8,7 @@ export async function runSelfEvolution(env: ProcessorBindings, dailyLimit: numbe
   const logger = new Logger(trace);
 
   logger.info('🔍 Auditing daily system spend via GraphQL...');
-  const batchSize = await calculateEvolutionCapacity(env, dailyLimit);
+  const batchSize = await calculateEvolutionCapacity(env, dailyLimit, logger);
 
   if (batchSize <= 0) {
     logger.info('🛑 Daily budget reached or API error. Skipping evolution.');
