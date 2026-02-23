@@ -84,6 +84,13 @@ async function runIngestion(
     }
   }
 
+  // If we processed all pages without finding the boundary, advance the anchor
+  // This handles the case where the anchor is too old (beyond 10 pages)
+  if (newTopId) {
+    await setConfig(env.DB, 'last_seen_id', newTopId);
+    logger.info(`High-water mark advanced to: ${newTopId} (boundary not found)`);
+  }
+
   // Backward backfill
   if (!settings.backfill_enabled || settings.backfill_max_pages <= 0) return;
 
