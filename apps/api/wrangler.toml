@@ -18,7 +18,7 @@ database_id = "af9a1e43-7c7b-47da-add7-ed16d6de5ee5"
 # Vectorize Index (Semantic Search)
 [[vectorize]]
 binding = "VECTORIZE"
-index_name = "lens-vectors"
+index_name = "lens-vectorize"
 
 # Workers AI (Embedding)
 [ai]
@@ -37,4 +37,4 @@ id = "22886c458d704579b15981987dca7dc5"
 # Analytics Engine (Telemetry)
 [[analytics_engine_datasets]]
 binding = "TELEMETRY"
-dataset = "lens-telemetry"
+dataset = "lens-ae"

@@ -44,7 +44,7 @@ bucket_name = "lens-r2"
 # Vectorize Index (Semantic Search)
 [[vectorize]]
 binding = "VECTORIZE"
-index_name = "lens-vectors"
+index_name = "lens-vectorize"
 
 # Cron Trigger (Scheduler)
 [triggers]
@@ -53,4 +53,4 @@ crons = ["*/10 * * * *"]
 # Analytics Engine (Telemetry)
 [[analytics_engine_datasets]]
 binding = "TELEMETRY"
-dataset = "lens-telemetry"
+dataset = "lens-ae"
