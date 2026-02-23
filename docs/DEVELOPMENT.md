@@ -24,7 +24,7 @@ Lens 是一个追求极致性能与长期可维护性的 AI 项目。为了让�
 ### 2.1 Processor (采集端) 职责划分
 
 - **`src/handlers/`**: 包含定时任务 (`scheduled.ts`)、队列消费 (`queue.ts`) 和核心状态机 (`workflow.ts`)。
-- **`src/services/`**: 原子化服务层。包含 AI 接口封装、Neurons 计费器 (`quota.ts`) 及自进化逻辑 (`evolution.ts`)。
+- **`src/services/`**: 原子化服务层。包含 AI 接口封装、USD 计费审计 (`billing.ts`) 及自进化逻辑 (`evolution.ts`)。
 - **`src/utils/`**: 工具类。负责 Unsplash 协议对接、R2 流处理等。
 
 ### 2.2 API (服务端) 职责划分

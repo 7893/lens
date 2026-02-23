@@ -24,7 +24,7 @@ Vectorize 的维度必须严格对齐 BGE-M3 模型的输出（1024 维），否
 
 ```bash
 npx wrangler r2 bucket create lens-r2
-npx wrangler vectorize create lens-vectors --dimensions=1024 --metric=cosine
+npx wrangler vectorize create lens-vectorize --dimensions=1024 --metric=cosine
 ```
 
 ---
@@ -82,4 +82,4 @@ Lens 采用 Monorepo 结构，其构建顺序至关重要。
 ## 5. 系统回滚与扩容
 
 - **快速回滚**：利用 GitHub Actions 的历史任务，可以一键重新发布上一个 Stable 版本。
-- **Vectorize 扩容**：目前的 `lens-vectors` 索引采用标准版。如果图片量突破 100 万，需要在配置文件中调整索引的扩容策略。
+- **Vectorize 扩容**：目前的 `lens-vectorize` 索引采用标准版。如果图片量突破 100 万，需要在配置文件中调整索引的扩容策略。
