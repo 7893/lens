@@ -102,11 +102,13 @@ export async function handleScheduled(env: ProcessorBindings) {
     return;
   }
 
-  // 1. Load system settings
+  // 1. Load system settings from KV (no defaults in code)
   const settingsRaw = await env.SETTINGS.get('config:ingestion');
-  const settings = settingsRaw
-    ? (JSON.parse(settingsRaw) as IngestionSettings)
-    : { backfill_enabled: true, backfill_max_pages: 2, daily_evolution_limit_usd: 0.11 };
+  if (!settingsRaw) {
+    logger.error('Missing config:ingestion in KV. Aborting.');
+    return;
+  }
+  const settings = JSON.parse(settingsRaw) as IngestionSettings;
 
   // 2. Load current state
   const configRows = await env.DB.prepare(
@@ -128,8 +130,7 @@ export async function handleScheduled(env: ProcessorBindings) {
   const now = new Date();
   if (now.getUTCHours() === 23 && now.getUTCMinutes() < 10) {
     try {
-      const dailyLimit = settings.daily_evolution_limit_usd ?? 0.11;
-      await runSelfEvolution(env, dailyLimit);
+      await runSelfEvolution(env, settings.daily_evolution_limit_usd);
     } catch (error) {
       logger.error('Evolution Pipeline Failure', error);
     }
