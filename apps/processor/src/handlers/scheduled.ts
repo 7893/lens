@@ -1,7 +1,7 @@
 import { ProcessorBindings, IngestionTask, UnsplashPhoto, IngestionSettings } from '@lens/shared';
 import { fetchLatestPhotos } from '../utils/unsplash';
 import { setConfig } from '../utils/config';
-import { runSelfEvolution } from '../services/evolution';
+import { calculateEvolutionCapacity } from '../services/billing';
 import { createTrace, Logger } from '@lens/shared';
 
 async function filterAndEnqueue(env: ProcessorBindings, photos: UnsplashPhoto[], logger: Logger) {
@@ -59,7 +59,6 @@ async function runIngestion(
     if (!realPhotos.length) continue;
 
     // Capture the absolute latest ID on the first page
-    // But we will only commit it if the process doesn't crash
     if (p === 1 && realPhotos[0].id !== lastSeenId) {
       newTopId = realPhotos[0].id;
     }
@@ -73,7 +72,6 @@ async function runIngestion(
       }
 
       // CRITICAL: Only move the high-water mark if we successfully enqueued new photos
-      // or if there were simply no new photos to enqueue but the boundary was reached safely.
       if (newTopId && hasAddedAny) {
         await setConfig(env.DB, 'last_seen_id', newTopId);
         logger.info(`High-water mark advanced to: ${newTopId}`);
@@ -87,18 +85,12 @@ async function runIngestion(
     const result = await filterAndEnqueue(env, realPhotos, logger);
     if (result.added > 0) hasAddedAny = true;
 
-    if (apiRemaining < 1) {
-      // If we ran out of quota before hitting the boundary,
-      // do NOT advance the global anchor yet to avoid holes.
-      break;
-    }
+    if (apiRemaining < 1) break;
   }
 
-  // If we processed all pages without finding the boundary, advance the anchor
-  // This handles the case where the anchor is too old (beyond 10 pages)
+  // Handle case where boundary wasn't found in 10 pages
   if (newTopId && hasAddedAny) {
     await setConfig(env.DB, 'last_seen_id', newTopId);
-    logger.info(`High-water mark advanced to: ${newTopId} (boundary not found)`);
   }
 
   // Backward backfill
@@ -130,7 +122,7 @@ export async function handleScheduled(env: ProcessorBindings) {
     return;
   }
 
-  // 1. Load system settings from KV (no defaults in code)
+  // 1. Load system settings
   const settingsRaw = await env.SETTINGS.get('config:ingestion');
   if (!settingsRaw) {
     logger.error('Missing config:ingestion in KV. Aborting.');
@@ -154,13 +146,40 @@ export async function handleScheduled(env: ProcessorBindings) {
     logger.error('Ingestion Pipeline Failure', error);
   }
 
-  // --- TASK C: Self-Evolution (UTC 23:00) ---
+  // --- TASK C: Self-Evolution (Queue-Based Burst at 23:00 UTC) ---
   const now = new Date();
   if (now.getUTCHours() === 23 && now.getUTCMinutes() < 10) {
     try {
-      await runSelfEvolution(env, settings.daily_evolution_limit_usd);
+      const dailyLimit = settings.daily_evolution_limit_usd ?? 0.11;
+      logger.info('🔍 Auditing daily system spend for evolution...');
+      const capacity = await calculateEvolutionCapacity(env, dailyLimit, logger);
+
+      if (capacity > 0) {
+        logger.info(`🧬 Queueing ${capacity} images for self-evolution...`);
+        const { results } = await env.DB.prepare(
+          "SELECT id FROM images WHERE ai_model = 'llama-3.2' ORDER BY created_at DESC LIMIT ?",
+        )
+          .bind(capacity)
+          .all<{ id: string }>();
+
+        if (results.length > 0) {
+          const tasks: IngestionTask[] = results.map((r) => ({
+            type: 'refresh-photo',
+            photoId: r.id,
+          }));
+
+          // Send in batches of 100 to the queue
+          for (let i = 0; i < tasks.length; i += 100) {
+            const batch = tasks.slice(i, i + 100);
+            await env.PHOTO_QUEUE.sendBatch(batch.map((t) => ({ body: t, contentType: 'json' })));
+          }
+          logger.info(`✅ Successfully enqueued ${results.length} evolution tasks.`);
+        } else {
+          logger.info('✨ No images need evolution.');
+        }
+      }
     } catch (error) {
-      logger.error('Evolution Pipeline Failure', error);
+      logger.error('Evolution Task Failure', error);
     }
   }
 
