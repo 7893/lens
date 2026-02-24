@@ -120,6 +120,7 @@ export interface UnsplashPhoto {
     city: string;
     country: string;
   };
+  sponsorship?: unknown;
 }
 
 // ==========================================

@@ -43,6 +43,7 @@ async function runIngestion(
   let currentBackfillPage = backfillPage;
   let apiRemaining = 50;
   let newTopId: string | null = null;
+  let hasAddedAny = false;
 
   logger.info(`Catching up since boundary: ${lastSeenId}`);
 
@@ -52,21 +53,28 @@ async function runIngestion(
     apiRemaining = res.remaining;
     if (!res.photos.length) break;
 
+    // Filter out sponsored photos which are pinned to the top and break the time-based boundary logic
+    const realPhotos = res.photos.filter((p) => p.sponsorship === null || p.sponsorship === undefined);
+
+    if (!realPhotos.length) continue;
+
     // Capture the absolute latest ID on the first page
     // But we will only commit it if the process doesn't crash
-    if (p === 1 && res.photos[0].id !== lastSeenId) {
-      newTopId = res.photos[0].id;
+    if (p === 1 && realPhotos[0].id !== lastSeenId) {
+      newTopId = realPhotos[0].id;
     }
 
-    const seenIndex = res.photos.findIndex((photo) => photo.id === lastSeenId);
+    const seenIndex = realPhotos.findIndex((photo) => photo.id === lastSeenId);
     if (seenIndex !== -1) {
-      const freshOnPage = res.photos.slice(0, seenIndex);
+      const freshOnPage = realPhotos.slice(0, seenIndex);
       if (freshOnPage.length > 0) {
-        await filterAndEnqueue(env, freshOnPage, logger);
+        const result = await filterAndEnqueue(env, freshOnPage, logger);
+        if (result.added > 0) hasAddedAny = true;
       }
 
-      // CRITICAL: Only move the high-water mark if we successfully enqueued everything up to the boundary
-      if (newTopId) {
+      // CRITICAL: Only move the high-water mark if we successfully enqueued new photos
+      // or if there were simply no new photos to enqueue but the boundary was reached safely.
+      if (newTopId && hasAddedAny) {
         await setConfig(env.DB, 'last_seen_id', newTopId);
         logger.info(`High-water mark advanced to: ${newTopId}`);
       }
@@ -76,7 +84,9 @@ async function runIngestion(
     }
 
     // No boundary found on this page, enqueue everything and continue
-    await filterAndEnqueue(env, res.photos, logger);
+    const result = await filterAndEnqueue(env, realPhotos, logger);
+    if (result.added > 0) hasAddedAny = true;
+
     if (apiRemaining < 1) {
       // If we ran out of quota before hitting the boundary,
       // do NOT advance the global anchor yet to avoid holes.
@@ -86,7 +96,7 @@ async function runIngestion(
 
   // If we processed all pages without finding the boundary, advance the anchor
   // This handles the case where the anchor is too old (beyond 10 pages)
-  if (newTopId) {
+  if (newTopId && hasAddedAny) {
     await setConfig(env.DB, 'last_seen_id', newTopId);
     logger.info(`High-water mark advanced to: ${newTopId} (boundary not found)`);
   }
