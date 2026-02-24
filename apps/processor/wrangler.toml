@@ -48,7 +48,7 @@ index_name = "lens-vectorize"
 
 # Cron Trigger (Scheduler)
 [triggers]
-crons = ["*/10 * * * *"]
+crons = ["*/15 * * * *"]
 
 # Analytics Engine (Telemetry)
 [[analytics_engine_datasets]]
