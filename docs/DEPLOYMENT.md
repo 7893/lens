@@ -31,12 +31,15 @@ Lens 的部署流程不仅仅是代码的上传，它是一次**“基础设施�
 Lens 采用 pnpm workspaces 驱动。由于 `api` 和 `processor` 都严重依赖于 `@lens/shared`，必须遵循以下构建顺序：
 
 1.  **Shared 构建 (The Foundation)**：
+
     ```bash
     cd packages/shared && npm run build
     ```
 
     - 此步骤生成 `dist/` 目录，将 TypeScript 定义和 Zod Schema 转换为运行时可引用的二进制产物。
+
 2.  **Web 资源同步 (The Frontend)**：
+
     ```bash
     cd apps/web && pnpm build
     cp -r dist/* ../api/public/
