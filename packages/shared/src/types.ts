@@ -136,6 +136,7 @@ export interface IngestionSettings {
   backfill_enabled: boolean;
   backfill_max_pages: number;
   daily_evolution_limit_usd: number;
+  evolution_hour?: number;
 }
 
 export interface D1EvolutionRecord {
