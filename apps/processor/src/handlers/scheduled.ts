@@ -148,8 +148,8 @@ export async function handleScheduled(env: ProcessorBindings) {
 
   // --- TASK C: Self-Evolution (Queue-Based Burst) ---
   const now = new Date();
-  const evolutionHour = settings.evolution_hour ?? 23;
-  if (now.getUTCHours() === evolutionHour && now.getUTCMinutes() < 10) {
+  const [triggerHour, triggerMinute] = (settings.evolution_trigger_utc ?? '23:00').split(':').map(Number);
+  if (now.getUTCHours() === triggerHour && now.getUTCMinutes() === triggerMinute) {
     try {
       const dailyLimit = settings.daily_evolution_limit_usd ?? 0.11;
       logger.info('🔍 Auditing daily system spend for evolution...');
