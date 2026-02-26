@@ -96,16 +96,23 @@ Evolution 采用生产者-消费者模式，实现高吞吐量的批量处理：
 ### 6.1 架构设计
 
 ```
-Cron (生产者)                    Queue                     Workflow (消费者)
-    │                              │                            │
-    │  1. 查询待升级图片 ID         │                            │
-    │  2. 每 100 条打包发送 ──────▶│                            │
-    │                              │  ┌─ Consumer 1 ──▶ Workflow ─┐
-    │                              │  ├─ Consumer 2 ──▶ Workflow ─┤
-    │                              │  ├─ Consumer 3 ──▶ Workflow ─┤
-    │                              │  ├─ Consumer 4 ──▶ Workflow ─┤
-    │                              │  └─ Consumer 5 ──▶ Workflow ─┘
-    │                              │         (并发处理)           │
+┌──────────────┐          ┌──────────────┐          ┌──────────────────────┐
+│     Cron     │          │    Queue     │          │   Workflow (×25)     │
+│   (生产者)    │          │              │          │      (消费者)         │
+└──────┬───────┘          └──────┬───────┘          └──────────┬───────────┘
+       │                         │                             │
+       │  1. 查询待升级图片 ID    │                             │
+       │  2. 每100条打包         │                             │
+       │                         │                             │
+       │ ─────sendBatch────────▶ │                             │
+       │                         │                             │
+       │                         │  ┌─ Consumer 1 ─▶ Workflow ─┤
+       │                         │  ├─ Consumer 2 ─▶ Workflow ─┤
+       │                         │  ├─ Consumer 3 ─▶ Workflow ─┤
+       │                         │  ├─ Consumer 4 ─▶ Workflow ─┤
+       │                         │  └─ Consumer 5 ─▶ Workflow ─┤
+       │                         │       (5并发×5消息=25任务)   │
+       ▼                         ▼                             ▼
 ```
 
 ### 6.2 并发配置 (wrangler.toml)
