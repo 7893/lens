@@ -50,9 +50,9 @@ export class LensIngestWorkflow extends WorkflowEntrypoint<ProcessorBindings, In
 
       await step.do('persist-d1-flagship', retryConfig, async () => {
         await this.env.DB.prepare(
-          `INSERT INTO images (id, width, height, color, raw_key, display_key, meta_json, ai_tags, ai_caption, ai_embedding, ai_model, ai_quality_score, entities_json, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-           ON CONFLICT(id) DO UPDATE SET ai_caption=excluded.ai_caption, ai_embedding=excluded.ai_embedding, ai_model=excluded.ai_model, ai_quality_score=excluded.ai_quality_score, entities_json=excluded.entities_json, created_at=excluded.created_at`,
+          `INSERT INTO images (id, width, height, color, raw_key, display_key, meta_json, ai_tags, ai_caption, ai_embedding, ai_model, ai_quality_score, entities_json, created_at, vectorize_synced)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+           ON CONFLICT(id) DO UPDATE SET ai_caption=excluded.ai_caption, ai_embedding=excluded.ai_embedding, ai_model=excluded.ai_model, ai_quality_score=excluded.ai_quality_score, entities_json=excluded.entities_json, created_at=excluded.created_at, vectorize_synced=0`,
         )
           .bind(
             photoId,
@@ -81,6 +81,7 @@ export class LensIngestWorkflow extends WorkflowEntrypoint<ProcessorBindings, In
             metadata: { url: `display/${photoId}.jpg`, caption: analysis.caption || '' },
           },
         ]);
+        await this.env.DB.prepare('UPDATE images SET vectorize_synced = 1 WHERE id = ?').bind(photoId).run();
       });
     }
 
@@ -113,7 +114,8 @@ export class LensIngestWorkflow extends WorkflowEntrypoint<ProcessorBindings, In
             ai_embedding = ?, 
             ai_model = ?, 
             ai_quality_score = ?, 
-            entities_json = ? 
+            entities_json = ?,
+            vectorize_synced = 0
            WHERE id = ?`,
         )
           .bind(
@@ -136,6 +138,7 @@ export class LensIngestWorkflow extends WorkflowEntrypoint<ProcessorBindings, In
             metadata: { url: `display/${photoId}.jpg`, caption: analysis.caption || '' },
           },
         ]);
+        await this.env.DB.prepare('UPDATE images SET vectorize_synced = 1 WHERE id = ?').bind(photoId).run();
       });
 
       logger.info(`✨ Successfully evolved image to Llama 4: ${photoId}`);

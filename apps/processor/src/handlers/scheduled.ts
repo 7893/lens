@@ -158,7 +158,7 @@ export async function handleScheduled(env: ProcessorBindings) {
       if (capacity > 0) {
         logger.info(`🧬 Queueing ${capacity} images for self-evolution...`);
         const { results } = await env.DB.prepare(
-          "SELECT id FROM images WHERE ai_model = 'llama-3.2' ORDER BY created_at DESC LIMIT ?",
+          'SELECT id FROM images WHERE vectorize_synced = 0 ORDER BY created_at DESC LIMIT ?',
         )
           .bind(capacity)
           .all<{ id: string }>();
