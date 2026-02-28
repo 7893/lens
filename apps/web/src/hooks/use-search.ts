@@ -76,4 +76,3 @@ export function useSuggestions(query: string) {
     dismiss: useCallback(() => setDebouncedQ(''), []),
   };
 }
-

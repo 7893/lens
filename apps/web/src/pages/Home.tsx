@@ -528,8 +528,9 @@ export default function Home() {
                 {suggestions.map((s, i) => (
                   <button
                     key={s}
-                    className={`w-full text-left px-5 py-2.5 text-sm flex items-center gap-3 transition-colors ${i === highlightIdx ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'
-                      }`}
+                    className={`w-full text-left px-5 py-2.5 text-sm flex items-center gap-3 transition-colors ${
+                      i === highlightIdx ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'
+                    }`}
                     onMouseDown={(e) => {
                       e.preventDefault();
                       selectSuggestion(s);
