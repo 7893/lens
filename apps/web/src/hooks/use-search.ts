@@ -1,5 +1,5 @@
 import useSWR from 'swr';
-import { SearchResponse } from '@lens/shared';
+import { SearchResponse, SuggestResponse } from '@lens/shared';
 import { useState, useEffect, useCallback } from 'react';
 
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
@@ -31,9 +31,17 @@ export function useSearch() {
   const results = all.slice(0, visible);
   const hasMore = visible < all.length;
 
+  // Instantly apply a suggestion without debounce
+  const selectSuggestion = useCallback((suggestion: string) => {
+    setQuery(suggestion);
+    setDebouncedQuery(suggestion);
+    setVisible(PAGE_SIZE);
+  }, []);
+
   return {
     query,
     setQuery,
+    selectSuggestion,
     results,
     total: all.length,
     isLoading,
@@ -43,3 +51,29 @@ export function useSearch() {
     took: data?.took,
   };
 }
+
+export function useSuggestions(query: string) {
+  const [debouncedQ, setDebouncedQ] = useState('');
+
+  useEffect(() => {
+    if (query.trim().length < 2) {
+      setDebouncedQ('');
+      return;
+    }
+    const handler = setTimeout(() => setDebouncedQ(query), 200);
+    return () => clearTimeout(handler);
+  }, [query]);
+
+  const url = debouncedQ ? `/api/suggest?q=${encodeURIComponent(debouncedQ)}` : null;
+
+  const { data } = useSWR<SuggestResponse>(url, fetcher, {
+    revalidateOnFocus: false,
+    keepPreviousData: false,
+  });
+
+  return {
+    suggestions: data?.suggestions || [],
+    dismiss: useCallback(() => setDebouncedQ(''), []),
+  };
+}
+

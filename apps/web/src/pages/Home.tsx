@@ -1,4 +1,4 @@
-import { useSearch } from '../hooks/use-search';
+import { useSearch, useSuggestions } from '../hooks/use-search';
 import { ImageResult } from '@lens/shared';
 import { Search, X, Camera, Sparkles, MapPin, Eye, Download, Heart, Aperture, Clock, ExternalLink } from 'lucide-react';
 import { useState, useEffect, useRef, useCallback } from 'react';
@@ -455,9 +455,14 @@ function Stats() {
 }
 
 export default function Home() {
-  const { query, setQuery, results, isLoading, isSearching, hasMore, loadMore, took, total } = useSearch();
+  const { query, setQuery, selectSuggestion, results, isLoading, isSearching, hasMore, loadMore, took, total } =
+    useSearch();
+  const { suggestions, dismiss: dismissSuggestions } = useSuggestions(query);
   const [selected, setSelected] = useState<ImageResult | null>(null);
+  const [highlightIdx, setHighlightIdx] = useState(-1);
+  const [showSuggestions, setShowSuggestions] = useState(true);
   const sentinelRef = useRef<HTMLDivElement>(null);
+  const suggestRef = useRef<HTMLDivElement>(null);
 
   const handleObserver = useCallback(
     (entries: IntersectionObserverEntry[]) => {
@@ -487,9 +492,58 @@ export default function Home() {
               className="w-full pl-12 pr-4 py-3 rounded-full border border-gray-200 shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
               placeholder="Search for 'sad rainy day' or 'cyberpunk city'..."
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setShowSuggestions(true);
+                setHighlightIdx(-1);
+              }}
+              onFocus={() => setShowSuggestions(true)}
+              onKeyDown={(e) => {
+                const visible = showSuggestions && suggestions.length > 0;
+                if (!visible) return;
+                if (e.key === 'ArrowDown') {
+                  e.preventDefault();
+                  setHighlightIdx((i) => Math.min(i + 1, suggestions.length - 1));
+                } else if (e.key === 'ArrowUp') {
+                  e.preventDefault();
+                  setHighlightIdx((i) => Math.max(i - 1, 0));
+                } else if (e.key === 'Enter' && highlightIdx >= 0) {
+                  e.preventDefault();
+                  selectSuggestion(suggestions[highlightIdx]);
+                  setShowSuggestions(false);
+                  dismissSuggestions();
+                } else if (e.key === 'Escape') {
+                  setShowSuggestions(false);
+                }
+              }}
             />
             <Search className="absolute left-4 top-3.5 text-gray-400 w-5 h-5" />
+
+            {/* Typeahead Suggestions Dropdown */}
+            {showSuggestions && suggestions.length > 0 && (
+              <div
+                ref={suggestRef}
+                className="absolute z-40 left-0 right-0 mt-1 bg-white rounded-xl shadow-lg border border-gray-100 overflow-hidden"
+              >
+                {suggestions.map((s, i) => (
+                  <button
+                    key={s}
+                    className={`w-full text-left px-5 py-2.5 text-sm flex items-center gap-3 transition-colors ${i === highlightIdx ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'
+                      }`}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      selectSuggestion(s);
+                      setShowSuggestions(false);
+                      dismissSuggestions();
+                    }}
+                    onMouseEnter={() => setHighlightIdx(i)}
+                  >
+                    <Search className="w-3.5 h-3.5 text-gray-300 shrink-0" />
+                    {s}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           {took !== undefined && isSearching && (

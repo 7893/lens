@@ -30,18 +30,18 @@ export interface DBSystemConfig {
 
 export type IngestionTask =
   | {
-      type: 'process-photo';
-      photoId: string;
-      downloadUrl: string;
-      displayUrl?: string;
-      photographer: string;
-      source: 'unsplash';
-      meta?: UnsplashPhoto;
-    }
+    type: 'process-photo';
+    photoId: string;
+    downloadUrl: string;
+    displayUrl?: string;
+    photographer: string;
+    source: 'unsplash';
+    meta?: UnsplashPhoto;
+  }
   | {
-      type: 'refresh-photo';
-      photoId: string;
-    };
+    type: 'refresh-photo';
+    photoId: string;
+  };
 
 // ==========================================
 // 3. API Response Types
@@ -78,6 +78,10 @@ export interface SearchResponse {
   total: number;
   page?: number;
   took: number;
+}
+
+export interface SuggestResponse {
+  suggestions: string[];
 }
 
 // ==========================================

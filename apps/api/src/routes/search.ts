@@ -3,6 +3,7 @@ import { ApiBindings, DBImage, SearchResponse, AI_MODELS, AI_GATEWAY } from '@le
 import { toImageResult } from '../utils/transform';
 import { rateLimit } from '../middleware/rateLimit';
 import { createTrace, Logger } from '@lens/shared';
+import { recordSuggestion } from './suggest';
 
 type AiTextResponse = { response?: string };
 type AiEmbeddingResponse = { data: number[][] };
@@ -139,6 +140,7 @@ search.get('/', async (c) => {
       headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=600' },
     });
     c.executionCtx.waitUntil(cache.put(cacheKey, resp.clone()));
+    c.executionCtx.waitUntil(recordSuggestion(c.env.SETTINGS, q));
 
     logger.info('Search request fulfilled', { took });
     logger.metric('search_complete', [took, images.length]);
