@@ -39,11 +39,12 @@ async function runIngestion(
   backfillPage: number,
   settings: IngestionSettings,
   logger: Logger,
-) {
+): Promise<number> {
   let currentBackfillPage = backfillPage;
   let apiRemaining = 50;
   let newTopId: string | null = null;
   let hasAddedAny = false;
+  let totalAdded = 0;
 
   logger.info(`Catching up since boundary: ${lastSeenId}`);
 
@@ -68,7 +69,10 @@ async function runIngestion(
       const freshOnPage = realPhotos.slice(0, seenIndex);
       if (freshOnPage.length > 0) {
         const result = await filterAndEnqueue(env, freshOnPage, logger);
-        if (result.added > 0) hasAddedAny = true;
+        if (result.added > 0) {
+          hasAddedAny = true;
+          totalAdded += result.added;
+        }
       }
 
       // CRITICAL: Only move the high-water mark if we successfully enqueued new photos
@@ -83,7 +87,10 @@ async function runIngestion(
 
     // No boundary found on this page, enqueue everything and continue
     const result = await filterAndEnqueue(env, realPhotos, logger);
-    if (result.added > 0) hasAddedAny = true;
+    if (result.added > 0) {
+      hasAddedAny = true;
+      totalAdded += result.added;
+    }
 
     if (apiRemaining < 1) break;
   }
@@ -94,7 +101,7 @@ async function runIngestion(
   }
 
   // Backward backfill
-  if (!settings.backfill_enabled || settings.backfill_max_pages <= 0) return;
+  if (!settings.backfill_enabled || settings.backfill_max_pages <= 0) return totalAdded;
 
   logger.info(`Starting history backfill from page ${currentBackfillPage}`);
   let pagesProcessed = 0;
@@ -109,6 +116,7 @@ async function runIngestion(
     await setConfig(env.DB, 'backfill_next_page', String(currentBackfillPage));
     if (apiRemaining <= 0) break;
   }
+  return totalAdded;
 }
 
 export async function handleScheduled(env: ProcessorBindings) {
@@ -140,11 +148,13 @@ export async function handleScheduled(env: ProcessorBindings) {
   const backfillPage = parseInt(state.backfill_next_page || '1', 10);
 
   // --- TASK A: Ingestion ---
+  let ingestedCount = 0;
   try {
-    await runIngestion(env, lastSeenId, backfillPage, settings, logger);
+    ingestedCount = await runIngestion(env, lastSeenId, backfillPage, settings, logger);
   } catch (error) {
     logger.error('Ingestion Pipeline Failure', error);
   }
+  logger.metric('cron_ingested', [ingestedCount]);
 
   // --- TASK C: Self-Evolution (Queue-Based Burst) ---
   const now = new Date();

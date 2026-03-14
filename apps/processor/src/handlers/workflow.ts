@@ -83,6 +83,10 @@ export class LensIngestWorkflow extends WorkflowEntrypoint<ProcessorBindings, In
         ]);
         await this.env.DB.prepare('UPDATE images SET vectorize_synced = 1 WHERE id = ?').bind(photoId).run();
       });
+
+      const took = Date.now() - trace.startTime;
+      logger.info(`Ingested image: ${photoId}`, { took });
+      logger.metric('ingest_complete', [took]);
     }
 
     // --- BRANCH B: EXISTING IMAGE REFRESH (EVOLUTION) ---
@@ -142,6 +146,7 @@ export class LensIngestWorkflow extends WorkflowEntrypoint<ProcessorBindings, In
       });
 
       logger.info(`✨ Successfully evolved image to Llama 4: ${photoId}`);
+      logger.metric('evolution_complete', [Date.now() - trace.startTime]);
     }
   }
 }
