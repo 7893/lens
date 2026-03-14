@@ -1,6 +1,7 @@
-import { ProcessorBindings, IngestionTask } from '@lens/shared';
+import { ProcessorBindings, IngestionTask, Logger, createTrace } from '@lens/shared';
 
 export async function handleQueue(batch: MessageBatch<IngestionTask>, env: ProcessorBindings): Promise<void> {
+  const logger = new Logger(createTrace('QUEUE'), env.TELEMETRY);
   for (const msg of batch.messages) {
     try {
       await env.PHOTO_WORKFLOW.create({
@@ -9,7 +10,8 @@ export async function handleQueue(batch: MessageBatch<IngestionTask>, env: Proce
       });
       msg.ack();
     } catch (error) {
-      console.error('Queue error:', error);
+      logger.error(`Queue dispatch failed: ${msg.body.photoId}`, error);
+      logger.metric('queue_error');
       msg.retry();
     }
   }
