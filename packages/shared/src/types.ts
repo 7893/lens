@@ -124,6 +124,7 @@ export interface UnsplashPhoto {
     country: string;
   };
   sponsorship?: unknown;
+  topic_submissions?: Record<string, unknown>;
 }
 
 // ==========================================
