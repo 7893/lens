@@ -143,8 +143,9 @@ export async function calculateEvolutionCapacity(
   const summary = await getSystemUsageSummary(env, logger);
   const remainingUSD = dailyLimit - summary.evolutionCost;
 
-  // Based on 248 samples: avg $0.000249, range $0.00007-$0.00026
-  const estimatedCostPerImage = 0.00025;
+  const settingsRaw = await env.SETTINGS.get('config:ingestion');
+  const settings = settingsRaw ? (JSON.parse(settingsRaw) as { evolution_cost_per_image_usd?: number }) : {};
+  const estimatedCostPerImage = settings.evolution_cost_per_image_usd ?? 0.00025;
 
   if (remainingUSD <= 0) return 0;
   return Math.floor((remainingUSD * 0.95) / estimatedCostPerImage);
