@@ -49,7 +49,7 @@ async function runIngestion(
 
   // Forward catch-up
   for (let p = 1; p <= 10; p++) {
-    const res = await fetchLatestPhotos(env.UNSPLASH_API_KEY, p, 30);
+    const res = await fetchLatestPhotos(env.UNSPLASH_API_KEY, p, 30, logger);
     apiRemaining = res.remaining;
     if (!res.photos.length) break;
 
@@ -99,7 +99,7 @@ async function runIngestion(
   logger.info(`Starting history backfill from page ${currentBackfillPage}`);
   let pagesProcessed = 0;
   while (apiRemaining > 0 && pagesProcessed < settings.backfill_max_pages) {
-    const res = await fetchLatestPhotos(env.UNSPLASH_API_KEY, currentBackfillPage, 30);
+    const res = await fetchLatestPhotos(env.UNSPLASH_API_KEY, currentBackfillPage, 30, logger);
     apiRemaining = res.remaining;
     if (!res.photos.length) break;
 
