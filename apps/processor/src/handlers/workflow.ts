@@ -84,6 +84,10 @@ export class LensIngestWorkflow extends WorkflowEntrypoint<ProcessorBindings, In
         await this.env.DB.prepare('UPDATE images SET vectorize_synced = 1 WHERE id = ?').bind(photoId).run();
       });
 
+      await step.do('cleanup-raw', async () => {
+        await this.env.R2.delete(`raw/${photoId}.jpg`);
+      });
+
       const took = Date.now() - trace.startTime;
       logger.info(`Ingested image: ${photoId}`, { took });
       logger.metric('ingest_complete', [took]);
