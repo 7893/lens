@@ -6,11 +6,17 @@ const images = new Hono<{ Bindings: ApiBindings }>();
 
 // Latest images
 images.get('/latest', async (c) => {
+  const cacheKey = 'cache:latest';
+  const cached = await c.env.SETTINGS.get(cacheKey);
+  if (cached) return c.json(JSON.parse(cached));
+
   const { results } = await c.env.DB.prepare(
     'SELECT * FROM images WHERE ai_caption IS NOT NULL ORDER BY created_at DESC LIMIT 100',
   ).all<DBImage>();
 
-  return c.json({ results: results.map((img) => toImageResult(img)), total: results.length });
+  const data = { results: results.map((img) => toImageResult(img)), total: results.length };
+  c.executionCtx.waitUntil(c.env.SETTINGS.put(cacheKey, JSON.stringify(data), { expirationTtl: 3600 }));
+  return c.json(data);
 });
 
 // Image details
