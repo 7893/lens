@@ -40,19 +40,18 @@ search.get('/', async (c) => {
     let expandedQuery = await c.env.SETTINGS.get(cacheKeyKV);
     if (!expandedQuery) {
       logger.info('Query Expansion Start');
-      if (q.split(/\s+/).length <= 4) {
-        const expansion = (await c.env.AI.run(
-          AI_MODELS.TEXT_FAST,
-          {
-            prompt: `Expand this image search query with related visual terms. Translate to English if needed. Reply with ONLY the expanded English query. Under 30 words.\nQuery: ${q}`,
-            max_tokens: 50,
-          },
-          AI_GATEWAY,
-        )) as AiTextResponse;
-        expandedQuery = expansion.response?.trim() || q;
-      } else {
-        expandedQuery = q;
-      }
+      const isShort = q.split(/\s+/).length <= 4;
+      const prompt = isShort
+        ? `Expand this image search query with related visual terms. Translate to English if needed. Reply with ONLY the expanded English query. Under 30 words.\nQuery: ${q}`
+        : `Translate to English if not already English. Reply with ONLY the translated text, no changes otherwise.\nQuery: ${q}`;
+
+      const expansion = (await c.env.AI.run(
+        AI_MODELS.TEXT_FAST,
+        { prompt, max_tokens: 50 },
+        AI_GATEWAY,
+      )) as AiTextResponse;
+      expandedQuery = expansion.response?.trim() || q;
+
       if (expandedQuery && expandedQuery !== q) {
         c.executionCtx.waitUntil(c.env.SETTINGS.put(cacheKeyKV, expandedQuery, { expirationTtl: 604800 }));
       }
