@@ -26,7 +26,7 @@ export class LensIngestWorkflow extends WorkflowEntrypoint<ProcessorBindings, In
       const retryConfig = { retries: { limit: 10, delay: '30 seconds' as const, backoff: 'constant' as const } };
 
       await step.do('download-and-store', retryConfig, async () => {
-        await streamToR2(task.downloadUrl, `raw/${photoId}.jpg`, this.env.R2);
+        await streamToR2(task.downloadUrl, `raw/${photoId}.jpg`, this.env.R2, logger);
         if (displayUrl) {
           const displayResp = await fetch(displayUrl);
           const displayBuffer = await displayResp.arrayBuffer();

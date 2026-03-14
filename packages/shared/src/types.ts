@@ -18,12 +18,6 @@ export interface DBImage {
   created_at: number;
 }
 
-export interface DBSystemConfig {
-  key: string;
-  value: string;
-  updated_at: number;
-}
-
 // ==========================================
 // 2. Queue Message Types
 // ==========================================
