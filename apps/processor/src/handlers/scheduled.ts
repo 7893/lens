@@ -185,6 +185,6 @@ export async function handleScheduled(env: ProcessorBindings) {
   }
 
   logger.info('Scheduled Pulse Completed', { duration: Date.now() - trace.startTime });
-  const { keys } = await env.SETTINGS.list({ prefix: 'cache:latest:' });
+  const { keys } = await env.SETTINGS.list({ prefix: 'cache:latest' });
   await Promise.all(keys.map((k) => env.SETTINGS.delete(k.name)));
 }
