@@ -185,5 +185,5 @@ export async function handleScheduled(env: ProcessorBindings) {
   }
 
   logger.info('Scheduled Pulse Completed', { duration: Date.now() - trace.startTime });
-  await env.SETTINGS.delete('cache:latest');
+  await env.SETTINGS.delete('cache:latest:first');
 }
