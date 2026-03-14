@@ -14,7 +14,9 @@ images.get('/latest', async (c) => {
   const { results } = cursor
     ? await c.env.DB.prepare(
         'SELECT * FROM images WHERE ai_caption IS NOT NULL AND created_at < ? ORDER BY created_at DESC LIMIT 100',
-      ).bind(Number(cursor)).all<DBImage>()
+      )
+        .bind(Number(cursor))
+        .all<DBImage>()
     : await c.env.DB.prepare(
         'SELECT * FROM images WHERE ai_caption IS NOT NULL ORDER BY created_at DESC LIMIT 100',
       ).all<DBImage>();
