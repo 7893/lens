@@ -10,8 +10,14 @@ export interface BaseBindings {
   TELEMETRY: AnalyticsEngineDataset;
 }
 
-// API worker bindings (same as base for now)
-export type ApiBindings = BaseBindings;
+// API worker bindings
+export interface RateLimit {
+  limit(options: { key: string }): Promise<{ success: boolean }>;
+}
+
+export interface ApiBindings extends BaseBindings {
+  RATE_LIMITER: RateLimit;
+}
 
 // Processor worker bindings
 export interface ProcessorBindings extends BaseBindings {

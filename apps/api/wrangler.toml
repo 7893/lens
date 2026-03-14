@@ -38,3 +38,10 @@ id = "22886c458d704579b15981987dca7dc5"
 [[analytics_engine_datasets]]
 binding = "TELEMETRY"
 dataset = "lens-ae"
+
+# Rate Limiting (Search API)
+[[unsafe.bindings]]
+type = "ratelimit"
+name = "RATE_LIMITER"
+namespace_id = "1001"
+simple = { limit = 10, period = 60 }
