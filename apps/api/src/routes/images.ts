@@ -4,17 +4,23 @@ import { toImageResult } from '../utils/transform';
 
 const images = new Hono<{ Bindings: ApiBindings }>();
 
-// Latest images
+// Latest images (cursor-based pagination for infinite scroll)
 images.get('/latest', async (c) => {
-  const cacheKey = 'cache:latest';
+  const cursor = c.req.query('cursor');
+  const cacheKey = `cache:latest:${cursor ?? 'first'}`;
   const cached = await c.env.SETTINGS.get(cacheKey);
   if (cached) return c.json(JSON.parse(cached));
 
-  const { results } = await c.env.DB.prepare(
-    'SELECT * FROM images WHERE ai_caption IS NOT NULL ORDER BY created_at DESC LIMIT 100',
-  ).all<DBImage>();
+  const { results } = cursor
+    ? await c.env.DB.prepare(
+        'SELECT * FROM images WHERE ai_caption IS NOT NULL AND created_at < ? ORDER BY created_at DESC LIMIT 100',
+      ).bind(Number(cursor)).all<DBImage>()
+    : await c.env.DB.prepare(
+        'SELECT * FROM images WHERE ai_caption IS NOT NULL ORDER BY created_at DESC LIMIT 100',
+      ).all<DBImage>();
 
-  const data = { results: results.map((img) => toImageResult(img)), total: results.length };
+  const nextCursor = results.length === 100 ? results[results.length - 1].created_at : null;
+  const data = { results: results.map((img) => toImageResult(img)), total: results.length, nextCursor };
   c.executionCtx.waitUntil(c.env.SETTINGS.put(cacheKey, JSON.stringify(data), { expirationTtl: 3600 }));
   return c.json(data);
 });
