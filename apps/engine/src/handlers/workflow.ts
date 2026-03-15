@@ -61,7 +61,7 @@ export class LensIngestWorkflow extends WorkflowEntrypoint<ProcessorBindings, In
           await this.env.R2.delete(`raw/${photoId}.jpg`);
         });
 
-        logger.info(`Successfully ingested image: ${photoId}`);
+        logger.metric('ingest_complete', [Date.now() - trace.startTime], [photoId]);
       }
 
       // --- BRANCH B: EXISTING IMAGE REFRESH (EVOLUTION) ---
@@ -94,9 +94,10 @@ export class LensIngestWorkflow extends WorkflowEntrypoint<ProcessorBindings, In
           await processor.syncToVectorize(photoId, vector, analysis.caption);
         });
 
-        logger.info(`✨ Successfully evolved image: ${photoId}`);
+        logger.metric('evolution_complete', [Date.now() - trace.startTime], [photoId]);
       }
     } catch (err) {
+      logger.metric('workflow_error', [], [photoId, task.type, String(err).slice(0, 80)]);
       logger.error(`Workflow Failure: ${photoId}`, err);
       throw err;
     }

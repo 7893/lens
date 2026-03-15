@@ -13,14 +13,15 @@ export class EvolutionService {
 
   /**
    * Evaluates if a burst of evolution should occur.
+   * Returns number of tasks dispatched.
    */
-  async pulse(settings: IngestionSettings): Promise<void> {
+  async pulse(settings: IngestionSettings): Promise<number> {
     const now = new Date();
     const [triggerHour, triggerMinute] = (settings.evolution_trigger_utc ?? '23:00').split(':').map(Number);
 
     // Check if we are at the designated UTC hour/minute
     if (now.getUTCHours() !== triggerHour || now.getUTCMinutes() !== triggerMinute) {
-      return;
+      return 0;
     }
 
     try {
@@ -31,7 +32,7 @@ export class EvolutionService {
 
       if (capacity <= 0) {
         this.logger.info('💸 Budget exhausted for today. Skipping evolution.');
-        return;
+        return 0;
       }
 
       this.logger.info(`💎 Capacity: Can evolve ${capacity} images within budget.`);
@@ -44,11 +45,12 @@ export class EvolutionService {
 
       if (results.length === 0) {
         this.logger.info('✨ All assets are already evolved to Llama 4 Scout.');
-        return;
+        return 0;
       }
 
       await this.dispatch(results.map((r) => r.id));
       this.logger.info(`🚀 Enqueued ${results.length} evolution tasks.`);
+      return results.length;
     } catch (error) {
       this.logger.error('Evolution Pulse Failed', error);
       throw error;
