@@ -1,11 +1,11 @@
-import { Eye, Download, Heart, MapPin, Sparkles, Aperture, Clock, ExternalLink, X } from 'lucide-react';
+import { Eye, Download, Heart, Sparkles, Aperture, Clock, ExternalLink, X, LucideIcon } from 'lucide-react';
 import { ImageResult, ImageDetail } from '@lens/shared';
 import { useEffect } from 'react';
 import useSWR from 'swr';
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
-const Stat = ({ icon: Icon, label, value }: { icon: any; label: string; value: string | number | null }) => {
+const Stat = ({ icon: Icon, label, value }: { icon: LucideIcon; label: string; value: string | number | null }) => {
   if (!value) return null;
   return (
     <div className="flex items-center gap-2 text-xs text-gray-500 py-1">
