@@ -12,11 +12,20 @@ function Skeleton() {
   return (
     <>
       {Array.from({ length: 8 }).map((_, i) => (
-        <div key={i} className="break-inside-avoid rounded-2xl overflow-hidden bg-gray-100 animate-pulse">
-          <div style={{ height: `${250 + (i % 3) * 100}px` }} />
-          <div className="p-4 space-y-2">
-            <div className="h-3 bg-gray-200 rounded w-3/4" />
-            <div className="h-3 bg-gray-200 rounded w-1/2" />
+        <div key={i} className="break-inside-avoid rounded-2xl overflow-hidden bg-white border border-gray-100 shadow-sm">
+          <div 
+            className="relative overflow-hidden bg-gray-100" 
+            style={{ height: `${250 + (i % 3) * 100}px` }}
+          >
+            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/40 to-transparent skew-x-[-20deg] animate-shimmer" />
+          </div>
+          <div className="p-4 space-y-3">
+            <div className="h-3 bg-gray-100 rounded-full w-3/4 relative overflow-hidden">
+               <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/60 to-transparent animate-shimmer" />
+            </div>
+            <div className="h-3 bg-gray-100 rounded-full w-1/2 relative overflow-hidden">
+               <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/60 to-transparent animate-shimmer" />
+            </div>
           </div>
         </div>
       ))}
