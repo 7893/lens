@@ -1,4 +1,4 @@
-import { ApiBindings, DBImage, SearchResponse, AI_MODELS, AI_GATEWAY } from '@lens/shared';
+import { ApiBindings, DBImage, SearchResponse, AI_MODELS, AI_GATEWAY, ImageResult } from '@lens/shared';
 import { toImageResult } from '../utils/transform';
 import { Logger } from '@lens/shared';
 
@@ -66,7 +66,7 @@ export class SearchService {
         if (!row || !hybridInfo) return null;
         return toImageResult(row, hybridInfo.score);
       })
-      .filter(Boolean) as any[];
+      .filter((r): r is ImageResult => r !== null);
 
     return {
       results: finalResults,

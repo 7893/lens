@@ -1,4 +1,4 @@
-import { ProcessorBindings, UnsplashPhoto, Logger } from '@lens/shared';
+import { ProcessorBindings, UnsplashPhoto, Logger, VisionResponse } from '@lens/shared';
 import { streamToR2 } from './downloader';
 import { analyzeImage, generateEmbedding } from './ai';
 import { buildEmbeddingText } from '../utils/embedding';
@@ -50,7 +50,7 @@ export class WorkflowProcessor {
   /**
    * Generates a 1024-dim embedding from AI analysis and metadata.
    */
-  async generateVector(analysis: any, meta?: any) {
+  async generateVector(analysis: VisionResponse, meta?: UnsplashPhoto) {
     const text = buildEmbeddingText(analysis.caption, analysis.tags, meta);
     return await generateEmbedding(this.env.AI, text);
   }
@@ -58,7 +58,7 @@ export class WorkflowProcessor {
   /**
    * Persists flagship image metadata to D1.
    */
-  async persistToD1(photoId: string, analysis: any, vector: number[], meta?: any) {
+  async persistToD1(photoId: string, analysis: VisionResponse, vector: number[], meta?: UnsplashPhoto) {
     const now = Date.now();
     await this.env.DB.prepare(
       `INSERT INTO images (

@@ -1,4 +1,4 @@
-import { Hono } from 'hono';
+import { Hono, Context } from 'hono';
 import { ApiBindings, DBImage, ImageDetail } from '@lens/shared';
 import { toImageResult, toImageDetail } from '../utils/transform';
 
@@ -55,7 +55,7 @@ images.get('/:id', async (c) => {
  * Image Proxy Service
  * Serves images directly from R2 with extreme edge caching (1 year).
  */
-const proxyHandler = async (c: any) => {
+const proxyHandler = async (c: Context<{ Bindings: ApiBindings }>) => {
   const { type, filename } = c.req.param();
   if (type !== 'display') return c.text('Invalid asset type', 400);
   if (!/^[a-zA-Z0-9_-]+\.jpg$/.test(filename)) return c.text('Invalid filename', 400);
