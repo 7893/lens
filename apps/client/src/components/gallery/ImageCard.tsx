@@ -43,10 +43,8 @@ export const ImageCard = React.memo(({ image, onClick }: ImageCardProps) => {
       </div>
 
       <div className="p-3">
-        <p className="text-sm text-gray-700 line-clamp-2 leading-snug">
-          {image.description || image.caption}
-        </p>
-        
+        <p className="text-sm text-gray-700 line-clamp-2 leading-snug">{image.description || image.caption}</p>
+
         <div className="mt-2 space-y-1">
           {image.photographer && (
             <p className="text-[11px] text-gray-400 flex items-center gap-1.5">

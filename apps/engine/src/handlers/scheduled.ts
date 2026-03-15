@@ -27,7 +27,7 @@ export async function handleScheduled(env: ProcessorBindings) {
 
   // 2. Load Pipeline State from D1
   const configRows = await env.DB.prepare(
-    "SELECT key, value FROM system_config WHERE key IN ('last_seen_id', 'backfill_next_page')"
+    "SELECT key, value FROM system_config WHERE key IN ('last_seen_id', 'backfill_next_page')",
   ).all<{ key: string; value: string }>();
   const state = Object.fromEntries(configRows.results.map((r) => [r.key, r.value]));
 

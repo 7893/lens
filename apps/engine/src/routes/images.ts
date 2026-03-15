@@ -14,12 +14,12 @@ images.get('/latest', async (c) => {
   if (cached) return c.json(JSON.parse(cached));
 
   const { results } = await c.env.DB.prepare(
-    'SELECT * FROM images WHERE ai_caption IS NOT NULL ORDER BY created_at DESC LIMIT 100'
+    'SELECT * FROM images WHERE ai_caption IS NOT NULL ORDER BY created_at DESC LIMIT 100',
   ).all<DBImage>();
 
-  const data = { 
-    results: results.map((img) => toImageResult(img)), 
-    total: results.length 
+  const data = {
+    results: results.map((img) => toImageResult(img)),
+    total: results.length,
   };
 
   // Cache for 1 hour
@@ -34,7 +34,7 @@ images.get('/latest', async (c) => {
 images.get('/:id', async (c) => {
   const id = c.req.param('id');
   const cacheKey = `cache:detail:${id}`;
-  
+
   // L1: KV Cache
   const cached = await c.env.SETTINGS.get(cacheKey);
   if (cached) return c.json(JSON.parse(cached));
@@ -47,18 +47,17 @@ images.get('/:id', async (c) => {
 
   // Cache details for 24 hours
   c.executionCtx.waitUntil(c.env.SETTINGS.put(cacheKey, JSON.stringify(detail), { expirationTtl: 86400 }));
-  
+
   return c.json(detail);
 });
 
 /**
  * Image Proxy Service
  * Serves images directly from R2 with extreme edge caching (1 year).
- * Supports both /display/ and /raw/ paths.
  */
 const proxyHandler = async (c: any) => {
   const { type, filename } = c.req.param();
-  if (!['display', 'raw'].includes(type)) return c.text('Invalid asset type', 400);
+  if (type !== 'display') return c.text('Invalid asset type', 400);
   if (!/^[a-zA-Z0-9_-]+\.jpg$/.test(filename)) return c.text('Invalid filename', 400);
 
   const cache = caches.default;
@@ -72,10 +71,10 @@ const proxyHandler = async (c: any) => {
   object.writeHttpMetadata(headers);
   headers.set('etag', object.httpEtag);
   headers.set('cache-control', 'public, max-age=31536000, immutable');
-  
+
   const response = new Response(object.body, { headers });
   c.executionCtx.waitUntil(cache.put(c.req.raw, response.clone()));
-  
+
   return response;
 };
 

@@ -18,7 +18,7 @@ search.get('/', async (c) => {
 
   const trace = createTrace('SEARCH');
   const logger = new Logger(trace, c.env.TELEMETRY);
-  
+
   // 1. Edge Cache Layer (L1)
   const cacheKey = new Request(`https://lens-cache/search?q=${encodeURIComponent(q.toLowerCase().trim())}`);
   const cache = caches.default;
@@ -34,9 +34,9 @@ search.get('/', async (c) => {
     const result = await searchService.search(q);
 
     const response = new Response(JSON.stringify(result), {
-      headers: { 
+      headers: {
         'Content-Type': 'application/json',
-        'Cache-Control': 'public, max-age=600' // 10 min cache
+        'Cache-Control': 'public, max-age=600', // 10 min cache
       },
     });
 

@@ -55,10 +55,13 @@ export function SearchBar({ query, setQuery, suggestions, onSelectSuggestion }: 
           onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
         />
         <Search className="absolute left-5 top-4.5 text-blue-500 w-5 h-5 group-focus-within:scale-110 transition-transform" />
-        
+
         {query && (
-          <button 
-            onClick={() => { setQuery(''); setShowSuggestions(false); }}
+          <button
+            onClick={() => {
+              setQuery('');
+              setShowSuggestions(false);
+            }}
             className="absolute right-4 top-4 p-1 rounded-full text-gray-300 hover:text-gray-500 hover:bg-gray-100 transition-all"
           >
             <X className="w-4 h-4" />

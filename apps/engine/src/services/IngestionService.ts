@@ -7,13 +7,16 @@ import { setConfig } from '../utils/config';
  * and managing the ingestion boundaries (high-water mark).
  */
 export class IngestionService {
-  constructor(private env: ProcessorBindings, private logger: Logger) {}
+  constructor(
+    private env: ProcessorBindings,
+    private logger: Logger,
+  ) {}
 
   /**
    * Main entry point for the ingestion pulse.
    */
   async run(lastSeenId: string, backfillPage: number, settings: IngestionSettings): Promise<number> {
-    let currentBackfillPage = backfillPage;
+    const currentBackfillPage = backfillPage;
     let apiRemaining = 50;
     let newTopId: string | null = null;
     let hasAddedAny = false;
@@ -87,7 +90,7 @@ export class IngestionService {
       totalAdded += result.added;
       currentPage++;
       pagesProcessed++;
-      
+
       await setConfig(this.env.DB, 'backfill_next_page', String(currentPage));
       if (api <= 0) break;
     }
@@ -116,7 +119,7 @@ export class IngestionService {
         source: 'unsplash',
         meta: p,
       }));
-      
+
       await this.env.PHOTO_QUEUE.sendBatch(tasks.map((t) => ({ body: t, contentType: 'json' })));
     }
     return { added: freshPhotos.length };
