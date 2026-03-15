@@ -18,7 +18,7 @@ export const ImageCard = React.memo(({ image, onClick }: ImageCardProps) => {
 
   return (
     <div
-      className="break-inside-avoid bg-white rounded-xl shadow-sm overflow-hidden hover:shadow-md transition-shadow group cursor-pointer"
+      className="break-inside-avoid bg-white rounded-xl shadow-sm overflow-hidden hover:shadow-md transition-all group cursor-pointer animate-fade-in-up"
       onClick={onClick}
     >
       <div className="relative" style={{ backgroundColor: image.color || '#e5e7eb' }}>
