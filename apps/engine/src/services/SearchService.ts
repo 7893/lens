@@ -10,7 +10,10 @@ type AiEmbeddingResponse = { data: number[][] };
  * Combines SQLite FTS5 (Keyword) + Vectorize (Semantic)
  */
 export class SearchService {
-  constructor(private env: ApiBindings, private logger: Logger) {}
+  constructor(
+    private env: ApiBindings,
+    private logger: Logger,
+  ) {}
 
   async search(query: string): Promise<SearchResponse> {
     const start = Date.now();
@@ -50,9 +53,7 @@ export class SearchService {
     // 3. Hydrate Metadata from D1
     const ids = hybridIds.slice(0, 50).map((h) => h.id);
     const placeholders = ids.map(() => '?').join(',');
-    const { results: dbRows } = await this.env.DB.prepare(
-      `SELECT * FROM images WHERE id IN (${placeholders})`
-    )
+    const { results: dbRows } = await this.env.DB.prepare(`SELECT * FROM images WHERE id IN (${placeholders})`)
       .bind(...ids)
       .all<DBImage>();
 
@@ -82,11 +83,11 @@ export class SearchService {
     try {
       // Use "MATCH" for FTS5 full-text indexing
       const { results } = await this.env.DB.prepare(
-        'SELECT id FROM images_fts WHERE images_fts MATCH ? ORDER BY rank LIMIT 40'
+        'SELECT id FROM images_fts WHERE images_fts MATCH ? ORDER BY rank LIMIT 40',
       )
         .bind(query)
         .all<{ id: string }>();
-      
+
       this.logger.info(`FTS5 Keywords Hit: ${results.length}`);
       return results;
     } catch (e) {
@@ -96,32 +97,35 @@ export class SearchService {
   }
 
   /**
-   * Executes Semantic Search using Vectorize + Llama 3B Expansion.
+   * Executes Semantic Search using Vectorize + Translation/Expansion.
    * Best for: Moods, Actions, Narrative, Abstract Concepts.
    */
   private async executeSemanticSearch(query: string): Promise<{ id: string; score: number }[]> {
-    const expansionCacheKey = `semantic:cache:${query}`;
-    
-    // 1. Expansion
-    let expandedQuery = await this.env.SETTINGS.get(expansionCacheKey);
-    if (!expandedQuery) {
-      const expansion = (await this.env.AI.run(
+    const cacheKey = `semantic:cache:${query}`;
+
+    // 1. Translation + Expansion (cached)
+    let processedQuery = await this.env.SETTINGS.get(cacheKey);
+    if (!processedQuery) {
+      const wordCount = query.split(/\s+/).length;
+      const prompt =
+        wordCount <= 4
+          ? `Translate to English if not English, then expand into a descriptive scene (max 30 words): ${query}`
+          : `Translate to English if not English: ${query}`;
+
+      const result = (await this.env.AI.run(
         AI_MODELS.TEXT_FAST,
-        { 
-          prompt: `Expand this image search query into a descriptive scene: ${query}`, 
-          max_tokens: 30 
-        },
-        AI_GATEWAY
+        { prompt, max_tokens: 40 },
+        AI_GATEWAY,
       )) as AiTextResponse;
-      expandedQuery = expansion.response?.trim() || query;
-      await this.env.SETTINGS.put(expansionCacheKey, expandedQuery!, { expirationTtl: 604800 });
+      processedQuery = result.response?.trim() || query;
+      await this.env.SETTINGS.put(cacheKey, processedQuery, { expirationTtl: 604800 });
     }
 
     // 2. Embedding
     const embeddingResp = (await this.env.AI.run(
       AI_MODELS.EMBED,
-      { text: [expandedQuery!] },
-      AI_GATEWAY
+      { text: [processedQuery] },
+      AI_GATEWAY,
     )) as AiEmbeddingResponse;
     const vector = embeddingResp.data[0];
 

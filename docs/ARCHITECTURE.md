@@ -15,8 +15,8 @@ Lens 的系统设计遵循 **“统一计算，逻辑隔离”** 的原则。API
 1.  **L1 HTTP 缓存层**：利用 `caches.default` 缓存搜索结果响应。
 2.  **L2 语义缓存层 (KV)**：存储经过 AI 扩展后的深度视觉词汇。
 3.  **双路并行检索 (Parallel Retrieval)**：
-    *   **路 A (D1 FTS5)**：通过 SQLite 全文搜索匹配硬核关键词。
-    *   **路 B (Vectorize)**：通过 BGE-M3 生成向量并进行相似度检索。
+    - **路 A (D1 FTS5)**：通过 SQLite 全文搜索匹配硬核关键词。
+    - **路 B (Vectorize)**：通过 BGE-M3 生成向量并进行相似度检索。
 4.  **智能排名融合 (RRF)**：系统将两路结果去重并汇总，确保结果既懂“意境”又懂“细节”。
 
 ### 1.2 异步采集与进化管道 (The Ingestion & Evolution Pipeline)

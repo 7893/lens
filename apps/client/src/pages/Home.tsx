@@ -12,19 +12,19 @@ function Skeleton() {
   return (
     <>
       {Array.from({ length: 8 }).map((_, i) => (
-        <div key={i} className="break-inside-avoid rounded-2xl overflow-hidden bg-white border border-gray-100 shadow-sm">
-          <div 
-            className="relative overflow-hidden bg-gray-100" 
-            style={{ height: `${250 + (i % 3) * 100}px` }}
-          >
+        <div
+          key={i}
+          className="break-inside-avoid rounded-2xl overflow-hidden bg-white border border-gray-100 shadow-sm"
+        >
+          <div className="relative overflow-hidden bg-gray-100" style={{ height: `${250 + (i % 3) * 100}px` }}>
             <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/40 to-transparent skew-x-[-20deg] animate-shimmer" />
           </div>
           <div className="p-4 space-y-3">
             <div className="h-3 bg-gray-100 rounded-full w-3/4 relative overflow-hidden">
-               <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/60 to-transparent animate-shimmer" />
+              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/60 to-transparent animate-shimmer" />
             </div>
             <div className="h-3 bg-gray-100 rounded-full w-1/2 relative overflow-hidden">
-               <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/60 to-transparent animate-shimmer" />
+              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/60 to-transparent animate-shimmer" />
             </div>
           </div>
         </div>
@@ -39,7 +39,7 @@ function Stats() {
   return (
     <div className="text-center py-12">
       <p className="text-[11px] font-bold text-gray-300 uppercase tracking-widest">
-        {data.total.toLocaleString()} Indexed Images 
+        {data.total.toLocaleString()} Indexed Images
         {data.recent > 0 && <span className="text-blue-400 ml-2">· {data.recent} New Today</span>}
       </p>
     </div>
@@ -47,7 +47,8 @@ function Stats() {
 }
 
 export default function Home() {
-  const { query, setQuery, selectSuggestion, results, isLoading, isSearching, hasMore, loadMore, took, total } = useSearch();
+  const { query, setQuery, selectSuggestion, results, isLoading, isSearching, hasMore, loadMore, took, total } =
+    useSearch();
   const { suggestions } = useSuggestions(query);
   const [selected, setSelected] = useState<ImageResult | null>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
@@ -70,19 +71,23 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-gray-50/50 selection:bg-blue-100 selection:text-blue-700">
       {/* Search Header */}
-      <div className={`transition-all duration-700 ease-[cubic-bezier(0.23,1,0.32,1)] ${hasResults || isLoading ? 'pt-12 pb-8' : 'pt-[28vh] pb-12'}`}>
+      <div
+        className={`transition-all duration-700 ease-[cubic-bezier(0.23,1,0.32,1)] ${hasResults || isLoading ? 'pt-12 pb-8' : 'pt-[28vh] pb-12'}`}
+      >
         <div className="max-w-4xl mx-auto text-center px-8">
           <div className="inline-flex items-center gap-2 px-3 py-1 bg-blue-50 text-blue-600 rounded-full text-[10px] font-bold uppercase tracking-wider mb-6 animate-fade-in">
             Edge-Native Visual Intelligence
           </div>
-          <h1 className="text-6xl font-black text-gray-900 mb-4 tracking-tight">Lens<span className="text-blue-500">.</span></h1>
+          <h1 className="text-6xl font-black text-gray-900 mb-4 tracking-tight">
+            Lens<span className="text-blue-500">.</span>
+          </h1>
           <p className="text-gray-500 mb-10 text-lg font-medium">Beyond keywords. Search with pure artistic intent.</p>
 
-          <SearchBar 
-            query={query} 
-            setQuery={setQuery} 
-            suggestions={suggestions} 
-            onSelectSuggestion={selectSuggestion} 
+          <SearchBar
+            query={query}
+            setQuery={setQuery}
+            suggestions={suggestions}
+            onSelectSuggestion={selectSuggestion}
           />
 
           {took !== undefined && isSearching && (
@@ -91,9 +96,7 @@ export default function Home() {
                 {total.toLocaleString()} Match{total !== 1 ? 'es' : ''}
               </span>
               <div className="w-1 h-1 bg-gray-200 rounded-full" />
-              <span className="text-[11px] font-bold text-blue-500 uppercase tracking-tighter">
-                Latency: {took}ms
-              </span>
+              <span className="text-[11px] font-bold text-blue-500 uppercase tracking-tighter">Latency: {took}ms</span>
             </div>
           )}
         </div>
@@ -105,13 +108,7 @@ export default function Home() {
           {isLoading ? (
             <Skeleton />
           ) : (
-            results.map((img) => (
-              <ImageCard 
-                key={img.id} 
-                image={img} 
-                onClick={() => setSelected(img)} 
-              />
-            ))
+            results.map((img) => <ImageCard key={img.id} image={img} onClick={() => setSelected(img)} />)
           )}
         </div>
 
@@ -120,7 +117,9 @@ export default function Home() {
           <div className="text-center py-32 space-y-4 animate-fade-in">
             <div className="text-5xl">🔭</div>
             <p className="text-gray-400 font-medium">We couldn't find anything matching your intent.</p>
-            <button onClick={() => setQuery('')} className="text-sm text-blue-500 font-bold hover:underline">Clear search</button>
+            <button onClick={() => setQuery('')} className="text-sm text-blue-500 font-bold hover:underline">
+              Clear search
+            </button>
           </div>
         )}
 
@@ -129,13 +128,7 @@ export default function Home() {
       </main>
 
       {/* Detail Modal */}
-      {selected && (
-        <ImageModal 
-          image={selected} 
-          score={selected.score} 
-          onClose={() => setSelected(null)} 
-        />
-      )}
+      {selected && <ImageModal image={selected} score={selected.score} onClose={() => setSelected(null)} />}
 
       <Stats />
     </div>

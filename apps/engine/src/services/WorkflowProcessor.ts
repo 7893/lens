@@ -8,7 +8,10 @@ import { buildEmbeddingText } from '../utils/embedding';
  * Keeps individual steps clean and reusable.
  */
 export class WorkflowProcessor {
-  constructor(private env: ProcessorBindings, private logger: Logger) {}
+  constructor(
+    private env: ProcessorBindings,
+    private logger: Logger,
+  ) {}
 
   /**
    * Downloads original and optimized versions of the image to R2.
@@ -16,7 +19,7 @@ export class WorkflowProcessor {
   async downloadAndStore(photoId: string, downloadUrl: string, displayUrl?: string, meta?: UnsplashPhoto) {
     // 1. Store Raw high-res
     await streamToR2(downloadUrl, `raw/${photoId}.jpg`, this.env.R2, this.logger);
-    
+
     // 2. Store optimized display version
     if (displayUrl) {
       const displayResp = await fetch(displayUrl);
@@ -69,7 +72,7 @@ export class WorkflowProcessor {
         ai_model=excluded.ai_model, 
         ai_quality_score=excluded.ai_quality_score, 
         entities_json=excluded.entities_json, 
-        vectorize_synced=0`
+        vectorize_synced=0`,
     )
       .bind(
         photoId,
@@ -85,7 +88,7 @@ export class WorkflowProcessor {
         'llama-4-scout',
         analysis.quality,
         JSON.stringify(analysis.entities),
-        now
+        now,
       )
       .run();
   }
@@ -101,10 +104,8 @@ export class WorkflowProcessor {
         metadata: { url: `display/${photoId}.jpg`, caption: caption || '' },
       },
     ]);
-    
+
     // Mark as synced in D1
-    await this.env.DB.prepare('UPDATE images SET vectorize_synced = 1 WHERE id = ?')
-      .bind(photoId)
-      .run();
+    await this.env.DB.prepare('UPDATE images SET vectorize_synced = 1 WHERE id = ?').bind(photoId).run();
   }
 }

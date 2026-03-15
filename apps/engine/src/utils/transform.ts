@@ -39,7 +39,7 @@ export function toImageDetail(img: DBImage): ImageDetail {
   return {
     id: img.id,
     urls: {
-      raw: `/image/raw/${img.id}.jpg`,
+      raw: `/image/display/${img.id}.jpg`,
       display: `/image/display/${img.id}.jpg`,
     },
     width: img.width,
@@ -56,7 +56,7 @@ export function toImageDetail(img: DBImage): ImageDetail {
           Object.entries(meta.alternative_slugs as Record<string, string>).map(([lang, slug]) => [
             lang,
             slug.split('-').slice(0, -1).join(' '),
-          ])
+          ]),
         )
       : null,
     sponsorship: sponsor

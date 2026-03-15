@@ -5,32 +5,46 @@ on:
     branches: [main]
 
 jobs:
-  deploy:
+  quality:
     runs-on: ubuntu-latest
+    name: Quality Gate
     steps:
       - uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: 'npm'
+      - run: npm ci --legacy-peer-deps
+      - run: npm run build --workspace=@lens/shared
+      - run: npm run lint
+      - run: npm run test
+      - run: npm run typecheck
 
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build Frontend (Client)
-        run: npm run build --workspace=@lens/client
-
-      - name: Sync Assets to Engine
-        run: |
+  deploy:
+    needs: quality
+    runs-on: ubuntu-latest
+    name: Deploy to Cloudflare
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: 'npm'
+      - run: npm ci --legacy-peer-deps
+      - run: npm run build --workspace=@lens/shared
+      - run: npm run build --workspace=@lens/client
+      - run: |
           rm -rf apps/engine/public/*
           cp -r apps/client/dist/* apps/engine/public/
 
-      - name: Deploy Engine (Full Stack Worker)
+      - name: Deploy Lens Worker
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: 'apps/engine'
           command: deploy
+          secrets: |
+            UNSPLASH_API_KEY
+        env:
+          UNSPLASH_API_KEY: ${{ secrets.UNSPLASH_API_KEY }}
