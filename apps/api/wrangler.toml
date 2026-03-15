@@ -20,7 +20,7 @@ database_id = "af9a1e43-7c7b-47da-add7-ed16d6de5ee5"
 binding = "VECTORIZE"
 index_name = "lens-vectorize"
 
-# Workers AI (Embedding)
+# Workers AI
 [ai]
 binding = "AI"
 gateway = "lens-gateway"
@@ -45,3 +45,25 @@ type = "ratelimit"
 name = "RATE_LIMITER"
 namespace_id = "1001"
 simple = { limit = 10, period = 60 }
+
+# Workflow (Ingestion Orchestration)
+[[workflows]]
+binding = "PHOTO_WORKFLOW"
+name = "lens-workflow"
+class_name = "LensIngestWorkflow"
+
+# Queue Producer
+[[queues.producers]]
+binding = "PHOTO_QUEUE"
+queue = "lens-queue"
+
+# Queue Consumer
+[[queues.consumers]]
+queue = "lens-queue"
+max_batch_size = 5
+max_batch_timeout = 30
+max_concurrency = 5
+
+# Cron Trigger
+[triggers]
+crons = ["0 * * * *"]

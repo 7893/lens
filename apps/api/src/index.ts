@@ -1,10 +1,14 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import { ApiBindings } from '@lens/shared';
+import { ApiBindings, IngestionTask } from '@lens/shared';
 import search from './routes/search';
 import images from './routes/images';
 import stats from './routes/stats';
 import suggest from './routes/suggest';
+import { handleScheduled } from './handlers/scheduled';
+import { handleQueue } from './handlers/queue';
+
+export { LensIngestWorkflow } from './handlers/workflow';
 
 const app = new Hono<{ Bindings: ApiBindings }>();
 
@@ -21,4 +25,14 @@ app.route('/api/images', images);
 app.route('/api/suggest', suggest);
 app.route('/image', images);
 
-export default app;
+export default {
+  fetch: app.fetch,
+
+  async scheduled(_event: ScheduledEvent, env: ApiBindings, _ctx: ExecutionContext): Promise<void> {
+    await handleScheduled(env);
+  },
+
+  async queue(batch: MessageBatch<IngestionTask>, env: ApiBindings): Promise<void> {
+    await handleQueue(batch, env);
+  },
+};
