@@ -13,12 +13,12 @@
   },
   "scripts": {
     "setup:infra": "npm run setup:local-db",
-    "setup:local-db": "npm run setup:local-db --workspace=apps/api && npm run setup:local-db --workspace=apps/processor",
-    "dev:backend": "npm run dev --workspace=apps/api & npm run dev --workspace=apps/processor",
+    "setup:local-db": "npm run setup:local-db --workspace=@lens/engine",
+    "dev:backend": "npm run dev --workspace=@lens/engine",
     "test": "vitest run",
     "build": "npm run build --workspaces",
     "lint": "eslint . && prettier --check .",
-    "typecheck": "tsc --noEmit -p apps/api/tsconfig.json"
+    "typecheck": "npm run typecheck --workspaces"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20241022.0",
