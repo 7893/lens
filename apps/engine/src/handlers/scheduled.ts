@@ -38,16 +38,21 @@ export async function handleScheduled(env: ProcessorBindings) {
   try {
     const ingestion = new IngestionService(env, logger);
     const count = await ingestion.run(lastSeenId, backfillPage, settings);
-    logger.metric('cron_ingested', [count]);
+    logger.metric('cron_ingested', [Date.now() - trace.startTime, count]);
   } catch (error) {
+    logger.metric('cron_error', [], ['ingestion', String(error).slice(0, 80)]);
     logger.error('Ingestion Pipeline Failure', error);
   }
 
   // --- TASK B: Evolution Pipeline ---
   try {
     const evolution = new EvolutionService(env, logger);
-    await evolution.pulse(settings);
+    const evolved = await evolution.pulse(settings);
+    if (evolved > 0) {
+      logger.metric('cron_evolution_dispatched', [evolved]);
+    }
   } catch (error) {
+    logger.metric('cron_error', [], ['evolution', String(error).slice(0, 80)]);
     logger.error('Evolution Pipeline Failure', error);
   }
 

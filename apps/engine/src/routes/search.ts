@@ -44,9 +44,10 @@ search.get('/', async (c) => {
     c.executionCtx.waitUntil(cache.put(cacheKey, response.clone()));
     c.executionCtx.waitUntil(recordSuggestion(c.env.SETTINGS, q));
 
-    logger.info('Search Success', { took: result.took, total: result.total });
+    logger.metric('search_complete', [result.took, result.total], [q.slice(0, 50)]);
     return response;
   } catch (err) {
+    logger.metric('search_error', [], [String(err).slice(0, 100)]);
     logger.error('Fatal Search Failure', err);
     return c.json({ error: 'Internal Server Error' }, 500);
   }
