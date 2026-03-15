@@ -67,6 +67,70 @@ export interface ImageResult {
   entities?: string[];
 }
 
+export interface ImageDetail {
+  id: string;
+  urls: { raw: string; display: string };
+  width: number;
+  height: number;
+  color: string | null;
+  blurHash: string | null;
+  description: string | null;
+  altDescription: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+  promotedAt: string | null;
+  alternativeTitles: Record<string, string> | null;
+  sponsorship: {
+    name: string;
+    tagline: string;
+    url: string;
+    logo: string | null;
+    profile: string | null;
+  } | null;
+  photographer: {
+    name: string;
+    username: string;
+    bio: string | null;
+    location: string | null;
+    profile: string | null;
+    profileImage: string | null;
+    instagram: string | null;
+    twitter: string | null;
+    portfolio: string | null;
+    forHire: boolean;
+    totalPhotos: number | null;
+    totalLikes: number | null;
+    totalCollections: number | null;
+    totalPromotedPhotos: number | null;
+  };
+  exif: {
+    make: string | null;
+    model: string | null;
+    camera: string | null;
+    aperture: string | null;
+    exposure: string | null;
+    focalLength: string | null;
+    iso: number | null;
+  } | null;
+  location: {
+    name: string | null;
+    city: string | null;
+    country: string | null;
+    latitude: number | null;
+    longitude: number | null;
+  } | null;
+  topics: string[];
+  stats: { views: number | null; downloads: number | null; likes: number | null };
+  ai: {
+    caption: string | null;
+    tags: string[];
+    model: string | null;
+    qualityScore: number | null;
+    entities: string[];
+  };
+  source: string | null;
+}
+
 export interface SearchResponse {
   results: ImageResult[];
   total: number;

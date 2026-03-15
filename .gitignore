@@ -24,8 +24,9 @@ terraform/*.tfstate
 terraform/*.tfstate.*
 terraform/*.tfvars
 
-# API static assets (built from web)
-apps/api/public/
+# Engine static assets (built from client)
+apps/engine/public/
+apps/client/dist/
 talk
 rebuild.log
 run_rebuild.sh

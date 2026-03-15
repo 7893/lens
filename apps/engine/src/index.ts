@@ -23,6 +23,8 @@ app.route('/api/search', search);
 app.route('/api/stats', stats);
 app.route('/api/images', images);
 app.route('/api/suggest', suggest);
+
+// Direct Image Alias
 app.route('/image', images);
 
 export default {
