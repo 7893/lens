@@ -106,7 +106,7 @@ Evolution 采用生产者-消费者模式，实现高吞吐量的批量处理：
          │  1. Query image IDs      │                          │
          │  2. Batch per 100        │                          │
          │                          │                          │
-         │ ────sendBatch──────────▶ │                          │
+         │ ────── sendBatch ──────▶ │                          │
          │                          │                          │
          │                          │ ┌─ Consumer 1 ─▶ WF ─────┤
          │                          │ ├─ Consumer 2 ─▶ WF ─────┤
