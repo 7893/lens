@@ -98,23 +98,23 @@ Evolution 采用生产者-消费者模式，实现高吞吐量的批量处理：
 ### 6.1 架构设计
 
 ```
-┌─────────────────┐        ┌─────────────────┐        ┌─────────────────┐
-│      Cron       │        │      Queue      │        │    Workflow     │
-│   (Producer)    │        │                 │        │   (Consumer)    │
-└────────┬────────┘        └────────┬────────┘        └────────┬────────┘
-         │                          │                          │
-         │  1. Query image IDs      │                          │
-         │  2. Batch per 100        │                          │
-         │                          │                          │
-         │ ────── sendBatch ──────▶ │                          │
-         │                          │                          │
-         │                          │ ┌─ Consumer 1 ─▶ WF ─────┤
-         │                          │ ├─ Consumer 2 ─▶ WF ─────┤
-         │                          │ ├─ Consumer 3 ─▶ WF ─────┤
-         │                          │ ├─ Consumer 4 ─▶ WF ─────┤
-         │                          │ └─ Consumer 5 ─▶ WF ─────┤
-         │                          │    (5 x 5 = 25 tasks)    │
-         ▼                          ▼                          ▼
++-----------------+        +-----------------+        +-----------------+
+|      Cron       |        |      Queue      |        |    Workflow     |
+|   (Producer)    |        |                 |        |   (Consumer)    |
++--------+--------+        +--------+--------+        +--------+--------+
+         |                          |                          |
+         |  1. Query image IDs      |                          |
+         |  2. Batch per 100        |                          |
+         |                          |                          |
+         | ------- sendBatch ------>|                          |
+         |                          |                          |
+         |                          | +-- Consumer 1 --> WF ---+
+         |                          | +-- Consumer 2 --> WF ---+
+         |                          | +-- Consumer 3 --> WF ---+
+         |                          | +-- Consumer 4 --> WF ---+
+         |                          | +-- Consumer 5 --> WF ---+
+         |                          |    (5 x 5 = 25 tasks)    |
+         v                          v                          v
 ```
 
 ### 6.2 并发配置 (wrangler.toml)
