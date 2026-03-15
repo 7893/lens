@@ -1,10 +1,15 @@
 import { WorkflowEntrypoint, WorkflowStep, WorkflowEvent } from 'cloudflare:workers';
-import { IngestionTask, ProcessorBindings } from '@lens/shared';
-import { streamToR2 } from '../services/downloader';
-import { analyzeImage, generateEmbedding } from '../services/ai';
-import { buildEmbeddingText } from '../utils/embedding';
-import { Logger, createTrace } from '@lens/shared';
+import { IngestionTask, ProcessorBindings, createTrace, Logger } from '@lens/shared';
+import { WorkflowProcessor } from '../services/WorkflowProcessor';
 
+const RETRY_CONFIG = {
+  retries: { limit: 10, delay: '30 seconds' as const, backoff: 'constant' as const },
+};
+
+/**
+ * LENS Core Workflow Engine
+ * Orchestrates the full lifecycle of an image (Ingestion & Evolution).
+ */
 export class LensIngestWorkflow extends WorkflowEntrypoint<ProcessorBindings, IngestionTask> {
   async run(event: WorkflowEvent<IngestionTask>, step: WorkflowStep) {
     const task = event.payload;
@@ -12,150 +17,87 @@ export class LensIngestWorkflow extends WorkflowEntrypoint<ProcessorBindings, In
 
     const trace = createTrace(`WF-${photoId}`);
     const logger = new Logger(trace, this.env.TELEMETRY);
+    const processor = new WorkflowProcessor(this.env, logger);
 
     try {
       // --- BRANCH A: NEW IMAGE INGESTION ---
       if (task.type === 'process-photo') {
-        const { displayUrl, meta } = task;
+        const { downloadUrl, displayUrl, meta } = task;
 
+        // 1. Existence Check
         const exists = await step.do('check-exists', async () => {
           const row = await this.env.DB.prepare('SELECT id FROM images WHERE id = ?').bind(photoId).first();
           return !!row;
         });
         if (exists) return;
 
-        const retryConfig = { retries: { limit: 10, delay: '30 seconds' as const, backoff: 'constant' as const } };
-
-        await step.do('download-and-store', retryConfig, async () => {
-          await streamToR2(task.downloadUrl, `raw/${photoId}.jpg`, this.env.R2, logger);
-          if (displayUrl) {
-            const displayResp = await fetch(displayUrl);
-            const displayBuffer = await displayResp.arrayBuffer();
-            await this.env.R2.put(`display/${photoId}.jpg`, displayBuffer, {
-              httpMetadata: { contentType: 'image/jpeg' },
-            });
-          }
-          const dlUrl = meta?.links?.download_location;
-          if (dlUrl) await fetch(`${dlUrl}?client_id=${this.env.UNSPLASH_API_KEY}`);
-          return { success: true };
+        // 2. Resource Storage (R2)
+        await step.do('download-and-store', RETRY_CONFIG, async () => {
+          await processor.downloadAndStore(photoId, downloadUrl, displayUrl, meta);
         });
 
-        const analysis = await step.do('analyze-vision-contract', retryConfig, async () => {
-          const img = await this.env.R2.get(`display/${photoId}.jpg`);
-          return await analyzeImage(this.env.AI, img!.body, logger);
+        // 3. AI Vision Analysis (Llama 4)
+        const analysis = await step.do('analyze-vision-contract', RETRY_CONFIG, async () => {
+          return await processor.analyzeVision(photoId);
         });
 
-        const vector = await step.do('generate-embedding', retryConfig, async () => {
-          return await generateEmbedding(this.env.AI, buildEmbeddingText(analysis.caption, analysis.tags, meta));
+        // 4. Vector Generation (BGE-M3)
+        const vector = await step.do('generate-embedding', RETRY_CONFIG, async () => {
+          return await processor.generateVector(analysis, meta);
         });
 
-        await step.do('persist-d1-flagship', retryConfig, async () => {
-          await this.env.DB.prepare(
-            `INSERT INTO images (id, width, height, color, raw_key, display_key, meta_json, ai_tags, ai_caption, ai_embedding, ai_model, ai_quality_score, entities_json, created_at, vectorize_synced)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
-           ON CONFLICT(id) DO UPDATE SET ai_caption=excluded.ai_caption, ai_embedding=excluded.ai_embedding, ai_model=excluded.ai_model, ai_quality_score=excluded.ai_quality_score, entities_json=excluded.entities_json, created_at=excluded.created_at, vectorize_synced=0`,
-          )
-            .bind(
-              photoId,
-              meta?.width ?? 0,
-              meta?.height ?? 0,
-              meta?.color ?? null,
-              `raw/${photoId}.jpg`,
-              `display/${photoId}.jpg`,
-              JSON.stringify(meta ?? {}),
-              JSON.stringify(analysis.tags),
-              analysis.caption,
-              JSON.stringify(vector),
-              'llama-4-scout',
-              analysis.quality,
-              JSON.stringify(analysis.entities),
-              Date.now(),
-            )
-            .run();
+        // 5. Database Persistance (D1)
+        await step.do('persist-d1-flagship', RETRY_CONFIG, async () => {
+          await processor.persistToD1(photoId, analysis, vector, meta);
         });
 
-        await step.do('sync-vectorize', retryConfig, async () => {
-          await this.env.VECTORIZE.upsert([
-            {
-              id: photoId,
-              values: vector,
-              metadata: { url: `display/${photoId}.jpg`, caption: analysis.caption || '' },
-            },
-          ]);
-          await this.env.DB.prepare('UPDATE images SET vectorize_synced = 1 WHERE id = ?').bind(photoId).run();
+        // 6. Index Synchronization (Vectorize)
+        await step.do('sync-vectorize', RETRY_CONFIG, async () => {
+          await processor.syncToVectorize(photoId, vector, analysis.caption);
         });
 
+        // 7. Housekeeping
         await step.do('cleanup-raw', async () => {
           await this.env.R2.delete(`raw/${photoId}.jpg`);
         });
 
-        const took = Date.now() - trace.startTime;
-        logger.info(`Ingested image: ${photoId}`, { took });
-        logger.metric('ingest_complete', [took]);
+        logger.info(`Successfully ingested image: ${photoId}`);
       }
 
       // --- BRANCH B: EXISTING IMAGE REFRESH (EVOLUTION) ---
       else if (task.type === 'refresh-photo') {
-        const retryConfig = { retries: { limit: 5, delay: '1 minute' as const, backoff: 'exponential' as const } };
-
-        const analysis = await step.do('evolution-analyze', retryConfig, async () => {
-          const img = await this.env.R2.get(`display/${photoId}.jpg`);
-          if (!img) throw new Error('Display asset missing in R2 for refresh');
-          return await analyzeImage(this.env.AI, img.body, logger);
+        // 1. AI Vision Re-Analysis
+        const analysis = await step.do('evolution-analyze', RETRY_CONFIG, async () => {
+          return await processor.analyzeVision(photoId);
         });
 
+        // 2. Metadata Context Hydration
         const dbRecord = await step.do('get-meta', async () => {
           return await this.env.DB.prepare('SELECT meta_json FROM images WHERE id = ?')
             .bind(photoId)
             .first<{ meta_json: string }>();
         });
+        const meta = JSON.parse(dbRecord?.meta_json || '{}');
 
-        const vector = await step.do('evolution-embed', retryConfig, async () => {
-          const meta = JSON.parse(dbRecord?.meta_json || '{}');
-          return await generateEmbedding(this.env.AI, buildEmbeddingText(analysis.caption, analysis.tags, meta));
+        // 3. New Vector Generation
+        const vector = await step.do('evolution-embed', RETRY_CONFIG, async () => {
+          return await processor.generateVector(analysis, meta);
         });
 
-        await step.do('evolution-persist', retryConfig, async () => {
-          await this.env.DB.prepare(
-            `UPDATE images SET 
-            ai_caption = ?, 
-            ai_tags = ?, 
-            ai_embedding = ?, 
-            ai_model = ?, 
-            ai_quality_score = ?, 
-            entities_json = ?,
-            vectorize_synced = 0
-           WHERE id = ?`,
-          )
-            .bind(
-              analysis.caption,
-              JSON.stringify(analysis.tags),
-              JSON.stringify(vector),
-              'llama-4-scout',
-              analysis.quality,
-              JSON.stringify(analysis.entities),
-              photoId,
-            )
-            .run();
+        // 4. Update Database (Mark for re-sync)
+        await step.do('evolution-persist', RETRY_CONFIG, async () => {
+          await processor.persistToD1(photoId, analysis, vector, meta);
         });
 
-        await step.do('evolution-sync-vectorize', retryConfig, async () => {
-          await this.env.VECTORIZE.upsert([
-            {
-              id: photoId,
-              values: vector,
-              metadata: { url: `display/${photoId}.jpg`, caption: analysis.caption || '' },
-            },
-          ]);
-          await this.env.DB.prepare('UPDATE images SET vectorize_synced = 1 WHERE id = ?').bind(photoId).run();
+        // 5. Update Search Index
+        await step.do('evolution-sync-vectorize', RETRY_CONFIG, async () => {
+          await processor.syncToVectorize(photoId, vector, analysis.caption);
         });
 
-        logger.info(`✨ Successfully evolved image to Llama 4: ${photoId}`);
-        logger.metric('evolution_complete', [Date.now() - trace.startTime]);
+        logger.info(`✨ Successfully evolved image: ${photoId}`);
       }
     } catch (err) {
-      logger.error(`Workflow failed: ${photoId}`, err);
-      logger.metric('workflow_error');
+      logger.error(`Workflow Failure: ${photoId}`, err);
       throw err;
     }
   }
