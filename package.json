@@ -21,14 +21,14 @@
     "typecheck": "npm run typecheck --workspaces"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20241022.0",
-    "@eslint/js": "^9.39.2",
-    "eslint": "^9.39.2",
+    "@cloudflare/workers-types": "^4.20260313.1",
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.0.3",
     "eslint-config-prettier": "^10.1.8",
     "prettier": "^3.8.1",
-    "typescript": "^5.6.3",
-    "typescript-eslint": "^8.56.0",
-    "vitest": "^4.0.18",
-    "wrangler": "^4.68.1"
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.57.0",
+    "vitest": "^4.1.0",
+    "wrangler": "^4.73.0"
   }
 }
