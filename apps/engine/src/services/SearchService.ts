@@ -26,7 +26,6 @@ export class SearchService {
     ]);
 
     // 2. Hybrid Ranking & Deduplication
-    // We prioritize FTS5 (Keyword) hits, then supplement with Vector results.
     const seenIds = new Set<string>();
     const hybridIds: { id: string; source: 'fts' | 'vector'; score: number }[] = [];
 
@@ -50,19 +49,22 @@ export class SearchService {
       return { results: [], total: 0, took: Date.now() - start };
     }
 
-    // 3. Hydrate Metadata from D1
-    const ids = hybridIds.slice(0, 50).map((h) => h.id);
+    // 3. Dynamic Cutoff (方案 D)
+    const cutoffIdx = this.calculateDynamicCutoff(hybridIds);
+    const selectedIds = hybridIds.slice(0, cutoffIdx);
+
+    // 4. Hydrate Metadata from D1
+    const ids = selectedIds.map((h) => h.id);
     const placeholders = ids.map(() => '?').join(',');
     const { results: dbRows } = await this.env.DB.prepare(`SELECT * FROM images WHERE id IN (${placeholders})`)
       .bind(...ids)
       .all<DBImage>();
 
-    // 4. Final Result Mapping
-    // Keep the order of hybridIds (Ranked by our logic)
+    // 5. Final Result Mapping (preserve order)
     const finalResults = ids
       .map((id) => {
         const row = dbRows.find((r) => r.id === id);
-        const hybridInfo = hybridIds.find((h) => h.id === id);
+        const hybridInfo = selectedIds.find((h) => h.id === id);
         if (!row || !hybridInfo) return null;
         return toImageResult(row, hybridInfo.score);
       })
@@ -76,6 +78,41 @@ export class SearchService {
   }
 
   /**
+   * Dynamic cutoff based on score distribution.
+   * Combines relative threshold, absolute floor, and cliff detection.
+   */
+  private calculateDynamicCutoff(results: { score: number }[]): number {
+    const MAX_RESULTS = 100;
+    const ABSOLUTE_FLOOR = 0.4;
+    const RELATIVE_RATIO = 0.75;
+    const CLIFF_DROP = 0.06;
+    const CLIFF_FLOOR = 0.45;
+
+    if (results.length === 0) return 0;
+
+    // Calculate relative threshold from vector scores only (exclude FTS score=1.0)
+    const vectorScores = results.filter((r) => r.score < 0.99).map((r) => r.score);
+    const maxVector = vectorScores.length > 0 ? Math.max(...vectorScores) : 0.5;
+    const relativeThreshold = maxVector * RELATIVE_RATIO;
+
+    for (let i = 1; i < results.length && i < MAX_RESULTS; i++) {
+      const score = results[i].score;
+      const prevScore = results[i - 1].score;
+      const drop = prevScore - score;
+
+      // Keep all FTS results (score = 1.0)
+      if (score >= 0.99) continue;
+
+      // Cutoff conditions
+      if (score < ABSOLUTE_FLOOR) return i;
+      if (score < relativeThreshold) return i;
+      if (drop > CLIFF_DROP && score < CLIFF_FLOOR) return i;
+    }
+
+    return Math.min(results.length, MAX_RESULTS);
+  }
+
+  /**
    * Executes Keyword Search using SQLite FTS5.
    * Best for: Brands, Cities, Specific Objects, Filenames.
    */
@@ -83,7 +120,7 @@ export class SearchService {
     try {
       // Use "MATCH" for FTS5 full-text indexing
       const { results } = await this.env.DB.prepare(
-        'SELECT id FROM images_fts WHERE images_fts MATCH ? ORDER BY rank LIMIT 40',
+        'SELECT id FROM images_fts WHERE images_fts MATCH ? ORDER BY rank LIMIT 60',
       )
         .bind(query)
         .all<{ id: string }>();
@@ -130,7 +167,7 @@ export class SearchService {
     const vector = embeddingResp.data[0];
 
     // 3. Query Vectorize
-    const vecResults = await this.env.VECTORIZE.query(vector, { topK: 60 });
+    const vecResults = await this.env.VECTORIZE.query(vector, { topK: 100 });
     this.logger.info(`Vectorized Recall: ${vecResults.matches.length}`);
     return vecResults.matches;
   }
