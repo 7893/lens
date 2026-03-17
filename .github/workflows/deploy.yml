@@ -7,6 +7,8 @@ on:
 jobs:
   quality:
     runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     name: Quality Gate
     steps:
       - uses: actions/checkout@v4
@@ -26,6 +28,8 @@ jobs:
   deploy:
     needs: quality
     runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     name: Deploy to Cloudflare
     steps:
       - uses: actions/checkout@v4
