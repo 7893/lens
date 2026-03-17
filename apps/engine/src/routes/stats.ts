@@ -18,11 +18,9 @@ stats.get('/', async (c) => {
 
   const row = results[0] as { total: number; evolved: number; last_24h: number };
   const data = {
-    images: {
-      total: row.total,
-      evolved: row.evolved,
-      last_24h: row.last_24h,
-    },
+    total: row.total,
+    recent: row.last_24h,
+    evolved: row.evolved,
   };
 
   c.executionCtx.waitUntil(c.env.SETTINGS.put(cacheKey, JSON.stringify(data), { expirationTtl: 60 }));
