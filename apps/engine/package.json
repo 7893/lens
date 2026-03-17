@@ -12,7 +12,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@lens/shared": "^1.0.0",
+    "@lens/shared": "workspace:*",
     "hono": "^4.12.7"
   },
   "devDependencies": {
