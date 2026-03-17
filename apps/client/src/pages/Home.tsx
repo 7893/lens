@@ -38,9 +38,8 @@ function Stats() {
   if (!data) return null;
   return (
     <div className="text-center py-12">
-      <p className="text-[11px] font-bold text-gray-300 uppercase tracking-widest">
-        {data.total.toLocaleString()} Indexed Images
-        {data.recent > 0 && <span className="text-blue-400 ml-2">· {data.recent} New Today</span>}
+      <p className="text-[11px] font-medium text-gray-400 tracking-wide">
+        {data.total.toLocaleString()} images{data.recent > 0 && ` · ${data.recent} added recently`}
       </p>
     </div>
   );
