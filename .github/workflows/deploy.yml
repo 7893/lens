@@ -20,7 +20,7 @@ jobs:
           node-version: 24
           cache: 'pnpm'
       - run: pnpm install --no-frozen-lockfile
-      - run: pnpm run build --filter=@lens/shared
+      - run: pnpm --filter=@lens/shared run build
       - run: pnpm run lint
       - run: pnpm run test
       - run: pnpm run typecheck
@@ -41,8 +41,8 @@ jobs:
           node-version: 24
           cache: 'pnpm'
       - run: pnpm install --no-frozen-lockfile
-      - run: pnpm run build --filter=@lens/shared
-      - run: pnpm run build --filter=@lens/client
+      - run: pnpm --filter=@lens/shared run build
+      - run: pnpm --filter=@lens/client run build
       - run: |
           mkdir -p apps/engine/public
           cp -r apps/client/dist/* apps/engine/public/
