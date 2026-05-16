@@ -17,7 +17,7 @@ jobs:
         with:
           node-version: 22
           cache: 'pnpm'
-      - run: pnpm install --no-frozen-lockfile
+      - run: pnpm install --ignore-scripts --no-frozen-lockfile
       - run: pnpm --filter=@lens/shared run build
       - run: pnpm run lint
       - run: pnpm run test
@@ -36,7 +36,7 @@ jobs:
         with:
           node-version: 22
           cache: 'pnpm'
-      - run: pnpm install --no-frozen-lockfile
+      - run: pnpm install --ignore-scripts --no-frozen-lockfile
       - run: pnpm --filter=@lens/shared run build
       - run: pnpm --filter=@lens/client run build
       - run: |
