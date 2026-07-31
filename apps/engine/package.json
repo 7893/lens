@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "build": "echo 'No build step'",
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "setup:local-db": "yes | wrangler d1 migrations apply lens-d1 --local",
