@@ -5,6 +5,7 @@ export async function analyzeImage(ai: Ai, imageStream: ReadableStream, logger: 
   const imageData = new Uint8Array(await new Response(imageStream).arrayBuffer());
 
   const response = (await ai.run(
+    // @ts-ignore - model not yet in types
     AI_MODELS.TEXT, // Llama 4 Scout
     {
       image: [...imageData],
