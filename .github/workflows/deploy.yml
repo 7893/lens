@@ -50,7 +50,3 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: 'apps/engine'
           command: deploy
-          secrets: |
-            UNSPLASH_API_KEY
-        env:
-          UNSPLASH_API_KEY: ${{ secrets.UNSPLASH_API_KEY }}
