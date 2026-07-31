@@ -1,10 +1,5 @@
 {
-  "onlyBuiltDependencies": [
-    "esbuild",
-    "sharp",
-    "workerd",
-    "@heroui/shared-utils"
-  ],
+  "onlyBuiltDependencies": ["esbuild", "sharp", "workerd", "@heroui/shared-utils"],
   "overrides": {
     "undici": ">=7.24.0",
     "flatted": ">=3.4.2",

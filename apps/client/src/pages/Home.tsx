@@ -94,9 +94,7 @@ export default function Home() {
         {isLoading ? (
           <SkeletonGrid />
         ) : (
-          results.map((img: ImageResult) => (
-            <ImageCard key={img.id} image={img} onClick={() => setSelected(img)} />
-          ))
+          results.map((img: ImageResult) => <ImageCard key={img.id} image={img} onClick={() => setSelected(img)} />)
         )}
       </div>
 
