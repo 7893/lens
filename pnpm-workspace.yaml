@@ -2,6 +2,7 @@ packages:
   - 'apps/*'
   - 'packages/*'
 allowBuilds:
-  esbuild: false
-  sharp: false
-  workerd: false
+  '@heroui/shared-utils': true
+  esbuild: true
+  sharp: true
+  workerd: true
