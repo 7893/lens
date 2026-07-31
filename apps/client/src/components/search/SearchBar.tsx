@@ -1,4 +1,4 @@
-import { Input, Listbox, ListboxItem } from '@heroui/react';
+import { ListBox, ListBoxItem } from '@heroui/react';
 import { Search, X, TrendingUp } from 'lucide-react';
 import React, { useState, useRef } from 'react';
 
@@ -39,59 +39,59 @@ export function SearchBar({ query, setQuery, suggestions, onSelectSuggestion }: 
 
   return (
     <div className="relative max-w-xl mx-auto">
-      <Input
-        type="text"
-        placeholder="Search for 'sad rainy day' or 'cyberpunk city'..."
-        value={query}
-        size="lg"
-        radius="full"
-        classNames={{
-          base: 'w-full',
-          inputWrapper: 'shadow-lg shadow-blue-500/10 border border-gray-100 bg-white hover:border-blue-200',
-          input: 'text-gray-700 placeholder:text-gray-400',
-        }}
-        startContent={<Search className="w-4 h-4 text-blue-500 shrink-0" />}
-        endContent={
-          query ? (
-            <button
-              onClick={() => { setQuery(''); setShowSuggestions(false); }}
-              className="p-1 rounded-full text-gray-300 hover:text-gray-500 hover:bg-gray-100 transition-all"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          ) : null
-        }
-        onChange={(e) => {
-          setQuery(e.target.value);
-          setShowSuggestions(true);
-          setHighlightIdx(-1);
-        }}
-        onFocus={() => setShowSuggestions(true)}
-        onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
-        onKeyDown={handleKeyDown}
-      />
+      {/* Custom input with icon — v3 Input is bare RAC input, use div wrapper */}
+      <div className="relative">
+        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-blue-500 pointer-events-none" />
+        <input
+          type="text"
+          placeholder="Search for 'sad rainy day' or 'cyberpunk city'..."
+          value={query}
+          className="w-full pl-11 pr-10 py-3 rounded-full border border-gray-200 shadow-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 outline-none transition-all text-gray-700 placeholder-gray-400 bg-white"
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setShowSuggestions(true);
+            setHighlightIdx(-1);
+          }}
+          onFocus={() => setShowSuggestions(true)}
+          onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+          onKeyDown={handleKeyDown}
+        />
+        {query && (
+          <button
+            onClick={() => { setQuery(''); setShowSuggestions(false); }}
+            className="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-full text-gray-300 hover:text-gray-500 hover:bg-gray-100 transition-all"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        )}
+      </div>
 
       {showSuggestions && suggestions.length > 0 && (
         <div
           ref={suggestRef}
           className="absolute z-40 left-0 right-0 mt-2 bg-white/95 backdrop-blur-xl rounded-2xl shadow-2xl border border-gray-100 overflow-hidden animate-fade-in"
         >
-          <Listbox
-            aria-label="Search suggestions"
-            onAction={(key) => handleSelect(String(key))}
-            classNames={{ base: 'p-1', list: 'gap-0' }}
-          >
+          <ListBox aria-label="Search suggestions" className="p-1">
             {suggestions.map((s, i) => (
-              <ListboxItem
+              <ListBoxItem
                 key={s}
-                startContent={<TrendingUp className="w-3.5 h-3.5 text-blue-400" />}
-                className={`rounded-xl px-4 py-3 text-sm text-gray-600 ${i === highlightIdx ? 'bg-blue-50 text-blue-700' : ''}`}
+                textValue={s}
+                className={`rounded-xl px-4 py-3 text-sm cursor-pointer outline-none transition-colors ${
+                  i === highlightIdx ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'
+                }`}
                 onMouseEnter={() => setHighlightIdx(i)}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  handleSelect(s);
+                }}
               >
-                {s}
-              </ListboxItem>
+                <div className="flex items-center gap-3">
+                  <TrendingUp className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                  <span className="font-medium">{s}</span>
+                </div>
+              </ListBoxItem>
             ))}
-          </Listbox>
+          </ListBox>
         </div>
       )}
     </div>

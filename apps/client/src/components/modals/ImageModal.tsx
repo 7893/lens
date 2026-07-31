@@ -1,8 +1,8 @@
 import {
-  Modal, ModalContent, ModalBody,
-  Button, Chip, Divider,
+  Modal, ModalBackdrop, ModalContainer, ModalDialog, ModalBody, ModalCloseTrigger,
+  Chip,
 } from '@heroui/react';
-import { Eye, Download, Heart, Sparkles, Aperture, Clock, ExternalLink, LucideIcon } from 'lucide-react';
+import { Eye, Download, Heart, Sparkles, Aperture, Clock, ExternalLink, LucideIcon, X } from 'lucide-react';
 import { ImageResult, ImageDetail } from '@lens/shared';
 import { useEffect } from 'react';
 import useSWR from 'swr';
@@ -26,40 +26,51 @@ export function ImageModal({ image, score, onClose }: { image: ImageResult; scor
   const { data: detail } = useSWR<ImageDetail>(`/api/images/${image.id}`, fetcher);
 
   useEffect(() => {
+    const handler = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    document.addEventListener('keydown', handler);
     document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = ''; };
-  }, []);
+    return () => {
+      document.removeEventListener('keydown', handler);
+      document.body.style.overflow = '';
+    };
+  }, [onClose]);
 
   return (
-    <Modal
-      isOpen
-      onClose={onClose}
-      size="5xl"
-      scrollBehavior="inside"
-      classNames={{
-        backdrop: 'bg-black/85 backdrop-blur-sm',
-        base: 'max-h-[92vh]',
-        wrapper: 'items-center',
-        closeButton: 'z-10 top-3 right-3 bg-black/40 hover:bg-black/60 text-white',
-      }}
-    >
-      <ModalContent>
-        {() => (
-          <ModalBody className="p-0 flex flex-col md:flex-row overflow-hidden rounded-3xl">
+    <Modal isOpen>
+      <ModalBackdrop
+        className="bg-black/85 backdrop-blur-sm"
+        onClick={onClose}
+      />
+      <ModalContainer className="flex items-center justify-center p-4">
+        <ModalDialog className="relative max-w-6xl w-full max-h-[92vh] flex flex-col md:flex-row bg-white rounded-3xl overflow-hidden shadow-2xl">
+          {/* Close button */}
+          <ModalCloseTrigger
+            className="absolute top-4 right-4 z-10"
+            onClick={onClose}
+          >
+            <button className="p-2 bg-black/40 hover:bg-black/60 rounded-full text-white transition-all backdrop-blur-md">
+              <X className="w-5 h-5" />
+            </button>
+          </ModalCloseTrigger>
+
+          <ModalBody className="flex flex-col md:flex-row w-full overflow-hidden p-0">
             {/* Image side */}
             <div
               className="md:w-[65%] flex items-center justify-center min-h-[300px] bg-neutral-900"
               style={{ backgroundColor: detail?.color || '#1a1a1a' }}
+              onClick={onClose}
             >
               <img
                 src={image.url}
                 alt={image.caption || ''}
                 className="max-w-full max-h-[85vh] object-contain"
+                onClick={(e) => e.stopPropagation()}
               />
             </div>
 
             {/* Info side */}
-            <div className="md:w-[35%] p-7 overflow-y-auto space-y-5 bg-white">
+            <div className="md:w-[35%] p-7 overflow-y-auto space-y-5 bg-white max-h-[92vh]">
+
               {/* Sponsorship */}
               {detail?.sponsorship && (
                 <div className="flex items-center gap-3 p-3.5 bg-amber-50 rounded-2xl border border-amber-100">
@@ -67,7 +78,7 @@ export function ImageModal({ image, score, onClose }: { image: ImageResult; scor
                     <img src={detail.sponsorship.logo} alt="" className="w-9 h-9 rounded-xl" />
                   )}
                   <div className="flex-1 min-w-0">
-                    <Chip size="sm" color="warning" variant="flat" className="mb-1 text-[10px]">Sponsored</Chip>
+                    <Chip size="sm" color="warning" variant="soft" className="mb-1 text-[10px]">Sponsored</Chip>
                     <a
                       href={detail.sponsorship.url || '#'}
                       target="_blank"
@@ -101,7 +112,7 @@ export function ImageModal({ image, score, onClose }: { image: ImageResult; scor
                     </a>
                     <p className="text-[11px] text-gray-400">{detail.photographer.location || 'Unknown'}</p>
                     {detail.photographer.forHire && (
-                      <Chip size="sm" color="success" variant="flat" className="mt-1 text-[10px]">
+                      <Chip size="sm" color="success" variant="soft" className="mt-1 text-[10px]">
                         Available for hire
                       </Chip>
                     )}
@@ -109,7 +120,7 @@ export function ImageModal({ image, score, onClose }: { image: ImageResult; scor
                 </div>
               )}
 
-              <Divider />
+              <hr className="border-gray-100" />
 
               {/* Description */}
               {detail?.description && (
@@ -123,7 +134,7 @@ export function ImageModal({ image, score, onClose }: { image: ImageResult; scor
                     <Sparkles className="w-4 h-4" /> Lens Intelligence
                   </div>
                   {detail?.ai?.qualityScore && (
-                    <Chip size="sm" color="default" variant="flat" className="text-[10px] text-blue-600">
+                    <Chip size="sm" variant="secondary" className="text-[10px] text-blue-600">
                       {detail.ai.qualityScore.toFixed(1)}/10
                     </Chip>
                   )}
@@ -134,7 +145,7 @@ export function ImageModal({ image, score, onClose }: { image: ImageResult; scor
                 {(detail?.ai?.tags || []).length > 0 && (
                   <div className="flex flex-wrap gap-1.5">
                     {(detail?.ai?.tags || []).map((t) => (
-                      <Chip key={t} size="sm" variant="flat" color="secondary" className="text-[10px]">
+                      <Chip key={t} size="sm" variant="secondary" className="text-[10px]">
                         #{t}
                       </Chip>
                     ))}
@@ -161,7 +172,7 @@ export function ImageModal({ image, score, onClose }: { image: ImageResult; scor
                 </div>
               )}
 
-              <Divider />
+              <hr className="border-gray-100" />
 
               {/* Stats */}
               <div className="space-y-1">
@@ -192,25 +203,19 @@ export function ImageModal({ image, score, onClose }: { image: ImageResult; scor
 
               {/* CTA */}
               {detail?.source && (
-                <Button
-                  as="a"
+                <a
                   href={detail.source}
                   target="_blank"
                   rel="noopener"
-                  color="default"
-                  variant="solid"
-                  radius="lg"
-                  fullWidth
-                  className="bg-gray-900 text-white font-bold text-xs"
-                  endContent={<ExternalLink className="w-4 h-4" />}
+                  className="flex items-center justify-center gap-2 py-3 w-full bg-gray-900 text-white font-bold text-xs rounded-2xl hover:bg-black transition-colors"
                 >
-                  View Original on Unsplash
-                </Button>
+                  <ExternalLink className="w-4 h-4" /> View Original on Unsplash
+                </a>
               )}
             </div>
           </ModalBody>
-        )}
-      </ModalContent>
+        </ModalDialog>
+      </ModalContainer>
     </Modal>
   );
 }
