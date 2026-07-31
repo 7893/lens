@@ -6,6 +6,7 @@
     "lib": ["ES2022"],
     "types": ["@cloudflare/workers-types"],
     "declaration": true,
+    "rootDir": "./src",
     "outDir": "./dist",
     "strict": true,
     "skipLibCheck": true,
