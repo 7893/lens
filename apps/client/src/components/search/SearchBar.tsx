@@ -58,7 +58,10 @@ export function SearchBar({ query, setQuery, suggestions, onSelectSuggestion }: 
         />
         {query && (
           <button
-            onClick={() => { setQuery(''); setShowSuggestions(false); }}
+            onClick={() => {
+              setQuery('');
+              setShowSuggestions(false);
+            }}
             className="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-full text-gray-300 hover:text-gray-500 hover:bg-gray-100 transition-all"
           >
             <X className="w-4 h-4" />

@@ -1,7 +1,4 @@
-import {
-  Modal, ModalBackdrop, ModalContainer, ModalDialog, ModalBody, ModalCloseTrigger,
-  Chip,
-} from '@heroui/react';
+import { Modal, ModalBackdrop, ModalContainer, ModalDialog, ModalBody, ModalCloseTrigger, Chip } from '@heroui/react';
 import { Eye, Download, Heart, Sparkles, Aperture, Clock, ExternalLink, LucideIcon, X } from 'lucide-react';
 import { ImageResult, ImageDetail } from '@lens/shared';
 import { useEffect } from 'react';
@@ -37,17 +34,11 @@ export function ImageModal({ image, score, onClose }: { image: ImageResult; scor
 
   return (
     <Modal isOpen>
-      <ModalBackdrop
-        className="bg-black/85 backdrop-blur-sm"
-        onClick={onClose}
-      />
+      <ModalBackdrop className="bg-black/85 backdrop-blur-sm" onClick={onClose} />
       <ModalContainer className="flex items-center justify-center p-4">
         <ModalDialog className="relative max-w-6xl w-full max-h-[92vh] flex flex-col md:flex-row bg-white rounded-3xl overflow-hidden shadow-2xl">
           {/* Close button */}
-          <ModalCloseTrigger
-            className="absolute top-4 right-4 z-10"
-            onClick={onClose}
-          >
+          <ModalCloseTrigger className="absolute top-4 right-4 z-10" onClick={onClose}>
             <button className="p-2 bg-black/40 hover:bg-black/60 rounded-full text-white transition-all backdrop-blur-md">
               <X className="w-5 h-5" />
             </button>
@@ -70,7 +61,6 @@ export function ImageModal({ image, score, onClose }: { image: ImageResult; scor
 
             {/* Info side */}
             <div className="md:w-[35%] p-7 overflow-y-auto space-y-5 bg-white max-h-[92vh]">
-
               {/* Sponsorship */}
               {detail?.sponsorship && (
                 <div className="flex items-center gap-3 p-3.5 bg-amber-50 rounded-2xl border border-amber-100">
@@ -78,7 +68,9 @@ export function ImageModal({ image, score, onClose }: { image: ImageResult; scor
                     <img src={detail.sponsorship.logo} alt="" className="w-9 h-9 rounded-xl" />
                   )}
                   <div className="flex-1 min-w-0">
-                    <Chip size="sm" color="warning" variant="soft" className="mb-1 text-[10px]">Sponsored</Chip>
+                    <Chip size="sm" color="warning" variant="soft" className="mb-1 text-[10px]">
+                      Sponsored
+                    </Chip>
                     <a
                       href={detail.sponsorship.url || '#'}
                       target="_blank"
@@ -139,9 +131,7 @@ export function ImageModal({ image, score, onClose }: { image: ImageResult; scor
                     </Chip>
                   )}
                 </div>
-                <p className="text-sm text-blue-900/80 leading-relaxed">
-                  {detail?.ai?.caption || image.caption}
-                </p>
+                <p className="text-sm text-blue-900/80 leading-relaxed">{detail?.ai?.caption || image.caption}</p>
                 {(detail?.ai?.tags || []).length > 0 && (
                   <div className="flex flex-wrap gap-1.5">
                     {(detail?.ai?.tags || []).map((t) => (
@@ -164,7 +154,8 @@ export function ImageModal({ image, score, onClose }: { image: ImageResult; scor
                     {detail.exif.aperture && <span>{detail.exif.aperture}</span>}
                     {detail.exif.exposure && (
                       <span className="flex items-center gap-1">
-                        <Clock className="w-3 h-3" />{detail.exif.exposure}
+                        <Clock className="w-3 h-3" />
+                        {detail.exif.exposure}
                       </span>
                     )}
                     {detail.exif.iso && <span>ISO {detail.exif.iso}</span>}
