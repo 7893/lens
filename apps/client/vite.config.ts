@@ -8,11 +8,12 @@ export default defineConfig({
     alias: {
       '@': path.resolve(__dirname, './src'),
     },
+    dedupe: ['@internationalized/date', 'react', 'react-dom'],
   },
   server: {
     proxy: {
       '/api': {
-        target: 'http://localhost:8787', // Points to local 'api' worker
+        target: 'http://localhost:8787',
         changeOrigin: true,
       },
     },

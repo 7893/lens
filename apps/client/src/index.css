@@ -2,6 +2,9 @@
 @tailwind components;
 @tailwind utilities;
 
+/* HeroUI v3 base styles */
+@import '@heroui/react/styles';
+
 @layer base {
   body {
     font-family: ui-sans-serif, system-ui, sans-serif;

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Card, CardBody, Chip } from '@heroui/react';
+import { Card, CardContent, Chip } from '@heroui/react';
 import { Camera, MapPin } from 'lucide-react';
 import { ImageResult } from '@lens/shared';
 import { blurHashToDataURL } from '../../utils/blurhash';
@@ -15,12 +15,10 @@ export const ImageCard = React.memo(({ image, onClick }: ImageCardProps) => {
 
   return (
     <Card
-      isPressable
-      onPress={onClick}
-      className="break-inside-avoid w-full animate-fade-in-up border-none shadow-sm hover:shadow-md transition-shadow"
-      radius="lg"
+      className="break-inside-avoid w-full animate-fade-in-up border-none shadow-sm hover:shadow-md transition-shadow cursor-pointer"
+      onClick={onClick}
     >
-      <CardBody className="p-0 overflow-hidden">
+      <CardContent className="p-0 overflow-hidden">
         {/* Image area */}
         <div className="relative" style={{ backgroundColor: image.color || '#e5e7eb' }}>
           {blurUrl && !loaded && (
@@ -40,7 +38,7 @@ export const ImageCard = React.memo(({ image, onClick }: ImageCardProps) => {
             loading="lazy"
             onLoad={() => setLoaded(true)}
           />
-          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
+          <div className="absolute inset-0 bg-black/0 hover:bg-black/10 transition-colors" />
         </div>
 
         {/* Info area */}
@@ -48,7 +46,6 @@ export const ImageCard = React.memo(({ image, onClick }: ImageCardProps) => {
           <p className="text-sm text-gray-700 line-clamp-2 leading-snug">
             {image.description || image.caption}
           </p>
-
           <div className="mt-2 space-y-1">
             {image.photographer && (
               <p className="text-[11px] text-gray-400 flex items-center gap-1.5">
@@ -61,18 +58,14 @@ export const ImageCard = React.memo(({ image, onClick }: ImageCardProps) => {
               </p>
             )}
           </div>
-
           {image.topics && image.topics.length > 0 && (
             <div className="mt-2.5 flex flex-wrap gap-1">
               {image.topics.slice(0, 3).map((t) => (
                 <Chip
                   key={t}
                   size="sm"
-                  variant="flat"
-                  classNames={{
-                    base: 'h-5 bg-gray-100',
-                    content: 'text-[9px] text-gray-500 px-1.5',
-                  }}
+                  variant="secondary"
+                  className="text-[9px] text-gray-500"
                 >
                   {t}
                 </Chip>
@@ -80,7 +73,7 @@ export const ImageCard = React.memo(({ image, onClick }: ImageCardProps) => {
             </div>
           )}
         </div>
-      </CardBody>
+      </CardContent>
     </Card>
   );
 });
