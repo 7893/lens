@@ -36,7 +36,7 @@ function Stats() {
   if (!data) return null;
   return (
     <p className="text-center text-[11px] text-gray-300 py-6">
-      {data.total.toLocaleString()} images{data.recent > 0 ? ` · ${data.recent} added recently` : ''}
+      {data.total.toLocaleString()} images · {data.recent} added recently
     </p>
   );
 }
