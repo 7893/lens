@@ -61,7 +61,7 @@ export class SearchService {
       .all<DBImage>();
 
     // 5. Final Result Mapping (preserve order)
-    const finalResults = ids
+    let finalResults = ids
       .map((id) => {
         const row = dbRows.find((r) => r.id === id);
         const hybridInfo = selectedIds.find((h) => h.id === id);
@@ -69,6 +69,49 @@ export class SearchService {
         return toImageResult(row, hybridInfo.score);
       })
       .filter((r): r is ImageResult => r !== null);
+
+    // 6. BGE Reranker Base (精排)
+    if (finalResults.length > 1) {
+      try {
+        const topN = Math.min(finalResults.length, 20);
+        const candidates = finalResults.slice(0, topN);
+        const contexts = candidates.map((r) => ({ text: r.caption || r.description || 'untitled image' }));
+
+        const rerankResp = (await this.env.AI.run(
+          AI_MODELS.RERANK,
+          {
+            query: queryKey,
+            top_k: topN,
+            contexts: contexts,
+          },
+          AI_GATEWAY,
+        )) as { response?: { id?: number; score?: number }[] };
+
+        if (rerankResp.response && rerankResp.response.length > 0) {
+          // Sort candidates by rerank score
+          const rerankedTop = rerankResp.response
+            .sort((a, b) => (b.score || 0) - (a.score || 0))
+            .map((r) => {
+              const item = candidates[r.id ?? -1];
+              if (item && r.score !== undefined) {
+                item.score = r.score;
+              }
+              return item;
+            })
+            .filter((item): item is ImageResult => !!item);
+
+          // Merge back
+          // Fallback for missing ids if AI doesn't return all of them
+          const rerankedIds = new Set(rerankedTop.map((item) => item.id));
+          const missing = candidates.filter((item) => !rerankedIds.has(item.id));
+
+          finalResults = [...rerankedTop, ...missing, ...finalResults.slice(topN)];
+          this.logger.info(`Reranker applied to top ${topN} results`);
+        }
+      } catch (e) {
+        this.logger.warn('Reranker failed, falling back to hybrid order', e);
+      }
+    }
 
     return {
       results: finalResults,
