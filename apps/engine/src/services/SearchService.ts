@@ -77,7 +77,7 @@ export class SearchService {
         const candidates = finalResults.slice(0, topN);
         const contexts = candidates.map((r) => ({ text: r.caption || r.description || 'untitled image' }));
 
-        const rerankResp = (await this.env.AI.run(
+        const rerankResp = (await (this.env.AI as any).run(
           AI_MODELS.RERANK,
           {
             query: queryKey,
