@@ -118,6 +118,14 @@ export class SearchService {
       results: finalResults,
       total: finalResults.length,
       took: Date.now() - start,
+      telemetry: {
+        resultsBeforeCliff: hybridIds.length,
+        resultsAfterCliff: selectedIds.length,
+        highestScore: hybridIds[0]?.score || 0,
+        lowestScore: selectedIds[selectedIds.length - 1]?.score || 0,
+        fts5Hits: ftsResults.length,
+        vectorHits: vectorResults.length,
+      }
     };
   }
 

@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { ApiBindings } from '@lens/shared';
+import { ApiBindings, createTrace, Logger } from '@lens/shared';
 
 const stats = new Hono<{ Bindings: ApiBindings }>();
 
@@ -25,6 +25,29 @@ stats.get('/', async (c) => {
 
   c.executionCtx.waitUntil(c.env.SETTINGS.put(cacheKey, JSON.stringify(data), { expirationTtl: 60 }));
   return c.json(data);
+});
+
+stats.post('/track', async (c) => {
+  const body = await c.req.json().catch(() => null);
+  if (!body) return c.json({ error: 'Invalid JSON body' }, 400);
+
+  const { sessionId, action, query, photoId, timeToClickMs } = body;
+  if (!sessionId || !action) {
+    return c.json({ error: 'Missing sessionId or action' }, 400);
+  }
+
+  const trace = createTrace('TRACK');
+  const logger = new Logger(trace, c.env.TELEMETRY);
+
+  logger.trackEngagement({
+    sessionId,
+    action,
+    query,
+    photoId,
+    timeToClickMs,
+  });
+
+  return c.json({ ok: true });
 });
 
 export default stats;

@@ -47,6 +47,16 @@ export default function Home() {
   const { suggestions, dismiss: dismissSuggestions } = useSuggestions(query);
   const [selected, setSelected] = useState<ImageResult | null>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
+  
+  // Engagement Tracking
+  const sessionId = useRef(`sess-${Math.random().toString(36).substring(2, 11)}`);
+  const searchCompletedAt = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!isLoading && isSearching && results.length > 0) {
+      searchCompletedAt.current = Date.now();
+    }
+  }, [isLoading, isSearching, results]);
 
   const handleObserver = useCallback(
     (entries: IntersectionObserverEntry[]) => {
@@ -66,6 +76,29 @@ export default function Home() {
   const handleSelectSuggestion = (s: string) => {
     selectSuggestion(s);
     dismissSuggestions();
+  };
+
+  const handleImageClick = (img: ImageResult) => {
+    setSelected(img);
+    
+    // Track click engagement
+    if (searchCompletedAt.current) {
+      const timeToClickMs = Date.now() - searchCompletedAt.current;
+      fetch('/api/stats/track', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId: sessionId.current,
+          action: 'click',
+          query,
+          photoId: img.id,
+          timeToClickMs,
+        })
+      }).catch(() => {});
+      
+      // Prevent multiple tracks for the same search
+      searchCompletedAt.current = null;
+    }
   };
 
   return (
@@ -94,7 +127,7 @@ export default function Home() {
         {isLoading ? (
           <SkeletonGrid />
         ) : (
-          results.map((img: ImageResult) => <ImageCard key={img.id} image={img} onClick={() => setSelected(img)} />)
+          results.map((img: ImageResult) => <ImageCard key={img.id} image={img} onClick={() => handleImageClick(img)} />)
         )}
       </div>
 
