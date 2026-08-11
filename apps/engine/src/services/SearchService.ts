@@ -97,7 +97,7 @@ export class SearchService {
 
       // Cutoff conditions
       if (score < ABSOLUTE_FLOOR) return i;
-      
+
       const ratio = score / prevScore;
       if (ratio < RATIO_CLIFF) return i;
     }
