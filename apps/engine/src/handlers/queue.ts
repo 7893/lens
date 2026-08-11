@@ -6,7 +6,7 @@ export async function handleQueue(batch: MessageBatch<IngestionTask>, env: Proce
   for (const msg of batch.messages) {
     try {
       await env.PHOTO_WORKFLOW.create({
-        id: `${msg.body.photoId}-${Date.now()}`,
+        id: `wf-${msg.body.photoId}-${Date.now()}`,
         params: msg.body,
       });
       msg.ack();
