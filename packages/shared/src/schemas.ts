@@ -6,9 +6,12 @@ import { z } from 'zod';
  */
 export const VisionResponseSchema = z.object({
   caption: z.string().min(10).max(1000),
-  quality: z.number().min(0).max(10).default(5),
+  quality: z.coerce.number().min(0).max(10).default(5),
   entities: z.array(z.string()).max(15).default([]),
-  tags: z.array(z.string().lowercase()).max(15).default([]),
+  tags: z
+    .array(z.string().transform((s) => s.toLowerCase()))
+    .max(15)
+    .default([]),
 });
 
 export type VisionResponse = z.infer<typeof VisionResponseSchema>;

@@ -35,7 +35,11 @@ OUTPUT FORMAT (JSON STRICT):
   try {
     // Attempt to extract JSON from the response (in case AI adds prose around it)
     const jsonMatch = text.match(/\{[\s\S]*\}/);
-    const jsonStr = jsonMatch ? jsonMatch[0] : text;
+    let jsonStr = jsonMatch ? jsonMatch[0] : text;
+
+    // Sanitize trailing commas (common AI hallucination) before parsing
+    jsonStr = jsonStr.replace(/,\s*([\]}])/g, '$1');
+
     const rawData = JSON.parse(jsonStr);
 
     // GOD-LEVEL VALIDATION: Zod forces the contract
