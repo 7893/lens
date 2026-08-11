@@ -92,7 +92,8 @@ export class SearchService {
           const rerankedTop = rerankResp.response
             .sort((a, b) => (b.score || 0) - (a.score || 0))
             .map((r) => {
-              const item = candidates[r.id ?? -1];
+              const idx = r.id ?? (r as any).index ?? -1;
+              const item = candidates[idx];
               if (item && r.score !== undefined) {
                 item.score = r.score;
               }
