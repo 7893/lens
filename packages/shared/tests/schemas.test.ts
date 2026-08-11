@@ -33,9 +33,10 @@ describe('VisionResponseSchema', () => {
     expect(() => VisionResponseSchema.parse({ caption: 'Valid caption here', quality: -1 })).toThrow();
   });
 
-  it('validates tags are lowercase (rejects uppercase)', () => {
+  it('validates tags are transformed to lowercase', () => {
     const input = { caption: 'A valid caption text', tags: ['SUNSET', 'Ocean'] };
-    expect(() => VisionResponseSchema.parse(input)).toThrow();
+    const parsed = VisionResponseSchema.parse(input);
+    expect(parsed.tags).toEqual(['sunset', 'ocean']);
   });
 
   it('accepts lowercase tags', () => {
