@@ -33,8 +33,8 @@ admin.post('/compensate', async (c) => {
       };
       await c.env.PHOTO_QUEUE.send(task);
       enqueued++;
-    } catch (e: any) {
-      errors.push({ id, error: e.message });
+    } catch (e: unknown) {
+      errors.push({ id, error: e instanceof Error ? e.message : 'Unknown error' });
     }
   }
 
