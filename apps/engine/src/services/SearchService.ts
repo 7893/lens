@@ -79,34 +79,27 @@ export class SearchService {
 
   /**
    * Dynamic cutoff based on score distribution.
-   * Combines relative threshold, absolute floor, and cliff detection.
+   * Uses Ratio = score[i] / score[i-1] for cliff detection.
    */
   private calculateDynamicCutoff(results: { score: number }[]): number {
     const MAX_RESULTS = 100;
-    const ABSOLUTE_FLOOR = 0.4;
-    const RELATIVE_RATIO = 0.75;
-    const CLIFF_DROP = 0.06;
-    const CLIFF_FLOOR = 0.45;
+    const ABSOLUTE_FLOOR = 0.5;
+    const RATIO_CLIFF = 0.8;
 
     if (results.length === 0) return 0;
-
-    // Calculate relative threshold from vector scores only (exclude FTS score=1.0)
-    const vectorScores = results.filter((r) => r.score < 0.99).map((r) => r.score);
-    const maxVector = vectorScores.length > 0 ? Math.max(...vectorScores) : 0.5;
-    const relativeThreshold = maxVector * RELATIVE_RATIO;
 
     for (let i = 1; i < results.length && i < MAX_RESULTS; i++) {
       const score = results[i].score;
       const prevScore = results[i - 1].score;
-      const drop = prevScore - score;
 
       // Keep all FTS results (score = 1.0)
       if (score >= 0.99) continue;
 
       // Cutoff conditions
       if (score < ABSOLUTE_FLOOR) return i;
-      if (score < relativeThreshold) return i;
-      if (drop > CLIFF_DROP && score < CLIFF_FLOOR) return i;
+      
+      const ratio = score / prevScore;
+      if (ratio < RATIO_CLIFF) return i;
     }
 
     return Math.min(results.length, MAX_RESULTS);
