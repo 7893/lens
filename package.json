@@ -12,13 +12,13 @@
     "pnpm": ">=11.19.0"
   },
   "scripts": {
-    "setup:infra": "npm run setup:local-db",
-    "setup:local-db": "npm run setup:local-db --workspace=@lens/engine",
-    "dev:backend": "npm run dev --workspace=@lens/engine",
+    "setup:infra": "pnpm run setup:local-db",
+    "setup:local-db": "pnpm --filter=@lens/engine run setup:local-db",
+    "dev:backend": "pnpm --filter=@lens/engine run dev",
     "test": "vitest run",
-    "build": "npm run build --workspaces",
+    "build": "pnpm -r run build",
     "lint": "eslint . && prettier --check .",
-    "typecheck": "npm run typecheck --workspaces"
+    "typecheck": "pnpm -r run typecheck"
   },
   "pnpm": {
     "overrides": {
