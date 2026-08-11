@@ -44,7 +44,19 @@ search.get('/', async (c) => {
     c.executionCtx.waitUntil(cache.put(cacheKey, response.clone()));
     c.executionCtx.waitUntil(recordSuggestion(c.env.SETTINGS, q));
 
-    logger.metric('search_complete', [result.took, result.total], [q.slice(0, 50)]);
+    if (result.telemetry) {
+      logger.trackSearch({
+        query: q,
+        resultsBeforeCliff: result.telemetry.resultsBeforeCliff,
+        resultsAfterCliff: result.telemetry.resultsAfterCliff,
+        highestScore: result.telemetry.highestScore,
+        lowestScore: result.telemetry.lowestScore,
+        fts5Hits: result.telemetry.fts5Hits,
+        vectorHits: result.telemetry.vectorHits,
+        zeroResult: result.results.length === 0,
+      });
+    }
+
     return response;
   } catch (err) {
     logger.metric('search_error', [], [String(err).slice(0, 100)]);

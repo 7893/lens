@@ -1,12 +1,18 @@
 import { AI_MODELS, AI_GATEWAY, VisionResponse, VisionResponseSchema } from '@lens/shared';
 import { Logger } from '@lens/shared';
 
-export async function analyzeImage(ai: Ai, imageStream: ReadableStream, logger: Logger): Promise<VisionResponse> {
+export async function analyzeImage(
+  ai: Ai,
+  imageStream: ReadableStream,
+  logger: Logger,
+  photoId: string,
+): Promise<{ result: VisionResponse; telemetry: { promptTokens: number; completionTokens: number; parseRetries: number; isDegraded: boolean; model: string } }> {
   const imageData = new Uint8Array(await new Response(imageStream).arrayBuffer());
+  const model = AI_MODELS.TEXT;
 
   const response = (await ai.run(
     // @ts-expect-error - model not yet in workers-types
-    AI_MODELS.TEXT, // Llama 4 Scout
+    model, // Llama 4 Scout
     {
       image: [...imageData],
       prompt: `Act as a world-class gallery curator and senior photographer. 
@@ -27,35 +33,53 @@ OUTPUT FORMAT (JSON STRICT):
 }`,
     },
     AI_GATEWAY,
-  )) as { response?: string };
+  )) as { response?: string; usage?: { prompt_tokens?: number; completion_tokens?: number } };
 
   const text = response.response || '';
   logger.info('AI Raw Response received', { length: text.length });
+
+  let parseRetries = 0;
+  let isDegraded = false;
+  let result: VisionResponse;
 
   try {
     // Attempt to extract JSON from the response (in case AI adds prose around it)
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     let jsonStr = jsonMatch ? jsonMatch[0] : text;
 
+    if (jsonStr.match(/,\s*([\]}])/)) {
+      parseRetries += 1;
+    }
     // Sanitize trailing commas (common AI hallucination) before parsing
     jsonStr = jsonStr.replace(/,\s*([\]}])/g, '$1');
 
     const rawData = JSON.parse(jsonStr);
 
     // GOD-LEVEL VALIDATION: Zod forces the contract
-    const validated = VisionResponseSchema.parse(rawData);
-    return validated;
+    result = VisionResponseSchema.parse(rawData);
   } catch (error) {
     logger.error('Contract Violation: AI output failed schema validation', error);
+    isDegraded = true;
 
     // Graceful Degradation: Fallback to basic data if parsing fails
-    return {
+    result = {
       caption: text.substring(0, 200) || 'Image analysis failed',
       quality: 5.0,
       entities: [],
       tags: [],
     };
   }
+
+  return {
+    result,
+    telemetry: {
+      promptTokens: response.usage?.prompt_tokens || 0,
+      completionTokens: response.usage?.completion_tokens || 0,
+      parseRetries,
+      isDegraded,
+      model,
+    }
+  };
 }
 
 export async function generateEmbedding(ai: Ai, text: string): Promise<number[]> {

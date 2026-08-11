@@ -14,7 +14,7 @@ export { LensIngestWorkflow } from './handlers/workflow';
 const app = new Hono<{ Bindings: ApiBindings }>();
 
 // Middleware
-app.use('/*', cors({ origin: ['https://lens.53.workers.dev'], allowMethods: ['GET'] }));
+app.use('/*', cors({ origin: ['https://lens.53.workers.dev', 'http://localhost:5173'], allowMethods: ['GET', 'POST'] }));
 
 // Health check
 app.get('/health', (c) => c.json({ status: 'healthy', name: 'lens' }));

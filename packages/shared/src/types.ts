@@ -136,6 +136,14 @@ export interface SearchResponse {
   total: number;
   page?: number;
   took: number;
+  telemetry?: {
+    resultsBeforeCliff: number;
+    resultsAfterCliff: number;
+    highestScore: number;
+    lowestScore: number;
+    fts5Hits: number;
+    vectorHits: number;
+  };
 }
 
 export interface SuggestResponse {

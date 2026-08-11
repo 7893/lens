@@ -44,7 +44,18 @@ export class WorkflowProcessor {
   async analyzeVision(photoId: string) {
     const img = await this.env.R2.get(`display/${photoId}.jpg`);
     if (!img) throw new Error(`Asset display/${photoId}.jpg not found in R2`);
-    return await analyzeImage(this.env.AI, img.body, this.logger);
+    const { result, telemetry } = await analyzeImage(this.env.AI, img.body, this.logger, photoId);
+    
+    this.logger.trackAI({
+      photoId,
+      model: telemetry.model,
+      promptTokens: telemetry.promptTokens,
+      completionTokens: telemetry.completionTokens,
+      parseRetries: telemetry.parseRetries,
+      isDegraded: telemetry.isDegraded,
+    });
+
+    return result;
   }
 
   /**
