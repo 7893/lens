@@ -5,6 +5,7 @@ import search from './routes/search';
 import images from './routes/images';
 import stats from './routes/stats';
 import suggest from './routes/suggest';
+import admin from './routes/admin';
 import { handleScheduled } from './handlers/scheduled';
 import { handleQueue } from './handlers/queue';
 
@@ -23,6 +24,7 @@ app.route('/api/search', search);
 app.route('/api/stats', stats);
 app.route('/api/images', images);
 app.route('/api/suggest', suggest);
+app.route('/api/admin', admin);
 
 // Direct Image Alias
 app.route('/image', images);
