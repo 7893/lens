@@ -19,7 +19,7 @@ Lens 的部署流程不仅仅是代码的上传，它是一次**“基础设施�
 2.  **应用序列化迁移**：
     ```bash
     # 该命令会自动按顺序执行
-    npm run migrate:local --workspace=@lens/engine
+    pnpm --filter=@lens/engine run migrate:local
     ```
 
 - **牛逼点**：这种方式保证了数据库的“幂等性”。无论你在哪个环境部署，运行同样的 Migration 都能得到完全一致的数据库骨架。
@@ -33,7 +33,7 @@ Lens 采用 npm workspaces 驱动。由于 `engine` 严重依赖于 `@lens/share
 1.  **前端构建与同步 (Client -> Engine)**：
 
     ```bash
-    npm run build --workspace=@lens/client
+    pnpm --filter=@lens/client run build
     rm -rf apps/engine/public/*
     cp -r apps/client/dist/* apps/engine/public/
     ```
