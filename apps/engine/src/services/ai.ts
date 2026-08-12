@@ -6,7 +6,16 @@ export async function analyzeImage(
   imageStream: ReadableStream,
   logger: Logger,
   photoId: string,
-): Promise<{ result: VisionResponse; telemetry: { promptTokens: number; completionTokens: number; parseRetries: number; isDegraded: boolean; model: string } }> {
+): Promise<{
+  result: VisionResponse;
+  telemetry: {
+    promptTokens: number;
+    completionTokens: number;
+    parseRetries: number;
+    isDegraded: boolean;
+    model: string;
+  };
+}> {
   const imageData = new Uint8Array(await new Response(imageStream).arrayBuffer());
   const model = AI_MODELS.TEXT;
 
@@ -78,7 +87,7 @@ OUTPUT FORMAT (JSON STRICT):
       parseRetries,
       isDegraded,
       model,
-    }
+    },
   };
 }
 

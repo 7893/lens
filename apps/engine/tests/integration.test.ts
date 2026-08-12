@@ -32,7 +32,7 @@ describe('Lens Engine E2E Integration', () => {
     const resp = await worker.fetch('/api/stats/track', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ invalid: 'data' })
+      body: JSON.stringify({ invalid: 'data' }),
     });
     // Expected to fail validation
     expect(resp.status).toBe(400);

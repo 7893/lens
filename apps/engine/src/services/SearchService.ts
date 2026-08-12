@@ -125,7 +125,7 @@ export class SearchService {
         lowestScore: selectedIds[selectedIds.length - 1]?.score || 0,
         fts5Hits: ftsResults.length,
         vectorHits: vectorResults.length,
-      }
+      },
     };
   }
 

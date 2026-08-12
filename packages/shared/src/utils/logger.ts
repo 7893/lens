@@ -63,12 +63,7 @@ export class Logger {
     this.telemetry?.writeDataPoint({
       indexes: [this.context.traceId],
       blobs: ['ai_cost', 'AI', data.isDegraded ? 'degraded' : 'success', data.model, data.photoId],
-      doubles: [
-        Date.now() - this.context.startTime,
-        data.promptTokens,
-        data.completionTokens,
-        data.parseRetries,
-      ],
+      doubles: [Date.now() - this.context.startTime, data.promptTokens, data.completionTokens, data.parseRetries],
     });
   }
 
@@ -81,11 +76,15 @@ export class Logger {
   }) {
     this.telemetry?.writeDataPoint({
       indexes: [data.sessionId],
-      blobs: ['frontend_engagement', 'Frontend', data.action, data.query?.slice(0, 50) || '', data.photoId || '', this.context.traceId],
-      doubles: [
-        Date.now() - this.context.startTime,
-        data.timeToClickMs || 0,
+      blobs: [
+        'frontend_engagement',
+        'Frontend',
+        data.action,
+        data.query?.slice(0, 50) || '',
+        data.photoId || '',
+        this.context.traceId,
       ],
+      doubles: [Date.now() - this.context.startTime, data.timeToClickMs || 0],
     });
   }
 }

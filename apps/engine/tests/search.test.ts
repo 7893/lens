@@ -40,11 +40,11 @@ describe('Search API Route', () => {
     vi.clearAllMocks();
     const mockCache = {
       match: vi.fn().mockResolvedValue(null),
-      put: vi.fn().mockResolvedValue(undefined)
+      put: vi.fn().mockResolvedValue(undefined),
     };
     globalThis.caches = { default: mockCache } as any;
   });
-  
+
   afterEach(() => {
     delete (globalThis as any).caches;
   });
@@ -60,26 +60,28 @@ describe('Search API Route', () => {
   it('performs vector search and returns results', async () => {
     mockAi.run.mockResolvedValue({ data: [[0.1, 0.2, 0.3]] });
     mockVectorize.query.mockResolvedValue({
-      matches: [{ id: 'photo123', score: 0.85 }]
+      matches: [{ id: 'photo123', score: 0.85 }],
     });
     mockDb.prepare.mockReturnValue({
       bind: () => ({
         all: async () => ({
-          results: [{
-            id: 'photo123',
-            display_key: 'display/photo123.jpg',
-            width: 800,
-            height: 600,
-            ai_caption: 'A cute cat',
-            color: '#ffffff'
-          }]
-        })
-      })
+          results: [
+            {
+              id: 'photo123',
+              display_key: 'display/photo123.jpg',
+              width: 800,
+              height: 600,
+              ai_caption: 'A cute cat',
+              color: '#ffffff',
+            },
+          ],
+        }),
+      }),
     });
 
     const executionCtx = { waitUntil: vi.fn(), passThroughOnException: vi.fn() };
     const res = await search.request('/?q=cat', {}, env, executionCtx as any);
-    
+
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data.results).toHaveLength(1);

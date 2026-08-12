@@ -45,7 +45,7 @@ export class WorkflowProcessor {
     const img = await this.env.R2.get(`display/${photoId}.jpg`);
     if (!img) throw new Error(`Asset display/${photoId}.jpg not found in R2`);
     const { result, telemetry } = await analyzeImage(this.env.AI, img.body, this.logger, photoId);
-    
+
     this.logger.trackAI({
       photoId,
       model: telemetry.model,
