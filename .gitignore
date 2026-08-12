@@ -31,3 +31,4 @@ talk
 rebuild.log
 run_rebuild.sh
 HANDOVER.md
+coverage/
