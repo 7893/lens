@@ -49,7 +49,7 @@ export default function Home() {
   const sentinelRef = useRef<HTMLDivElement>(null);
 
   // Engagement Tracking
-  const sessionId = useRef(`sess-${Math.random().toString(36).substring(2, 11)}`);
+  const sessionId = useRef(`sess-${crypto.randomUUID()}`);
   const searchCompletedAt = useRef<number | null>(null);
 
   useEffect(() => {
