@@ -1,4 +1,4 @@
-name: Lens CI
+name: CI
 
 on:
   push:
@@ -7,69 +7,133 @@ on:
     branches: [main]
 
 jobs:
-  lint:
+  setup:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 24
-          cache: 'pnpm'
-      - run: pnpm install --ignore-scripts --no-frozen-lockfile
-      - run: pnpm --filter=@lens/shared run build
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --ignore-scripts --no-frozen-lockfile
+
+      - name: Build shared package
+        run: pnpm --filter=@lens/shared run build
+
+      - name: Cache node_modules and shared build
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            node_modules
+            apps/*/node_modules
+            packages/*/node_modules
+            packages/shared/dist
+          key: deps-${{ github.sha }}
+
+  lint:
+    needs: setup
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+
+      - name: Restore dependencies
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            node_modules
+            apps/*/node_modules
+            packages/*/node_modules
+            packages/shared/dist
+          key: deps-${{ github.sha }}
+
       - run: pnpm run lint
 
   test:
+    needs: setup
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 24
-          cache: 'pnpm'
-      - run: pnpm install --ignore-scripts --no-frozen-lockfile
-      - run: pnpm --filter=@lens/shared run build
+
+      - name: Restore dependencies
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            node_modules
+            apps/*/node_modules
+            packages/*/node_modules
+            packages/shared/dist
+          key: deps-${{ github.sha }}
+
       - run: mkdir -p apps/engine/public
       - run: pnpm run test
 
   typecheck:
+    needs: setup
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 24
-          cache: 'pnpm'
-      - run: pnpm install --ignore-scripts --no-frozen-lockfile
-      - run: pnpm --filter=@lens/shared run build
+
+      - name: Restore dependencies
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            node_modules
+            apps/*/node_modules
+            packages/*/node_modules
+            packages/shared/dist
+          key: deps-${{ github.sha }}
+
       - run: pnpm run typecheck
 
   deploy:
     needs: [lint, test, typecheck]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    name: Deploy to Cloudflare
+    environment: production
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 24
-          cache: 'pnpm'
-      - run: pnpm install --ignore-scripts --no-frozen-lockfile
-      - run: pnpm --filter=@lens/shared run build
-      - run: pnpm --filter=@lens/client run build
-      - run: |
+
+      - name: Restore dependencies
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            node_modules
+            apps/*/node_modules
+            packages/*/node_modules
+            packages/shared/dist
+          key: deps-${{ github.sha }}
+
+      - name: Build client
+        run: pnpm --filter=@lens/client run build
+
+      - name: Prepare static assets
+        run: |
           mkdir -p apps/engine/public
           cp -r apps/client/dist/* apps/engine/public/
 
-      - name: Deploy Lens Worker
+      - name: Deploy to Cloudflare
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          workingDirectory: 'apps/engine'
+          workingDirectory: apps/engine
           command: deploy
