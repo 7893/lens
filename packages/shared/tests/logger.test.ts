@@ -71,7 +71,7 @@ describe('Logger', () => {
     } as AnalyticsEngineDataset;
     const trace = { traceId: 'SEARCH-123', startTime: Date.now() };
     const logger = new Logger(trace, mockTelemetry);
-    
+
     logger.trackSearch({
       query: 'test query',
       resultsBeforeCliff: 10,
@@ -99,7 +99,7 @@ describe('Logger', () => {
     } as AnalyticsEngineDataset;
     const trace = { traceId: 'WF-123', startTime: Date.now() };
     const logger = new Logger(trace, mockTelemetry);
-    
+
     logger.trackAI({
       photoId: 'photo1',
       model: 'llama-4',
@@ -126,7 +126,7 @@ describe('Logger', () => {
     } as AnalyticsEngineDataset;
     const trace = { traceId: 'TRACK-123', startTime: Date.now() };
     const logger = new Logger(trace, mockTelemetry);
-    
+
     logger.trackEngagement({
       sessionId: 'sess-abc',
       action: 'click',

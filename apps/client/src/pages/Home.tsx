@@ -47,7 +47,7 @@ export default function Home() {
   const { suggestions, dismiss: dismissSuggestions } = useSuggestions(query);
   const [selected, setSelected] = useState<ImageResult | null>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
-  
+
   // Engagement Tracking
   const sessionId = useRef(`sess-${Math.random().toString(36).substring(2, 11)}`);
   const searchCompletedAt = useRef<number | null>(null);
@@ -80,7 +80,7 @@ export default function Home() {
 
   const handleImageClick = (img: ImageResult) => {
     setSelected(img);
-    
+
     // Track click engagement
     if (searchCompletedAt.current) {
       const timeToClickMs = Date.now() - searchCompletedAt.current;
@@ -93,9 +93,9 @@ export default function Home() {
           query,
           photoId: img.id,
           timeToClickMs,
-        })
+        }),
       }).catch(() => {});
-      
+
       // Prevent multiple tracks for the same search
       searchCompletedAt.current = null;
     }
@@ -127,7 +127,9 @@ export default function Home() {
         {isLoading ? (
           <SkeletonGrid />
         ) : (
-          results.map((img: ImageResult) => <ImageCard key={img.id} image={img} onClick={() => handleImageClick(img)} />)
+          results.map((img: ImageResult) => (
+            <ImageCard key={img.id} image={img} onClick={() => handleImageClick(img)} />
+          ))
         )}
       </div>
 
