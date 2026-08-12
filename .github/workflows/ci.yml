@@ -104,7 +104,6 @@ jobs:
     needs: [lint, test, typecheck]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    environment: production
     steps:
       - uses: actions/checkout@v5
       - uses: pnpm/action-setup@v4
