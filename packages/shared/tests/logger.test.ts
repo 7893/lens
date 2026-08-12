@@ -63,4 +63,85 @@ describe('Logger', () => {
     // Should not throw
     expect(() => logger.metric('event')).not.toThrow();
   });
+
+  it('tracks search telemetry correctly', () => {
+    const dataPoints: unknown[] = [];
+    const mockTelemetry = {
+      writeDataPoint: (dp: unknown) => dataPoints.push(dp),
+    } as AnalyticsEngineDataset;
+    const trace = { traceId: 'SEARCH-123', startTime: Date.now() };
+    const logger = new Logger(trace, mockTelemetry);
+    
+    logger.trackSearch({
+      query: 'test query',
+      resultsBeforeCliff: 10,
+      resultsAfterCliff: 5,
+      highestScore: 0.9,
+      lowestScore: 0.6,
+      fts5Hits: 2,
+      vectorHits: 3,
+      zeroResult: false,
+    });
+
+    expect(dataPoints).toHaveLength(1);
+    const dp = dataPoints[0] as any;
+    expect(dp.indexes).toContain('SEARCH-123');
+    expect(dp.blobs).toContain('search_advanced');
+    expect(dp.blobs).toContain('success');
+    expect(dp.blobs).toContain('test query');
+    expect(dp.doubles[1]).toBe(10); // resultsBeforeCliff
+  });
+
+  it('tracks AI telemetry correctly', () => {
+    const dataPoints: unknown[] = [];
+    const mockTelemetry = {
+      writeDataPoint: (dp: unknown) => dataPoints.push(dp),
+    } as AnalyticsEngineDataset;
+    const trace = { traceId: 'WF-123', startTime: Date.now() };
+    const logger = new Logger(trace, mockTelemetry);
+    
+    logger.trackAI({
+      photoId: 'photo1',
+      model: 'llama-4',
+      promptTokens: 100,
+      completionTokens: 50,
+      parseRetries: 1,
+      isDegraded: false,
+    });
+
+    expect(dataPoints).toHaveLength(1);
+    const dp = dataPoints[0] as any;
+    expect(dp.blobs).toContain('ai_cost');
+    expect(dp.blobs).toContain('photo1');
+    expect(dp.blobs).toContain('llama-4');
+    expect(dp.blobs).toContain('success');
+    expect(dp.doubles[1]).toBe(100);
+    expect(dp.doubles[2]).toBe(50);
+  });
+
+  it('tracks frontend engagement correctly', () => {
+    const dataPoints: unknown[] = [];
+    const mockTelemetry = {
+      writeDataPoint: (dp: unknown) => dataPoints.push(dp),
+    } as AnalyticsEngineDataset;
+    const trace = { traceId: 'TRACK-123', startTime: Date.now() };
+    const logger = new Logger(trace, mockTelemetry);
+    
+    logger.trackEngagement({
+      sessionId: 'sess-abc',
+      action: 'click',
+      query: 'cat',
+      photoId: 'p1',
+      timeToClickMs: 1500,
+    });
+
+    expect(dataPoints).toHaveLength(1);
+    const dp = dataPoints[0] as any;
+    expect(dp.indexes).toEqual(['sess-abc']);
+    expect(dp.blobs).toContain('frontend_engagement');
+    expect(dp.blobs).toContain('click');
+    expect(dp.blobs).toContain('cat');
+    expect(dp.blobs).toContain('p1');
+    expect(dp.doubles[1]).toBe(1500);
+  });
 });
