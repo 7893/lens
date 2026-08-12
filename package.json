@@ -15,7 +15,7 @@
     "setup:infra": "pnpm run setup:local-db",
     "setup:local-db": "pnpm --filter=@lens/engine run setup:local-db",
     "dev:backend": "pnpm --filter=@lens/engine run dev",
-    "test": "vitest run",
+    "test": "vitest run --coverage",
     "build": "pnpm -r run build",
     "lint": "eslint . && prettier --check .",
     "typecheck": "pnpm -r run typecheck"
@@ -37,6 +37,7 @@
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260730.1",
     "@eslint/js": "^10.0.1",
+    "@vitest/coverage-v8": "^4.1.10",
     "eslint": "^10.8.0",
     "eslint-config-prettier": "^10.1.8",
     "prettier": "^3.9.6",
