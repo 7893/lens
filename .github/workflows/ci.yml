@@ -1,13 +1,14 @@
-name: Deploy Lens
+name: CI / CD
 
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
 
 jobs:
-  quality:
+  lint:
     runs-on: ubuntu-latest
-    name: Quality Gate
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -18,11 +19,36 @@ jobs:
       - run: pnpm install --ignore-scripts --no-frozen-lockfile
       - run: pnpm --filter=@lens/shared run build
       - run: pnpm run lint
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: 'pnpm'
+      - run: pnpm install --ignore-scripts --no-frozen-lockfile
+      - run: pnpm --filter=@lens/shared run build
       - run: pnpm run test
+
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: 'pnpm'
+      - run: pnpm install --ignore-scripts --no-frozen-lockfile
+      - run: pnpm --filter=@lens/shared run build
       - run: pnpm run typecheck
 
   deploy:
-    needs: quality
+    needs: [lint, test, typecheck]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     name: Deploy to Cloudflare
     steps:
