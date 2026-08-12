@@ -31,6 +31,7 @@ jobs:
           cache: 'pnpm'
       - run: pnpm install --ignore-scripts --no-frozen-lockfile
       - run: pnpm --filter=@lens/shared run build
+      - run: mkdir -p apps/engine/public
       - run: pnpm run test
 
   typecheck:
