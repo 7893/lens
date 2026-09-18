@@ -1,0 +1,80 @@
+{
+  "schema": 1,
+  "name": "Lens",
+  "common": [{ "path": "README.md" }, { "path": "docs/ARCHITECTURE.md" }],
+  "domains": {
+    "engine": {
+      "prefixes": ["apps/engine/"],
+      "references": [{ "path": "docs/ARCHITECTURE.md" }, { "path": "docs/API.md" }, { "path": "docs/DATABASE.md" }]
+    },
+    "client": {
+      "prefixes": ["apps/client/"],
+      "references": [{ "path": "docs/ARCHITECTURE.md" }]
+    },
+    "shared": {
+      "prefixes": ["packages/shared/"],
+      "references": [{ "path": "docs/ARCHITECTURE.md" }]
+    },
+    "docs": {
+      "prefixes": ["docs/", "README.md", "CHANGELOG.md"]
+    },
+    "tooling": {
+      "prefixes": [
+        ".pi/",
+        "scripts/",
+        ".github/",
+        ".gitignore",
+        ".prettierrc",
+        ".prettierignore",
+        "package.json",
+        "pnpm-workspace.yaml",
+        "pnpm.json",
+        "vitest.config.ts",
+        "eslint.config.mjs"
+      ]
+    },
+    "infra": {
+      "prefixes": ["terraform/", "apps/engine/wrangler.toml"]
+    }
+  },
+  "checks": [
+    {
+      "id": "typecheck",
+      "always": true,
+      "domains": ["engine", "client", "shared"],
+      "argv": ["pnpm", "-r", "run", "typecheck"],
+      "timeoutMs": 60000
+    },
+    {
+      "id": "lint",
+      "domains": ["engine", "client", "shared", "docs"],
+      "argv": ["pnpm", "run", "lint"],
+      "timeoutMs": 60000
+    },
+    {
+      "id": "engine-tests",
+      "domains": ["engine", "shared"],
+      "argv": ["pnpm", "test"],
+      "timeoutMs": 60000
+    },
+    {
+      "id": "client-build",
+      "domains": ["client"],
+      "argv": ["pnpm", "--filter", "@lens/client", "run", "build"],
+      "timeoutMs": 60000
+    },
+    {
+      "id": "engine-dry-run",
+      "domains": ["engine", "infra"],
+      "argv": ["pnpm", "--filter", "engine", "exec", "wrangler", "deploy", "--dry-run"],
+      "timeoutMs": 60000
+    },
+    {
+      "id": "acceptance",
+      "full": true,
+      "domains": [],
+      "argv": ["pnpm", "test"],
+      "timeoutMs": 120000
+    }
+  ]
+}
