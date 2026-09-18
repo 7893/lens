@@ -25,38 +25,42 @@ export class SearchService {
       this.executeSemanticSearch(queryKey),
     ]);
 
-    // 2. Hybrid Ranking & Deduplication
-    const seenIds = new Set<string>();
-    const hybridIds: { id: string; source: 'fts' | 'vector'; score: number }[] = [];
+    // 2. Hybrid Ranking & Deduplication using Reciprocal Rank Fusion (RRF)
+    const k = 60;
+    const rrfMap = new Map<string, { ftsRank?: number; vecRank?: number }>();
 
-    // Add FTS hits first (High relevance for exact matches)
-    for (const res of ftsResults) {
-      if (!seenIds.has(res.id)) {
-        seenIds.add(res.id);
-        hybridIds.push({ id: res.id, source: 'fts', score: 1.0 });
-      }
-    }
+    ftsResults.forEach((res, idx) => {
+      rrfMap.set(res.id, { ftsRank: idx + 1 });
+    });
 
-    // Supplement with Vector hits
-    for (const match of vectorResults) {
-      if (!seenIds.has(match.id)) {
-        seenIds.add(match.id);
-        hybridIds.push({ id: match.id, source: 'vector', score: match.score });
-      }
-    }
+    vectorResults.forEach((match, idx) => {
+      const existing = rrfMap.get(match.id) || {};
+      existing.vecRank = idx + 1;
+      rrfMap.set(match.id, existing);
+    });
+
+    const hybridIds = Array.from(rrfMap.entries())
+      .map(([id, info]) => {
+        const ftsScore = info.ftsRank !== undefined ? 1 / (k + info.ftsRank) : 0;
+        const vecScore = info.vecRank !== undefined ? 1 / (k + info.vecRank) : 0;
+        return { id, score: ftsScore + vecScore };
+      })
+      .sort((a, b) => b.score - a.score);
 
     if (hybridIds.length === 0) {
       return { results: [], total: 0, took: Date.now() - start };
     }
 
-    // 3. Dynamic Cutoff (方案 D)
+    // 3. Dynamic Cutoff
     const cutoffIdx = this.calculateDynamicCutoff(hybridIds);
     const selectedIds = hybridIds.slice(0, cutoffIdx);
 
-    // 4. Hydrate Metadata from D1
+    // 4. Hydrate Metadata from D1 (excluding unused ai_embedding column)
     const ids = selectedIds.map((h) => h.id);
     const placeholders = ids.map(() => '?').join(',');
-    const { results: dbRows } = await this.env.DB.prepare(`SELECT * FROM images WHERE id IN (${placeholders})`)
+    const { results: dbRows } = await this.env.DB.prepare(
+      `SELECT id, width, height, color, raw_key, display_key, meta_json, ai_tags, ai_caption, ai_model, ai_quality_score, entities_json FROM images WHERE id IN (${placeholders})`,
+    )
       .bind(...ids)
       .all<DBImage>();
 
@@ -73,7 +77,7 @@ export class SearchService {
     // 6. BGE Reranker Base (精排)
     if (finalResults.length > 1) {
       try {
-        const topN = Math.min(finalResults.length, 20);
+        const topN = Math.min(finalResults.length, 8);
         const candidates = finalResults.slice(0, topN);
         const contexts = candidates.map((r) => ({ text: r.caption || r.description || 'untitled image' }));
 
@@ -130,28 +134,28 @@ export class SearchService {
   }
 
   /**
-   * Dynamic cutoff based on score distribution.
-   * Uses Ratio = score[i] / score[i-1] for cliff detection.
+   * Dynamic cutoff based on RRF score distribution.
+   * Filters out low-confidence trailing results while preserving top hits.
    */
   private calculateDynamicCutoff(results: { score: number }[]): number {
-    const MAX_RESULTS = 100;
-    const ABSOLUTE_FLOOR = 0.5;
-    const RATIO_CLIFF = 0.8;
+    const MAX_RESULTS = 60;
+    const ABSOLUTE_FLOOR = 0.005;
+    const RATIO_CLIFF = 0.65;
 
     if (results.length === 0) return 0;
+    const maxScore = results[0].score;
 
     for (let i = 1; i < results.length && i < MAX_RESULTS; i++) {
       const score = results[i].score;
       const prevScore = results[i - 1].score;
 
-      // Keep all FTS results (score = 1.0)
-      if (score >= 0.99) continue;
+      // Absolute floor check: discard items scoring less than 15% of top result
+      if (score < maxScore * 0.15 || score < ABSOLUTE_FLOOR) return i;
 
-      // Cutoff conditions
-      if (score < ABSOLUTE_FLOOR) return i;
-
-      const ratio = score / prevScore;
-      if (ratio < RATIO_CLIFF) return i;
+      // Relative cliff check (only apply after preserving at least top 5 results)
+      if (i >= 5 && prevScore > 0 && score / prevScore < RATIO_CLIFF) {
+        return i;
+      }
     }
 
     return Math.min(results.length, MAX_RESULTS);
@@ -188,18 +192,24 @@ export class SearchService {
     // 1. Translation + Expansion (cached)
     let processedQuery = await this.env.SETTINGS.get(cacheKey);
     if (!processedQuery) {
-      const wordCount = query.split(/\s+/).length;
-      const prompt =
-        wordCount <= 4
-          ? `Translate to English if not English, then expand into a descriptive scene (max 30 words): ${query}`
-          : `Translate to English if not English: ${query}`;
+      // Fast-path: skip LLM expansion for clean ASCII/English queries
+      const isCleanEnglish = /^[a-zA-Z0-9\s.,'?!-_]+$/.test(query);
+      if (!isCleanEnglish) {
+        const wordCount = query.split(/\s+/).length;
+        const prompt =
+          wordCount <= 4
+            ? `Translate to English if not English, then expand into a descriptive scene (max 30 words): ${query}`
+            : `Translate to English if not English: ${query}`;
 
-      const result = (await this.env.AI.run(
-        AI_MODELS.TEXT_FAST,
-        { prompt, max_tokens: 40 },
-        AI_GATEWAY,
-      )) as AiTextResponse;
-      processedQuery = result.response?.trim() || query;
+        const result = (await this.env.AI.run(
+          AI_MODELS.TEXT_FAST,
+          { prompt, max_tokens: 40 },
+          AI_GATEWAY,
+        )) as AiTextResponse;
+        processedQuery = result.response?.trim() || query;
+      } else {
+        processedQuery = query;
+      }
       await this.env.SETTINGS.put(cacheKey, processedQuery, { expirationTtl: 604800 });
     }
 
