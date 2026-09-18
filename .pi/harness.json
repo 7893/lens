@@ -28,6 +28,7 @@
         ".prettierrc",
         ".prettierignore",
         "package.json",
+        "pnpm-lock.yaml",
         "pnpm-workspace.yaml",
         "pnpm.json",
         "vitest.config.ts",
