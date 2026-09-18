@@ -35,6 +35,7 @@
 - [ADR-0001 自研轻量 OpenTelemetry 兼容分布式追踪](decisions/0001-custom-agent-tracing.md)：替代重型 Agent 框架，实现微秒级冷启动与全链路可观测。
 - [ADR-0002 引入 CodeGraph、Graphify 与 Pi 本地知识体系](decisions/0002-codegraph-graphify-pi-tooling.md)：增强代码导航，本地衍生数据隔离于 Git 之外。
 - [ADR-0003 生产 D1 数据库只读保护与安全防线](decisions/0003-d1-readonly-protection.md)：防止不可逆的批处理或 DDL 删除对远端数据库造成破坏。
+- [ADR-0004 全面确立 AI 驱动与人机协同研发范式总纲](decisions/0004-ai-driven-engineering-framework.md)：确立双层图谱导航、Harness 领域边界与自动化闸门四大工程支柱。
 
 ---
 
