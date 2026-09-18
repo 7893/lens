@@ -2,7 +2,7 @@
 
 [![Live Demo](https://img.shields.io/badge/Production-lens.53.workers.dev-F38020?logo=cloudflare&logoColor=white)](https://lens.53.workers.dev)
 [![Architecture](https://img.shields.io/badge/Architecture-Single--Worker%20Fullstack-blueviolet)](docs/ARCHITECTURE.md)
-[![Embeddings](<https://img.shields.io/badge/Embedding-BGE--M3%20(768d)-blue>)](docs/DATABASE.md)
+[![Embeddings](https://img.shields.io/badge/Embedding-BGE--M3--1024d-blue)](docs/DATABASE.md)
 [![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
 
 Lens 是运行在 Cloudflare 边缘计算环境上的高性能视觉知识索引与多模态混合检索系统。系统通过将语义向量检索（Vectorize）、全文倒排索引（SQLite FTS5）、分布式工作流编排（Workflows）与实时调用链路追踪（Tracing）高度内聚于单 Worker，在严苛的边缘计算资源约束下实现毫秒级召回与全生命周期自动化数据治理。

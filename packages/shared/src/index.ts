@@ -10,5 +10,10 @@ export * from './config';
 // Schemas & Tracing
 export * from './schemas';
 
-// Logger Utils
+// Utilities
 export * from './utils/logger';
+export * from './utils/safe-json';
+
+// Domain Models & Policies
+export * from './models/ImageEntity';
+export * from './models/SearchRankingPolicy';
