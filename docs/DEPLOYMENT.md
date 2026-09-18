@@ -1,5 +1,9 @@
 # 全栈构建、GitOps 运维与生产级部署手册 (04-DEPLOYMENT)
 
+更新日期：2026-09-19
+状态：现行
+适用范围：Monorepo 构建、D1 迁移、Cloudflare Workers & Pages 部署
+
 Lens 的部署流程不仅仅是代码的上传，它是一次**“基础设施的基因序列重组”**。通过将 D1 Schema 版本化、将编译链条 Monorepo 化，我们实现了在 Cloudflare 任何区域一键克隆出一套完全相同的生产环境的能力。
 
 ---

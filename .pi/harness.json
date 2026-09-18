@@ -16,7 +16,8 @@
       "references": [{ "path": "docs/ARCHITECTURE.md" }]
     },
     "docs": {
-      "prefixes": ["docs/", "README.md", "CHANGELOG.md"]
+      "prefixes": ["docs/", "README.md", "CHANGELOG.md", "AGENTS.md"],
+      "references": [{ "path": "docs/INDEX.md" }, { "path": "docs/CURRENT-STATE.md" }]
     },
     "tooling": {
       "prefixes": [
@@ -50,6 +51,12 @@
       "domains": ["engine", "client", "shared", "docs"],
       "argv": ["pnpm", "run", "lint"],
       "timeoutMs": 60000
+    },
+    {
+      "id": "doc-check",
+      "domains": ["docs"],
+      "argv": ["node", "scripts/check_docs.mjs"],
+      "timeoutMs": 30000
     },
     {
       "id": "engine-tests",

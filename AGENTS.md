@@ -76,3 +76,16 @@ pnpm run lint
 # 4. Cloudflare Worker dry-run validation
 pnpm --filter engine exec wrangler deploy --dry-run
 ```
+
+---
+
+## 4. Documentation Governance
+
+1. **Current State as Source of Truth**:
+   - Always check [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md) for active bindings, database size, and baseline facts.
+   - All active documentation is indexed in [`docs/INDEX.md`](docs/INDEX.md).
+2. **ADR (Architecture Decision Records)**:
+   - Significant architectural, security, or tooling decisions must be recorded in `docs/decisions/` following `0000-ADR-TEMPLATE.md`.
+   - ADR documents are frozen once adopted; do not delete or overwrite them, supersede them with new ADRs.
+3. **Doc Verification**:
+   - Run `pnpm run check:docs` to ensure zero broken links, metadata validity, and full INDEX coverage.
