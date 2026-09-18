@@ -21,30 +21,16 @@
     "check:docs": "node scripts/check_docs.mjs",
     "typecheck": "pnpm -r run typecheck"
   },
-  "pnpm": {
-    "overrides": {
-      "undici": ">=7.24.0",
-      "flatted": ">=3.4.2",
-      "picomatch": ">=4.0.4",
-      "brace-expansion": ">=5.0.5"
-    },
-    "onlyBuiltDependencies": [
-      "esbuild",
-      "sharp",
-      "workerd",
-      "@heroui/shared-utils"
-    ]
-  },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260730.1",
     "@eslint/js": "^10.0.1",
-    "@vitest/coverage-v8": "^4.1.10",
+    "@vitest/coverage-v8": "^4.1.11",
     "eslint": "^10.8.0",
     "eslint-config-prettier": "^10.1.8",
     "prettier": "^3.9.6",
     "typescript": "~6.0.3",
     "typescript-eslint": "^8.65.0",
-    "vitest": "^4.1.10",
+    "vitest": "^4.1.11",
     "wrangler": "^4.120.0"
   },
   "packageManager": "pnpm@11.19.0"

@@ -6,3 +6,9 @@ allowBuilds:
   esbuild: true
   sharp: true
   workerd: true
+overrides:
+  sharp: '>=0.35.4'
+  undici: '>=7.24.0'
+  flatted: '>=3.4.2'
+  picomatch: '>=4.0.4'
+  brace-expansion: '>=5.0.5'
