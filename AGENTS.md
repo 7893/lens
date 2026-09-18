@@ -47,7 +47,7 @@ Managed via `.pi/harness.json`.
 
 - Query domain index before loading full files:
   ```bash
-  node /home/ubuntu/local-harness/cli.mjs context --project /home/ubuntu/lens --scope engine
+  harness context --project /home/ubuntu/lens --scope engine
   ```
 - Available domains:
   - `engine`: Cloudflare Workers backend (`apps/engine/`), Hono routes, services, queues, workflows.
