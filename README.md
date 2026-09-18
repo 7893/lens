@@ -1,44 +1,46 @@
-# Lens: 边缘原生视觉智能引擎 (Edge-Native Visual Intelligence Engine)
+# Lens: 边缘原生多模态混合检索系统 (Edge-Native Multimodal Hybrid Search Engine)
 
-> **"这是一个懂得审美、能够识别实体、并在零成本边际下实现数据自我进化的视觉知识系统。"**
+[![Live Demo](https://img.shields.io/badge/Production-lens.53.workers.dev-F38020?logo=cloudflare&logoColor=white)](https://lens.53.workers.dev)
+[![Architecture](https://img.shields.io/badge/Architecture-Single--Worker%20Fullstack-blueviolet)](docs/ARCHITECTURE.md)
+[![Embeddings](<https://img.shields.io/badge/Embedding-BGE--M3%20(768d)-blue>)](docs/DATABASE.md)
+[![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
 
-[![Live Demo](https://img.shields.io/badge/Live-lens.53.workers.dev-F38020?logo=cloudflare&logoColor=white)](https://lens.53.workers.dev)
-[![Architecture](https://img.shields.io/badge/架构-单Worker全栈闭环-blueviolet)](docs/ARCHITECTURE.md)
-[![Model](https://img.shields.io/badge/核心大脑-Llama%204%20Scout%2017B-blue)](https://developers.cloudflare.com/workers-ai/)
-[![License](https://img.shields.io/badge/许可证-MIT-green)](LICENSE)
-
-Lens 不仅仅是一个图片搜索工具，它是运行在 Cloudflare 边缘节点上的 **全自动视觉智能系统**。通过集成最新的 **Llama 4 Scout (17B)** MoE 架构模型与自研的 **“线性对撞 (Linear Boundary)”** 采集算法，Lens 在维持工业级语义检索精度的同时，将运行成本严格控制在了 Serverless 的免费配额范围内。
+Lens 是运行在 Cloudflare 边缘计算环境上的高性能视觉知识索引与多模态混合检索系统。系统通过将语义向量检索（Vectorize）、全文倒排索引（SQLite FTS5）、分布式工作流编排（Workflows）与实时调用链路追踪（Tracing）高度内聚于单 Worker，在严苛的边缘计算资源约束下实现毫秒级召回与全生命周期自动化数据治理。
 
 ---
 
-## 🌟 为什么 Lens 截然不同？
+## 核心技术特性
 
-### 1. 策展人级的感知力 (Curator-Level Perception)
+### 1. 双路混合检索与相关性重排 (Hybrid Retrieval & RRF)
 
-传统 AI 搜索只看“物体”（如：一只猫，一辆车）。Lens 能够理解**叙事与审美**：
+- **多路召回**：并发执行 SQLite FTS5 关键词倒排匹配与 Vectorize (BGE-M3) 语义稠密向量检索；
+- **重排融合**：通过倒数排名融合算法（Reciprocal Rank Fusion, RRF）将词法命中与语义命中科学归一；
+- **断崖截断算法 (Cliff Detection)**：计算相邻召回分数的变化率阶跃比，动态截除长尾低相关性噪声，避免返回低质结果；
+- **渐进式流式响应**：支持 Server-Sent Events (SSE)，优先推送毫秒级命中结果，随后平滑流式推送精排内容。
 
-- **审美自动打分**：AI 对每一张图片的构图、光影、清晰度进行 0-10 分的深度评测。你可以搜“电影感的大片”，而不仅仅是相关结果。
-- **硬核实体提取**：精准识别地标（如：新宿站）、品牌（如：Nike）及生物品种，实现基于“实体”的精准召回。
-- **混合搜索架构**：结合 SQLite FTS5 与 Vectorize，兼顾关键词精确度与语义深度。
+### 2. 边缘受限资源下的增量对撞采集 (Boundary Collision Ingestion)
 
-### 2. 自我进化引擎 (The Self-Evolution Engine)
+- **线性边界对撞**：在 Unsplash API 额度受限的前提下，采集器按时间轴倒序扫描；一旦撞击 D1 已记录的边界 ID 即刻终止翻页，规避重复拉取；
+- **事务化进度锚定**：仅在图片下载、缩略图转码与元数据持久化确认入队后推高边界指针，根治并发环境下的漏采与重复问题；
+- **双重图层持久化**：抓取后在 R2 中存储 WebP 展示流，防止外部源站防盗链失效与高延迟。
 
-Lens 具备持续自我优化的能力。它不仅能高效摄取数据，还能不断**提升数据质量**：
+### 3. 全链路分布式追踪与可观测性 (W3C Tracing)
 
-- **UTC 23:00 资源最大化策略**：每天 UTC 23:00（配额重置前 1 小时），系统会自动评估并调用今日剩余的免费 AI 神经元 (Neurons)。
-- **零成本质量升级**：系统会自动重刷那些使用旧模型处理的存量数据，将其升级为 Llama 4 旗舰版描述。
-- **成果**：系统的数据质量与检索精度将随着时间持续提升，且无需额外增加运营成本。
+- **标准协议兼容**：全面兼容 OpenTelemetry W3C `traceparent` 标准，支持跨边界调用链染色与跟踪；
+- **细粒度上下文**：区分用户检索链路（`SEARCH-xxxx`）、定时采集对撞（`CRON-xxxx`）与工作流作业（`WF-xxxx`）；
+- **微秒级性能开销**：自研轻量级追踪内核，零额外第三方庞大运行时依赖，契合边缘计算微秒级启动诉求。
 
-### 3. 极致成本工程 (Extreme Cost Engineering)
+### 4. 现代 AI-Native 工程体系 (AI-Native Engineering)
 
-- **线性对撞算法**：采用基于边界检测的精准抓取逻辑，确保 0% 的 Unsplash API 配额浪费。
-- **边缘优先架构**：单 Worker 承载 API、Workflow、Queue 与定时任务，极致降低运维复杂度。
+- **双层认知图谱**：集成 CodeGraph（微观 AST 符号调用关系库）与 Graphify（宏观跨模块架构拓扑）；
+- **严格领域隔离**：借助 Local Harness（`.pi/harness.json`）对 6 大领域实施单测与构建约束；
+- **自动化机器闸门**：`check_docs.mjs` 自动校验文档坏链、元数据与 INDEX 覆盖率，杜绝技术债务与文档掉队。
 
 ---
 
-## Architecture
+## 系统架构拓扑
 
-```
+```text
 +------------------------------------------------------------------------------------+
 |                                CLOUDFLARE EDGE                                     |
 |                                                                                    |
@@ -50,27 +52,27 @@ Lens 具备持续自我优化的能力。它不仅能高效摄取数据，还能
 |  |  /search    |    |  | (Scheduled) |    |  (batch) |    |   (per image)    |  |  |
 |  |  /images    |    |  +-------------+    +----------+    +---------+--------+  |  |
 |  |  /stats     |    |                                            |              |  |
-|  |             |    |       +------------------------------------+              |  |
+|  |  /trace     |    |       +------------------------------------+              |  |
 |  +------+------+    |       |                                                   |  |
 |         |           |       v                                                   |  |
 |         |           |  +--------------+  +--------------+  +--------------+  +--------------+  |
-|         |           |  | Downloader   |->| Vision       |->| Embedding    |->| Persist      |  |
-|         |           |  | (R2)         |  | Llama 4      |  | BGE-M3       |  | D1 + R2      |  |
+|         |           |  | Downloader   |->| Vision AI    |->| Embedding    |->| Persist      |  |
+|         |           |  | (R2)         |  | Llama Vision |  | BGE-M3       |  | D1 + Vector  |  |
 |         |           |  +--------------+  +--------------+  +--------------+  +--------------+  |
 |         |           +-----------------------------------------------------------+  |
 |         |                                                                          |
 |         |  +-------------------------------------------------------------------------+ |
 |         |  |                        SEARCH FLOW                                      | |
 |         |  |                                                                         | |
-|         +--+--->  Query ---> Hybrid Search ---> Reranker & Cliff ---> Result JSON    | |
-|            |      Expand     (FTS5+Vectorize)   (BGE Reranker)                       | |
+|         +--+--->  L1 Cache ---> L2 KV Cache ---> Parallel Retrieval ---> RRF Fusion  | |
+|            |      (HTTP)        (Semantic)       (FTS5 + Vectorize)      & Cliff     | |
 |            +-------------------------------------------------------------------------+ |
 |                                                                                    |
 |  +------------------------------------------------------------------------------+  |
-|  |                             STORAGE                                          |  |
+|  |                             STORAGE MATRIX                                   |  |
 |  |   +-------------+     +-------------+     +--------------------------+       |  |
 |  |   |      D1     |     |      R2     |     |        Vectorize         |       |  |
-|  |   | FTS5 Index  |     |    images   |     |    20k x 1024-dim        |       |  |
+|  |   | FTS5 Index  |     |    images   |     |    25k+ x 768-dim        |       |  |
 |  |   | metadata    |     |   display/  |     |       embeddings         |       |  |
 |  |   +-------------+     +-------------+     +--------------------------+       |  |
 |  +------------------------------------------------------------------------------+  |
@@ -80,54 +82,99 @@ Lens 具备持续自我优化的能力。它不仅能高效摄取数据，还能
 
 ---
 
-## 📂 Project Structure
+## 仓库结构 (Repository Structure)
 
-- **`apps/client`**: React Frontend (Vite + Tailwind).
-- **`apps/engine`**: Cloudflare Worker (API, Workflow, Queue, Cron).
-- **`packages/shared`**: Common types, schemas, and logic.
-- **`apps/engine/migrations`**: Versioned D1 database schemas.
-
----
-
-## Technical Highlights
-
-| 特性           | 实现方案                       | 核心优势                                     |
-| :------------- | :----------------------------- | :------------------------------------------- |
-| **混合搜索**   | **FTS5 + Vectorize (RRF)**     | 兼顾关键词精确度与语义深度理解。             |
-| **全链路追踪** | **基于 Trace-ID 的可观测性**   | 毫秒级定位分布式故障，日志流纯净。           |
-| **数据进化**   | 23:00 UTC 资源最大化策略       | 零额外成本自动提升存量数据质量。             |
-| **架构内聚**   | **单 Worker 全栈驱动**         | 极简部署，逻辑高度自洽。                     |
-| **成本控制**   | GraphQL 实时审计 + 5% 安全边际 | 精确的预算控制，确保运行在安全的成本边界内。 |
-| **GitOps**     | Wrangler Migrations            | 数据库表结构演进全程版本化、自动化。         |
+```text
+lens/
+├── apps/
+│   ├── client/               # 前端展示应用 (React 19 + Vite + Tailwind CSS)
+│   └── engine/               # 边缘核心服务 (Cloudflare Workers, Hono, Workflows)
+│       └── migrations/       # D1 关系型数据库版本化迁移脚本
+├── packages/
+│   └── shared/               # 跨端公共模块 (TypeScript 契约、Schemas、Logger、Tracer)
+├── docs/                     # 项目规范、系统设计、ADR 与运维文档
+│   ├── INDEX.md              # 现行文档全景导航入口
+│   ├── CURRENT-STATE.md      # 当前系统运行事实唯一源
+│   └── decisions/            # 架构决策记录 (ADR 体系)
+└── scripts/                  # 本地工程化与自动化治理校验工具
+```
 
 ---
 
-## ⚡ 技术栈与性能规格
+## 技术栈选型
 
-| 组件           | 技术选型              | 职责                                             |
-| :------------- | :-------------------- | :----------------------------------------------- |
-| **视觉大脑**   | **Llama 4 Scout 17B** | 多模态推理、审美打分与实体识别。                 |
-| **查询扩展**   | **Llama 3.2 3B**      | 轻量快速的搜索词语义扩展。                       |
-| **向量底座**   | **BGE-M3**            | 1024 维高密度向量，支持多语言跨模态对齐。        |
-| **混合搜索**   | **SQLite FTS5**       | 倒排索引，处理硬核关键词匹配。                   |
-| **相关性精排** | **BGE Reranker Base** | 对搜索结果进行“逻辑审计”，截断不相关的长尾数据。 |
-| **持久化大脑** | **Cloudflare D1**     | 存储旗舰版元数据、审美分与实体 JSON。            |
-| **资产存储**   | **Cloudflare R2**     | 存储 display 展示图，处理完成后不保留原图。      |
-| **任务编排**   | **Workflows**         | 管理具备自动重试能力的复杂、多阶段采集流水线。   |
+| 领域          | 组件/工具                 | 选型定位与职责                                                   |
+| :------------ | :------------------------ | :--------------------------------------------------------------- |
+| **边缘计算**  | Cloudflare Workers        | 单 Worker 驱动 HTTP 路由、Workflows 编排、Queue 消费与 Cron 调度 |
+| **网关框架**  | Hono v4                   | 轻量化路由中间件、参数校验与上下文染色                           |
+| **前端交互**  | React 19 + Vite           | 瀑布流自适应布局、主题切换与搜索交互                             |
+| **关系存储**  | Cloudflare D1 (SQLite)    | 图片元数据存储、物理尺寸、色彩指纹与 FTS5 倒排索引               |
+| **向量检索**  | Cloudflare Vectorize      | 768 维稠密向量余弦距离检索 (TopK 召回)                           |
+| **多模态 AI** | Cloudflare Workers AI     | BGE-M3 文本向量嵌入与多模态视觉属性推理                          |
+| **对象存储**  | Cloudflare R2             | 原始图片归档与 WebP 变焦流持久化存储                             |
+| **工程工具**  | CodeGraph + Graphify + Pi | 本地 AST 符号引用、全景知识图谱与 Local Harness 领域治理         |
 
 ---
 
-## 📚 文档中心 (Documentation)
+## 快速上手与本地开发
 
-- [**01. 架构与算法**](docs/ARCHITECTURE.md) - 深入剖析线性对撞与自进化逻辑。
-- [**02. 存储与数据模型**](docs/DATABASE.md) - 详解 D1 (FTS5) 表结构设计与 R2 战略。
-- [**03. 完整接口指南**](docs/API.md) - REST API 规范。
-- [**04. 全栈部署手册**](docs/DEPLOYMENT.md) - 15 分钟内拉起全栈生产环境。
+### 1. 环境准备
+
+确保本地安装 Node.js >= 24 以及 pnpm >= 11：
+
+```bash
+node -v   # v24+
+pnpm -v   # v11+
+```
+
+### 2. 依赖安装
+
+```bash
+pnpm install
+```
+
+### 3. 执行验证检查
+
+```bash
+# 1. 运行文档治理校验（链接有效性、元数据、索引覆盖率）
+pnpm run check:docs
+
+# 2. 全仓 TypeScript 严格类型检查
+pnpm -r run typecheck
+
+# 3. 运行代码规范与 Prettier 格式校验
+pnpm run lint
+
+# 4. 执行全量单元测试与覆盖率报告 (62 tests)
+pnpm test
+
+# 5. Cloudflare Worker 部署演练
+pnpm --filter engine exec wrangler deploy --dry-run
+```
+
+### 4. 本地服务启动
+
+```bash
+# 启动前端开发服务器
+pnpm --filter @lens/client dev
+
+# 启动后端边缘调试运行时
+pnpm --filter @lens/engine dev
+```
+
+---
+
+## 完整技术文档索引
+
+所有关于架构决策、存储规范、API 交互与运维流程的文档，请参阅：
+
+- [**docs/INDEX.md**](docs/INDEX.md)：现行文档全景导航与活/死文档索引
+- [**docs/CURRENT-STATE.md**](docs/CURRENT-STATE.md)：当前系统运行状态最高事实入口
+- [**docs/decisions/**](docs/decisions/)：架构决策记录库（ADR-0000 ~ ADR-0004）
+- [**AGENTS.md**](AGENTS.md)：AI Coding Agent 行为红线与交互约束
 
 ---
 
 ## 许可证 (License)
 
-MIT © 2026 Lens 贡献者.
-
-Last updated: September 17, 2026.
+本项目采用 [MIT 许可证](LICENSE)。

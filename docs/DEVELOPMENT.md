@@ -1,76 +1,147 @@
-# 开发规范、神仙级架构与极致工程实践指南 (05-DEVELOPMENT)
+# 模块架构、开发规范与边缘工程实践指南
 
 更新日期：2026-09-19
 状态：现行
-适用范围：代码规范、目录分层、边界隔离与工程协作指南
+适用范围：Monorepo 工程分层、边缘运行时开发规范、类型安全与质量保障
 
-Lens 项目不仅仅是一堆代码的集合，它是一场关于**“如何在极端贫瘠的边缘计算环境下构建高智力系统”**的实验。作为开发者，你必须时刻保持对内存、CPU 时间片以及 AI 成本的敬畏。
-
----
-
-## 1. 深度模块化架构：从内联到解耦的演进
-
-我们彻底抛弃了单一 `index.ts` 处理一切的初级写法，转向了职责高度明确的结构：
-
-### 1.1 核心目录职责定义
-
-- **`src/handlers/` (流量分发层)**：
-  这里的代码不应该包含任何业务逻辑。它们的唯一职责是解析触发信号（Cron、Queue 或 HTTP），创建 `TraceContext`，并将其转发给底层的 Service。
-- **`src/services/` (逻辑原子层)**：
-  - `ai.ts`：只管调模型和 Zod 校验。
-  - `billing.ts`：只管算账和能力预测。
-  - `billing.ts`：只管算账和能力预测（Evolution 相关）。
-- **`src/utils/` (工具协议层)**：
-  处理外部协议的封装（如 Unsplash API 的翻页逻辑、R2 的流式管道对接）。
+本项目遵循严谨的边缘原生（Edge-Native）架构设计规范。所有模块代码均针对 Cloudflare Workers 边缘运行时的内存容量、执行时间片限制与冷启动延迟进行了工程优化。
 
 ---
 
-## 2. 基于 Zod 的确定性工程实践
+## 1. Monorepo 代码分层与架构边界
 
-在 AI 领域，最大的挑战是“不可预测性”。Lens 通过 **强契约校验** 将这种风险降至最低。
+项目采用 pnpm workspace 进行多包管理，各模块遵循单向依赖原则：
 
-### 2.1 拒绝 Regex，拥抱 Schema
+```
+lens/
+├── apps/
+│   ├── engine/       # Cloudflare Workers 后端网关、定时任务与异步流水线
+│   └── client/       # React + Vite 前端单页应用（部署于 Workers Static Assets）
+├── packages/
+│   └── shared/       # 共享数据契约、TypeScript 类型、Zod Schema 与基础工具类
+├── scripts/          # 文档治理、安全审计与自动化运维脚本
+└── docs/             # 架构决策记录 (ADR) 与现行技术规范文档
+```
 
-我们不再通过脆弱的正则表达式去盲抠 Caption。
+### 1.1 依赖关系约束
 
-1.  **指令端**：Prompt 强制要求返回 JSON。
-2.  **验证端**：利用 `VisionResponseSchema.safeParse()`。
-3.  **自愈逻辑**：
-    - 如果 Zod 提示字段缺失 -> 记录 Trace 日志 -> 触发延迟重试。
-    - 如果 Zod 提示长度超标 -> 自动执行分片截断。
-    - **效果**：进入 D1 的数据永远是格式统一、类型安全的“确定性资产”。
+- `apps/engine` 依赖 `packages/shared`。
+- `apps/client` 依赖 `packages/shared`。
+- `packages/shared` 为纯 TypeScript 库，不得依赖任何应用层代码或平台专有非标准全局变量。
+- 严禁模块间出现循环引用。
+
+### 1.2 `apps/engine` 内部目录职责
+
+- **`src/routes/`**：Hono 路由定义，处理 HTTP 请求参数校验与响应组装，不包含核心业务编排。
+- **`src/services/`**：业务领域服务实现，包括 `SearchService`、`WorkflowProcessor` 与 `ai.ts` 模型调度。
+- **`src/handlers/`**：平台事件适配层，承接 `scheduled` (Cron)、`queue` (Queue Consumer) 与 `workflow` (Workflows Entry)。
+- **`src/middleware/`**：网关级切面逻辑，包含速率限制与统一错误拦截。
+- **`src/utils/`**：数据转换与通用辅助函数。
 
 ---
 
-## 3. 128MB 内存下的极限生存法则 (Edge Survival)
+## 2. 边缘运行时极限生存规范 (Edge Constraints)
 
-Cloudflare Workers 免费版只有 128MB 内存。一张 4K 图片展开后可能高达 50MB，足以让 Worker 崩溃。
+Cloudflare Workers 运行时具备极高的水平伸缩能力，但对单一实例的资源有着严格的硬性配额：
 
-### 3.1 流式处理 (Streaming First)
+### 2.1 内存上限控制 (128MB Limit)
 
-系统严禁使用 `Array.from()` 或 `buffer.toString()` 来加载整张图片。
-
-- **牛逼代码示例**：
+- **流式处理优先 (Streaming First)**：严禁在内存中以 `ArrayBuffer` 或 `string` 形式全量缓冲完整大尺寸图像文件。
+- **管道直通原则**：从外部或 R2 读取媒体数据时，必须直接传递 `ReadableStream`，或在需要分块计算时使用固定尺寸的微缓冲。
   ```typescript
-  const img = await env.R2.get(key);
-  // 直接将 body (ReadableStream) 传给分析函数
-  return await analyzeImage(env.AI, img.body, logger);
+  // 正确：流式直通
+  const object = await env.R2.get(key);
+  return new Response(object.body, { headers });
+
+  // 严禁：全量读入内存
+  // const buffer = await object.arrayBuffer(); // 可能导致 OOM
   ```
-- **底层原理**：数据像流水一样经过 Worker 的 CPU，而不是在 RAM 中停留。这保证了 Lens 即使在处理海量高频抓取时，内存占用曲线依然像一条直线一样稳定。
+
+### 2.2 CPU 时间片与异步卸载 (CPU Time Slice)
+
+- Workers 免费与标准套餐对每次请求的同步 CPU 时间片限制为 50ms。
+- 任何超过 50ms 的 CPU 密集型任务（如大图像缩放计算、高并发模型推理调度、长批次数据重平衡）必须拆分并通过 **Cloudflare Workflows** 或 **Queues** 进行异步卸载。
+
+### 2.3 依赖包体积控制 (Zero-Bloat Policy)
+
+- 禁止引入未经 Tree-shaking 优化的重型 NPM 依赖。
+- 优先采用 Web 标准 API（`fetch`, `Request`, `Response`, `Headers`, `crypto`, `ReadableStream`）。
 
 ---
 
-## 4. Tracing 协议的手工实现哲学
+## 3. 类型安全与数据契约规范
 
-我们没有引入 OpenTelemetry 等笨重的第三方库（因为它们会增加包体积，拖慢冷启动时间）。
+### 3.1 强契约与运行时校验
 
-- **轻量化追踪**：我们手写了一个 20 行的 `Logger` 类。它在对象构造时就绑定了 `traceId`。
-- **逻辑自洽**：通过将 `logger` 实例作为函数的第一参数向下传递，系统实现了零性能损耗的“全链路脉冲追踪”。
+- 外部输入（Unsplash API 响应、用户请求体、Workers AI 模型返回）被视为不可信数据源。
+- 必须通过 Zod Schema 进行结构校验：
+  ```typescript
+  export const VisionResponseSchema = z.object({
+    caption: z.string().min(10).max(1000),
+    quality: z.number().min(0).max(10),
+    entities: z.array(z.string()),
+    tags: z.array(z.string().toLowerCase()),
+  });
+
+  const parsed = VisionResponseSchema.safeParse(rawOutput);
+  if (!parsed.success) {
+    logger.warn('AI Output validation failed, applying fallback policy');
+    // 降级策略处理
+  }
+  ```
+
+### 3.2 严格 TypeScript 规范
+
+- 根级别与子包均启用 `strict: true`。
+- 严禁使用裸 `any`。对于未知结构使用 `unknown` 并通过类型收窄或 Type Guard 进行判定。
+- 数据库查询结果必须使用 `@lens/shared` 中定义的接口（如 `DBImage`）进行强类型绑定。
 
 ---
 
-## 5. 开发者的自律清单
+## 4. 轻量级全链路追踪规范 (Trace Architecture)
 
-1.  **严禁 Anywhere Any**：所有的 D1 查询结果必须通过 `@lens/shared` 定义的接口进行类型断言。
-2.  **注释即文档**：复杂的 SQL 聚合逻辑必须注明为何不使用多次简单查询（通常是为了规避 D1 的 RTT 延迟）。
-3.  **幂等写入**：修改任何数据库操作时，优先考虑 `INSERT ... ON CONFLICT DO UPDATE`。
+为了在不增加冷启动开销与包体积的前提下实现可观测性，项目实现了自研的轻量化追踪协议：
+
+### 4.1 TraceContext 生命周期
+
+- 每次触发（HTTP 搜索、定时任务、异步队列）首先调用 `createTrace(prefix)` 生成上下文。
+- 实例化的 `Logger` 对象携带全局唯一的 `traceId`，在调用链中显式传递。
+
+### 4.2 结构化遥测上报
+
+- 关键链路的耗时与关键业务指标通过 `Logger.trackSearch` 或 `Logger.metric` 批量投递至 Cloudflare Analytics Engine (`TELEMETRY`)。
+- 打点操作全部包裹在 `executionCtx.waitUntil()` 中执行，不阻塞用户主干响应。
+
+---
+
+## 5. 本地开发、测试与提交规程
+
+### 5.1 本地测试命令集
+
+在提交代码前，必须确保本地全量校验通过：
+
+```bash
+# 1. 语法检查与代码风格修复
+pnpm run lint
+
+# 2. 文档合规性检查（元数据、失效链接与目录索引）
+pnpm run check:docs
+
+# 3. 执行全量单元测试与覆盖率统计
+pnpm test
+
+# 4. 执行后端 Worker 预编译演练
+pnpm --filter engine exec wrangler deploy --dry-run
+```
+
+### 5.2 Git 提交规范
+
+- 提交信息必须使用英文，遵循 Conventional Commits 规范。
+- 格式规范：`<type>: <description>`（总长度建议不超过 7 个英文单词）。
+  - `feat`: 新增特性
+  - `fix`: 缺陷修复
+  - `docs`: 文档变更
+  - `refactor`: 重构且无行为变更
+  - `perf`: 性能优化
+  - `test`: 测试用例补充
+- **安全约束**：所有 Commit 必须进行 GPG 签名（`git commit -S`）。

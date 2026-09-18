@@ -17,13 +17,13 @@
 
 ## 系统设计与开发规约（现行活文档）
 
-- [ARCHITECTURE.md](ARCHITECTURE.md)：Lens 宏观架构、边缘计算拓扑与核心搜索/采集对撞算法。
-- [API.md](API.md)：API 网关接口契约、搜索接口、输入输出规范与追踪生命周期。
-- [DATABASE.md](DATABASE.md)：D1、R2、Vectorize、KV 异构存储契约与多维索引治理。
-- [DEVELOPMENT.md](DEVELOPMENT.md)：代码规范、目录分层、边界隔离与工程协作指南。
-- [DEPLOYMENT.md](DEPLOYMENT.md)：Monorepo 构建、D1 迁移、Cloudflare Workers & Pages 部署。
-- [MAINTENANCE.md](MAINTENANCE.md)：系统健康度、AI Gateway 对账、预算精算与日常运维。
-- [FAQ.md](FAQ.md)：核心演化逻辑、分支复用与重构决策深度解答。
+- [ARCHITECTURE.md](ARCHITECTURE.md)：系统宏观架构、边缘计算拓扑与核心搜索/流水线算法规范。
+- [API.md](API.md)：API 接口契约与网关规范（输入输出契约、SSE 流式通信与错误模型）。
+- [DATABASE.md](DATABASE.md)：存储体系、数据契约与多维索引治理（D1、R2、Vectorize、KV 异构存储规范）。
+- [DEVELOPMENT.md](DEVELOPMENT.md)：模块架构、开发规范与边缘工程实践指南（分层边界、边缘约束与类型安全）。
+- [DEPLOYMENT.md](DEPLOYMENT.md)：构建编排、持续交付与云原生部署指南（Monorepo 构建、D1 迁移与 CI/CD）。
+- [MAINTENANCE.md](MAINTENANCE.md)：系统运维、配额审计与全生命周期监控手册（指标巡检、FinOps 审计与应急预案）。
+- [FAQ.md](FAQ.md)：核心架构、技术权衡与常见问题解答（FAQ）。
 
 ---
 

@@ -1,77 +1,296 @@
-# 接口指南、交互契约与防御性 API 设计 (03-API-REFERENCE)
+# API 接口契约与网关规范
 
 更新日期：2026-09-19
 状态：现行
-适用范围：API 网关接口契约、搜索接口、输入输出规范与追踪生命周期
+适用范围：API 网关接口契约、输入输出规范、流式通信与错误模型
 
-Lens 的接口设计不仅仅是为了传递数据，更是一套**“为了在边缘侧极致压榨性能”**而生的交互契约。我们利用 Hono 框架构建了一个具备多层防御、动态截断和自动重排能力的工业级网关。
-
----
-
-## 1. 核心搜索接口：`GET /api/search`
-
-这是 Lens 系统的“明珠”，它在后台默默执行着四维空间的坐标比对与重排。
-
-### 1.1 请求参数与业务考量
-
-- **`q` (必填)**：支持高度口语化、文学化的描述。Llama 4 的查询扩展层会将这种输入转化为“视觉词向量”。
-- **`limit` (可选)**：默认 20。系统会根据后台的“断崖检测”算法动态调整返回数量，即便你请求了 100，如果相关性不足，系统也可能只返回最优质的 15 条。
-
-### 1.2 搜索生命周期的深度追踪 (Trace Lifecycle)
-
-每一次点击“搜索”，系统内部都会发生以下连锁反应：
-
-1.  **L1 Cache (Browser & Edge)**：检查 `caches.default`。
-2.  **L2 Cache (KV Semantic)**：将用户词通过 `normalizeQuery` 后去 KV 匹配。
-3.  **Query Expansion**：若未命中，由 **Llama 3.2 3B** 执行翻译与联想。
-4.  **Vectorized Query**：BGE-M3 在向量库执行 `topK: 100` 的召回。
-5.  **The "Cliff Detection" (动态截断)**：
-    - **数学逻辑**：遍历这 100 张图的分数。计算相邻分数的变化率：`Ratio = score[i] / score[i-1]`。
-    - **熔断触发**：一旦 `Ratio < 0.8` 或 `score < 0.5`，系统判定已进入“语义长尾”，直接在此处斩断结果集。
-    - **收益**：避免用户看到不相关的图，同时节省了昂贵的 Reranker 计算开销。
-6.  **BGE Reranker Base (精排)**：对截断后的前 20 张图进行像素级打分。
-    - **防御性处理**：代码会自动兼容 Reranker 返回的 `id` 或 `index` 格式，并执行边界检查，彻底杜绝了 AI 响应异常导致的数组越界。
-
-### 1.3 旗舰版响应字段定义
-
-我们不仅仅返回 URL，我们返回的是**图片的“简历”**：
-
-- **`ai_quality_score`**：0-10 分。让前端可以根据“美感”进行二次视觉分流。
-- **`entities`**：AI 识别出的高价值实体。例如 `["Empire State Building", "Tesla Model 3"]`。
-- **`color`**：用于实现 UI 上的 **“色块渐变进入 (Color Fade-in)”** 效果。
+Lens API 网关基于 Hono 框架构建，运行于 Cloudflare Workers 边缘运行时。网关集成了 IP 滑动窗口限流、双层缓存（L1 Edge Cache + L2 KV）、SSE 流式传输以及完整的 OpenTelemetry 追踪生命周期。
 
 ---
 
-## 2. 图片详情与安全出口：`/api/images/:id`
+## 1. 全局配置与中间件契约
 
-这是一个“全信息脱敏”接口。它将 D1 中复杂的 `meta_json` 进行优雅降级处理，只吐出对用户有用的摄影参数、地点和 AI 见解。
+### 1.1 跨域资源共享 (CORS)
 
-### 2.1 EXIF 的逻辑重组
+- **允许 Origin**：`https://lens.53.workers.dev`、`http://localhost:5173`
+- **允许 HTTP 方法**：`GET`, `POST`
+- **预检请求响应头**：标准 CORS 协商响应头
 
-系统会自动从 Unsplash 的原始数据中提取：
+### 1.2 限流策略 (Rate Limiting)
 
-- `camera`: 整合品牌与型号。
-- `exposure`: 自动格式化快门速度（如 1/125s）。
-- `iso`: 原始感光度数据。
-- **意义**：这些数据让 Lens 不仅仅是一个“搜图工具”，更像是一个摄影爱好者的“灵感画廊”。
+- **作用范围**：`/api/search`
+- **窗口与配额**：基于客户端 IP 的滑动窗口计数，限制为 60 次/分钟。
+- **超限响应**：HTTP 429 Too Many Requests，响应体 `{ "error": "Too Many Requests" }`。
 
----
+### 1.3 链路追踪头 (Telemetry Headers)
 
-## 3. R2 镜像出口：`/image/:type/:filename`
+所有请求进入网关时均初始化全局 Trace 上下文：
 
-这是一个**“零费用”设计**的典范。
-
-- **ETag 与 Immutable**：通过计算图片流的 MD5 生成 ETag。
-- **缓存穿透保护**：系统禁止任何非 `.jpg` 后缀的访问，保护 R2 的读取配额不被恶意扫描器消耗。
-- **分流逻辑**：
-  - `type=display`：走极速通道，服务于 UI。（raw 文件已移除，不再保留原图）
+- 每个搜索请求生成唯一 `traceId`（格式：`SEARCH-<uuid>`）。
+- 关键链路阶段（Query 扩展、向量召回、FTS5 检索、断崖截断、Rerank）的耗时与元数据自动记录至 `TELEMETRY` Analytics Engine。
 
 ---
 
-## 4. 故障模型与全局状态码
+## 2. 核心接口规范
 
-| 状态码                    | 故障隐喻                                               | 建议对策                                                 |
-| :------------------------ | :----------------------------------------------------- | :------------------------------------------------------- |
-| **429 (Sliding Window)**  | 用户的搜索欲望过强，超出 AI 预算。                     | 提升 Cache TTL 或引导用户稍微等待。                      |
-| **504 (Gateway Timeout)** | Llama 4 在边缘侧忙碌或排队中。                         | 系统会自动尝试 Workflow 重试，前端显示“正在深度加载中”。 |
-| **404 (Zombie ID)**       | 锚点 `last_seen_id` 存在但 R2 资产已由于不可抗力丢失。 | 采集引擎会自动探测并修复该记录。                         |
+### 2.1 语义混合搜索：`GET /api/search`
+
+提供多模态文本到图像的语义检索服务，支持标准 JSON 响应与 Server-Sent Events (SSE) 流式传输。
+
+#### 2.1.1 请求定义
+
+- **Query 参数**：
+  | 参数名   | 类型     | 必填 | 默认值    | 说明                                  |
+  | :------- | :------- | :--- | :-------- | :------------------------------------ |
+  | `q`      | `string` | 是   | 无        | 搜索关键词或自然语言描述（非空）      |
+  | `stream` | `string` | 否   | `"false"` | 传 `"true"` 时启用 SSE 流式分阶段响应 |
+- **Headers 参数**：
+  - `Accept: text/event-stream`（可选，等效于 `?stream=true`）
+
+#### 2.1.2 响应模式 A：标准 JSON 响应 (`stream=false`)
+
+- **HTTP 状态码**：`200 OK`
+- **缓存策略**：`Cache-Control: public, max-age=600`（边缘缓存 10 分钟）
+- **响应体 Schema**：
+
+```typescript
+interface SearchResponse {
+  results: ImageResult[];
+  query: string;
+  expandedQuery?: string;
+  latencyMs: number;
+  totalHits: number;
+  telemetry?: {
+    resultsBeforeCliff: number;
+    resultsAfterCliff: number;
+    highestScore: number;
+    lowestScore: number;
+    fts5Hits: number;
+    vectorHits: number;
+  };
+}
+
+interface ImageResult {
+  id: string;
+  url: string;
+  displayUrl: string;
+  width: number;
+  height: number;
+  ai_caption: string;
+  photographer: string;
+  score: number;
+  blur_hash?: string;
+  color?: string;
+  tags?: string[];
+  ai_quality_score?: number;
+}
+```
+
+#### 2.1.3 响应模式 B：SSE 流式传输 (`stream=true`)
+
+- **Content-Type**：`text/event-stream`
+- **事件流水线**：
+  1. `event: stage`：
+     - `data: {"stage": "expanding", "message": "Expanding query via Llama..."}`
+  2. `event: stage`：
+     - `data: {"stage": "retrieving", "expandedQuery": "..."}`
+  3. `event: stage`：
+     - `data: {"stage": "ranking", "count": 30}`
+  4. `event: stage`：
+     - `data: {"stage": "complete", "results": ImageResult[], "telemetry": { ... }}`
+  5. `event: done`：
+     - `data: {}`
+
+---
+
+### 2.2 搜索建议与前缀补全：`GET /api/suggest`
+
+提供低延迟前缀补全词推荐，数据由用户高频有效搜索在后台异步聚合沉淀于 KV。
+
+#### 2.2.1 请求定义
+
+- **Query 参数**：
+  | 参数名 | 类型     | 必填 | 说明                          |
+  | :----- | :------- | :--- | :---------------------------- |
+  | `q`    | `string` | 是   | 搜索前缀，长度须 $\ge 2$ 字符 |
+
+#### 2.2.2 响应体 Schema
+
+- **HTTP 状态码**：`200 OK`
+- **响应体**：
+
+```json
+{
+  "suggestions": ["cyberpunk city night", "cyberpunk neon lights"]
+}
+```
+
+---
+
+### 2.3 最新入库画廊：`GET /api/images/latest`
+
+获取最新入库且已完成 AI 多模态结构化标注的图片列表。
+
+#### 2.3.1 响应定义
+
+- **HTTP 状态码**：`200 OK`
+- **缓存策略**：KV 缓存 3600 秒 (`cache:latest`)
+- **响应体**：
+
+```json
+{
+  "results": [/* ImageResult[] */],
+  "total": 100
+}
+```
+
+---
+
+### 2.4 图片详情查询：`GET /api/images/:id`
+
+获取单张图片的结构化全量元数据，包括 EXIF 摄影参数、AI 标注信息、色调以及分类标签。
+
+#### 2.4.1 请求定义
+
+- **路径参数**：`id`（图片唯一标识字符串）
+
+#### 2.4.2 响应定义
+
+- **HTTP 状态码**：`200 OK`（若不存在返回 `404 Not Found`）
+- **缓存策略**：KV 缓存 86400 秒（24 小时）
+- **响应体 Schema**：
+
+```typescript
+interface ImageDetail extends ImageResult {
+  exif?: {
+    camera?: string;
+    lens?: string;
+    focalLength?: string;
+    aperture?: string;
+    exposure?: string;
+    iso?: number;
+  };
+  location?: {
+    city?: string;
+    country?: string;
+    coordinates?: [number, number];
+  };
+  entities?: string[];
+  composition?: string;
+  sourceUrl?: string;
+  downloadUrl?: string;
+}
+```
+
+---
+
+### 2.5 图片资产边缘代理：`GET /image/:type/:filename`
+
+直接从 Cloudflare R2 对象存储流式代理图片数据，结合 Cloudflare 边缘节点提供就近缓存与 MD5 ETag 协商。
+
+#### 2.5.1 请求定义
+
+- **路径参数**：
+  - `type`：资产规格，仅允许 `display`
+  - `filename`：文件名，正则约束 `^[a-zA-Z0-9_-]+\.jpg$`
+- **别名路由**：`/api/images/:type/:filename` 与 `/image/:type/:filename` 等效
+
+#### 2.5.2 响应头与缓存控制
+
+- `Content-Type`: `image/jpeg`
+- `ETag`: R2 对象的 HTTP ETag
+- `Cache-Control`: `public, max-age=31536000, immutable`（边缘节点与客户端强缓存 1 年）
+
+---
+
+### 2.6 运行指标与交互统计：`/api/stats`
+
+#### 2.6.1 概览统计：`GET /api/stats`
+
+- **说明**：获取系统存储总量、近 24 小时增量以及 Llama-4 处理进度的统计摘要。
+- **缓存策略**：KV 缓存 60 秒 (`stats:summary`)。
+- **响应体**：
+
+```json
+{
+  "total": 5240,
+  "recent": 128,
+  "evolved": 5240
+}
+```
+
+#### 2.6.2 埋点上报：`POST /api/stats/track`
+
+- **说明**：接收前端用户交互事件（点击、曝光、首词耗时），异步写入 Analytics Engine。
+- **请求体 Schema**：
+
+```typescript
+interface TrackPayload {
+  sessionId: string;
+  action: 'click' | 'view' | 'dwell';
+  query?: string;
+  photoId?: string;
+  timeToClickMs?: number;
+}
+```
+
+- **响应体**：`{ "ok": true }`
+
+---
+
+### 2.7 运维补偿接口：`POST /api/admin/compensate`
+
+#### 2.7.1 请求定义
+
+- **说明**：针对特定遗漏或未完成异步流水线处理的图片 ID 进行手动补偿投递，直接入列 `PHOTO_QUEUE`。
+- **请求体**：
+
+```json
+{
+  "photoIds": ["photo_id_1", "photo_id_2"]
+}
+```
+
+- **响应体**：
+
+```json
+{
+  "enqueued": 2,
+  "errors": []
+}
+```
+
+---
+
+### 2.8 健康检查：`GET /health`
+
+- **HTTP 状态码**：`200 OK`
+- **响应体**：
+
+```json
+{
+  "status": "healthy",
+  "name": "lens"
+}
+```
+
+---
+
+## 3. 错误模型与 HTTP 状态码规范
+
+网关遵循标准 RESTful HTTP 状态码体系，所有错误响应均返回标准 JSON 结构：
+
+```json
+{
+  "error": "明确的错误原因说明"
+}
+```
+
+| HTTP 状态码                   | 触发条件                                              | 处理方式与客户端对策                               |
+| :---------------------------- | :---------------------------------------------------- | :------------------------------------------------- |
+| **200 OK**                    | 请求成功处理并返回预期数据                            | 正常解析响应体                                     |
+| **400 Bad Request**           | 缺少必填参数（如 `q` 为空）、非法路径或非法 JSON 结构 | 校验客户端请求参数格式与合法性                     |
+| **404 Not Found**             | 请求的图片记录或 R2 静态资源不存在                    | 确认资源 ID 存在性，避免死链轮询                   |
+| **429 Too Many Requests**     | 触发 IP 频率限制（>60 次/分钟）                       | 指数退避重试，并展示等待提示                       |
+| **500 Internal Server Error** | 边缘运行时内部未捕获异常或数据库异常                  | 记录 traceId，触发报警排查日志                     |
+| **504 Gateway Timeout**       | 外部上游 API（Unsplash / Workers AI）超时             | 检查上游连通性，依赖异步队列重试机制保障最终一致性 |
