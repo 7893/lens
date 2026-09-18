@@ -116,7 +116,27 @@ Cloudflare Workers 运行时具备极高的水平伸缩能力，但对单一实�
 
 ## 5. 本地开发、测试与提交规程
 
-### 5.1 本地测试命令集
+### 5.1 本地环境变量与凭据配置
+
+本地开发采用双轨制环境变量管理，严禁向版本库提交真实明文凭据：
+
+1. **模板规范**：根目录提供 `.env.example`，`apps/engine/` 提供 `.dev.vars.example` 作为依赖契约；
+2. **本地环境准备**：
+   ```bash
+   # 拷贝本地模拟变量文件（已被 .gitignore 忽略）
+   cp apps/engine/.dev.vars.example apps/engine/.dev.vars
+   ```
+3. **填入开发凭据**：
+   - `UNSPLASH_API_KEY`：Unsplash 开发者 Access Key；
+   - `CLOUDFLARE_ACCOUNT_ID`：Cloudflare 账号 ID；
+   - `CLOUDFLARE_API_TOKEN`：具备 AI Gateway 读取权限的 API Token。
+4. **生产部署密钥**：生产环境严禁通过文件传递密钥，必须通过命令行安全写入边缘 KMS：
+   ```bash
+   wrangler secret put UNSPLASH_API_KEY
+   wrangler secret put CLOUDFLARE_API_TOKEN
+   ```
+
+### 5.2 本地测试命令集
 
 在提交代码前，必须确保本地全量校验通过：
 
@@ -134,7 +154,7 @@ pnpm test
 pnpm --filter engine exec wrangler deploy --dry-run
 ```
 
-### 5.2 Git 提交规范
+### 5.3 Git 提交规范
 
 - 提交信息必须使用英文，遵循 Conventional Commits 规范。
 - 格式规范：`<type>: <description>`（总长度建议不超过 7 个英文单词）。

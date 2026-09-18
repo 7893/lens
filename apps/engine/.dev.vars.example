@@ -1,0 +1,9 @@
+# Cloudflare Workers Local Development Secrets (.dev.vars)
+# Copy this file to .dev.vars in the same directory:
+#   cp .dev.vars.example .dev.vars
+# NEVER commit real .dev.vars containing secrets to version control.
+
+UNSPLASH_API_KEY=your_unsplash_access_key_here
+CLOUDFLARE_ACCOUNT_ID=your_cloudflare_account_id_here
+CLOUDFLARE_API_TOKEN=your_cloudflare_api_token_here
+ENVIRONMENT=development
