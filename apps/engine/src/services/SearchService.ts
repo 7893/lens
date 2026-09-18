@@ -25,6 +25,74 @@ export class SearchService {
       this.executeSemanticSearch(queryKey),
     ]);
 
+    return this.fuseAndHydrate(ftsResults, vectorResults, start);
+  }
+
+  /**
+   * Streaming search execution using Server-Sent Events (SSE).
+   * Emits fast keyword results first (Phase 1), then fused semantic results (Phase 2).
+   */
+  async searchStream(
+    query: string,
+    onStage: (event: string, data: Record<string, unknown>) => Promise<void>,
+  ): Promise<SearchResponse> {
+    const start = Date.now();
+    const queryKey = query.toLowerCase().trim();
+
+    const ftsPromise = this.executeKeywordSearch(queryKey);
+    const vectorPromise = this.executeSemanticSearch(queryKey);
+
+    // Fast-path: as soon as FTS completes, stream initial results if hits exist
+    let ftsResults: { id: string }[] = [];
+    try {
+      ftsResults = await ftsPromise;
+      if (ftsResults.length > 0) {
+        const topFtsIds = ftsResults.slice(0, 30).map((r) => r.id);
+        const placeholders = topFtsIds.map(() => '?').join(',');
+        const { results: dbRows } = await this.env.DB.prepare(
+          `SELECT id, width, height, color, raw_key, display_key, meta_json, ai_tags, ai_caption, ai_model, ai_quality_score, entities_json FROM images WHERE id IN (${placeholders})`,
+        )
+          .bind(...topFtsIds)
+          .all<DBImage>();
+
+        const ftsMapped = topFtsIds
+          .map((id) => {
+            const row = dbRows.find((r) => r.id === id);
+            return row ? toImageResult(row, 1.0) : null;
+          })
+          .filter((r): r is ImageResult => r !== null);
+
+        await onStage('stage', {
+          stage: 'keyword',
+          results: ftsMapped,
+          took: Date.now() - start,
+        });
+      }
+    } catch (e) {
+      this.logger.warn('FTS stream stage failed', e);
+    }
+
+    // Wait for vector search to complete, then fuse
+    const vectorResults = await vectorPromise;
+    const finalResponse = await this.fuseAndHydrate(ftsResults, vectorResults, start);
+
+    await onStage('stage', {
+      stage: 'complete',
+      ...finalResponse,
+    });
+    await onStage('done', {});
+
+    return finalResponse;
+  }
+
+  /**
+   * Reciprocal Rank Fusion (RRF) & D1 Hydration without BGE Reranker overhead.
+   */
+  private async fuseAndHydrate(
+    ftsResults: { id: string }[],
+    vectorResults: { id: string; score: number }[],
+    start: number,
+  ): Promise<SearchResponse> {
     // 2. Hybrid Ranking & Deduplication using Reciprocal Rank Fusion (RRF)
     const k = 60;
     const rrfMap = new Map<string, { ftsRank?: number; vecRank?: number }>();
@@ -65,7 +133,7 @@ export class SearchService {
       .all<DBImage>();
 
     // 5. Final Result Mapping (preserve order)
-    let finalResults = ids
+    const finalResults = ids
       .map((id) => {
         const row = dbRows.find((r) => r.id === id);
         const hybridInfo = selectedIds.find((h) => h.id === id);
@@ -73,50 +141,6 @@ export class SearchService {
         return toImageResult(row, hybridInfo.score);
       })
       .filter((r): r is ImageResult => r !== null);
-
-    // 6. BGE Reranker Base (精排)
-    if (finalResults.length > 1) {
-      try {
-        const topN = Math.min(finalResults.length, 8);
-        const candidates = finalResults.slice(0, topN);
-        const contexts = candidates.map((r) => ({ text: r.caption || r.description || 'untitled image' }));
-
-        const rerankResp = (await (this.env.AI as any).run(
-          AI_MODELS.RERANK,
-          {
-            query: queryKey,
-            top_k: topN,
-            contexts: contexts,
-          },
-          AI_GATEWAY,
-        )) as { response?: { id?: number; score?: number }[] };
-
-        if (rerankResp.response && rerankResp.response.length > 0) {
-          // Sort candidates by rerank score
-          const rerankedTop = rerankResp.response
-            .sort((a, b) => (b.score || 0) - (a.score || 0))
-            .map((r) => {
-              const idx = r.id ?? (r as any).index ?? -1;
-              const item = candidates[idx];
-              if (item && r.score !== undefined) {
-                item.score = r.score;
-              }
-              return item;
-            })
-            .filter((item): item is ImageResult => !!item);
-
-          // Merge back
-          // Fallback for missing ids if AI doesn't return all of them
-          const rerankedIds = new Set(rerankedTop.map((item) => item.id));
-          const missing = candidates.filter((item) => !rerankedIds.has(item.id));
-
-          finalResults = [...rerankedTop, ...missing, ...finalResults.slice(topN)];
-          this.logger.info(`Reranker applied to top ${topN} results`);
-        }
-      } catch (e) {
-        this.logger.warn('Reranker failed, falling back to hybrid order', e);
-      }
-    }
 
     return {
       results: finalResults,

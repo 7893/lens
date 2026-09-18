@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { streamSSE } from 'hono/streaming';
 import { ApiBindings, createTrace, Logger } from '@lens/shared';
 import { rateLimit } from '../middleware/rateLimit';
 import { SearchService } from '../services/SearchService';
@@ -11,11 +12,13 @@ search.use('/', rateLimit);
 /**
  * GET /api/search
  * High-performance semantic search entry point.
+ * Supports standard JSON responses as well as Server-Sent Events (SSE) streaming via `?stream=true`.
  */
 search.get('/', async (c) => {
   const q = c.req.query('q');
   if (!q) return c.json({ error: 'Missing query param "q"' }, 400);
 
+  const isStream = c.req.query('stream') === 'true' || c.req.header('accept')?.includes('text/event-stream');
   const trace = createTrace('SEARCH');
   const logger = new Logger(trace, c.env.TELEMETRY);
 
@@ -25,12 +28,67 @@ search.get('/', async (c) => {
   const cachedResponse = await cache.match(cacheKey);
   if (cachedResponse) {
     logger.info('Edge Cache Hit');
+    if (isStream) {
+      const cachedData = (await cachedResponse.json()) as Record<string, unknown>;
+      return streamSSE(c, async (stream) => {
+        await stream.writeSSE({
+          event: 'stage',
+          data: JSON.stringify({ stage: 'complete', ...cachedData }),
+        });
+        await stream.writeSSE({ event: 'done', data: '{}' });
+      });
+    }
     return cachedResponse;
   }
 
+  const searchService = new SearchService(c.env, logger);
+
+  // 2. Stream Response via Server-Sent Events (SSE)
+  if (isStream) {
+    return streamSSE(c, async (stream) => {
+      try {
+        const finalResult = await searchService.searchStream(q, async (event, data) => {
+          await stream.writeSSE({
+            event,
+            data: JSON.stringify(data),
+          });
+        });
+
+        // Cache completed result in edge cache
+        const fullResponse = new Response(JSON.stringify(finalResult), {
+          headers: {
+            'Content-Type': 'application/json',
+            'Cache-Control': 'public, max-age=600',
+          },
+        });
+        c.executionCtx.waitUntil(cache.put(cacheKey, fullResponse));
+        c.executionCtx.waitUntil(recordSuggestion(c.env.SETTINGS, q));
+
+        if (finalResult.telemetry) {
+          logger.trackSearch({
+            query: q,
+            resultsBeforeCliff: finalResult.telemetry.resultsBeforeCliff,
+            resultsAfterCliff: finalResult.telemetry.resultsAfterCliff,
+            highestScore: finalResult.telemetry.highestScore,
+            lowestScore: finalResult.telemetry.lowestScore,
+            fts5Hits: finalResult.telemetry.fts5Hits,
+            vectorHits: finalResult.telemetry.vectorHits,
+            zeroResult: finalResult.results.length === 0,
+          });
+        }
+      } catch (err) {
+        logger.metric('search_error', [], [String(err).slice(0, 100)]);
+        logger.error('Stream Search Failure', err);
+        await stream.writeSSE({
+          event: 'error',
+          data: JSON.stringify({ error: 'Search stream error' }),
+        });
+      }
+    });
+  }
+
+  // 3. Standard JSON Response (Fallback / Direct)
   try {
-    // 2. Execute Search Service Logic
-    const searchService = new SearchService(c.env, logger);
     const result = await searchService.search(q);
 
     const response = new Response(JSON.stringify(result), {
@@ -40,7 +98,7 @@ search.get('/', async (c) => {
       },
     });
 
-    // 3. Post-processing (Async)
+    // Post-processing (Async)
     c.executionCtx.waitUntil(cache.put(cacheKey, response.clone()));
     c.executionCtx.waitUntil(recordSuggestion(c.env.SETTINGS, q));
 
