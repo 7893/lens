@@ -1,96 +1,185 @@
-# 全栈构建、GitOps 运维与生产级部署手册 (04-DEPLOYMENT)
+# 构建编排、持续交付与云原生部署指南
 
 更新日期：2026-09-19
 状态：现行
-适用范围：Monorepo 构建、D1 迁移、Cloudflare Workers & Pages 部署
+适用范围：Monorepo 构建流程、D1 迁移管线、Cloudflare 边缘部署与 CI/CD 规范
 
-Lens 的部署流程不仅仅是代码的上传，它是一次**“基础设施的基因序列重组”**。通过将 D1 Schema 版本化、将编译链条 Monorepo 化，我们实现了在 Cloudflare 任何区域一键克隆出一套完全相同的生产环境的能力。
-
----
-
-## 1. 核心存储层：基于 Wrangler Migrations 的 GitOps 实践
-
-我们彻底废弃了手敲 SQL 的时代。现在，D1 的每一个字段变更都必须通过 **Migration 脚本** 进行记录。
-
-### 1.1 初始化 D1 旗舰版表结构
-
-在 `apps/engine` 目录下，系统维护了一个 `migrations/` 文件夹。
-
-1.  **创建 D1 实例**：
-    ```bash
-    npx wrangler d1 create lens-d1
-    ```
-2.  **应用序列化迁移**：
-    ```bash
-    # 该命令会自动按顺序执行
-    pnpm --filter=@lens/engine run migrate:local
-    ```
-
-- **牛逼点**：这种方式保证了数据库的“幂等性”。无论你在哪个环境部署，运行同样的 Migration 都能得到完全一致的数据库骨架。
+Lens 采用全栈边缘集成架构，将 React 前端单页应用通过 Cloudflare Workers Static Assets 机制与基于 Hono 的后端网关、Workflows 状态机及 Queues 队列统一打包，部署于同一 Cloudflare Worker (`lens`) 中，消除跨域协商与多边缘服务冷启动开销。
 
 ---
 
-## 2. 编译链路：Monorepo 的依赖拓扑
+## 1. 部署架构与拓扑关系
 
-Lens 采用 npm workspaces 驱动。由于 `engine` 严重依赖于 `@lens/shared`，建议遵循以下构建流程：
-
-1.  **前端构建与同步 (Client -> Engine)**：
-
-    ```bash
-    pnpm --filter=@lens/client run build
-    rm -rf apps/engine/public/*
-    cp -r apps/client/dist/* apps/engine/public/
-    ```
-
-    - **架构内涵**：将 React 前端产物作为静态资源内嵌入 Engine Worker 中，实现 **“Client + Engine 一站式边缘部署”**。
-
-2.  **后端部署 (The Engine)**：
-
-    ```bash
-    cd apps/engine && npx wrangler deploy
-    ```
-
----
-
-## 3. 生产机密管理：建立凭证孤岛
-
-为了实现 GraphQL 的费用审计和 AI Gateway 的透明调用，你需要手动在 Cloudflare 侧建立 Secrets。
-
-### 3.1 核心 Secrets 清单 (必填)
-
-| 键名                    | 来源                     | 用途描述                                  |
-| :---------------------- | :----------------------- | :---------------------------------------- |
-| `UNSPLASH_API_KEY`      | Unsplash Dev Portal      | 控制图片的入库源。                        |
-| `CLOUDFLARE_API_TOKEN`  | CF Dashboard (Analytics) | 用于 `billing.ts` 请求 GraphQL 获取账单。 |
-| `CLOUDFLARE_ACCOUNT_ID` | CF Dashboard URL         | 定位费用查询的物理归属。                  |
-
-### 3.2 注入指令
-
-```bash
-npx wrangler secret put CLOUDFLARE_API_TOKEN
-# 粘贴具有 GraphQL 读权限的令牌
+```
+[GitHub Repo: main]
+       │
+       ▼ (GitHub Actions CI/CD)
+┌────────────────────────────────────────────────────────┐
+│ 1. 共享包编译: pnpm --filter=@lens/shared build       │
+│ 2. 前端应用打包: pnpm --filter=@lens/client build       │
+│ 3. 产物复制: cp apps/client/dist -> apps/engine/public │
+│ 4. 边缘网关部署: wrangler deploy (apps/engine)         │
+└────────────────────────────────────────────────────────┘
+       │
+       ▼ (Cloudflare Edge Network)
+┌────────────────────────────────────────────────────────┐
+│ Worker: lens                                          │
+│  ├── [Assets] 前端静态资源 (SPA Fallback)              │
+│  ├── [Hono] API 网关 (/api/*, /image/*)               │
+│  ├── [Cron] 定时触发器 (0 * * * *)                     │
+│  ├── [Queues] 异步任务消费者 (lens-queue)              │
+│  └── [Workflows] 幂等摄取流水线 (lens-workflow)        │
+└────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 4. 全链路“冒烟测试”：上线后的关键 10 分钟
+## 2. 依赖构建与打包流水线
 
-部署完成后，Lens 具备一套自我体检流程：
+本地或 CI 节点执行全量发布前，必须按照单向依赖拓扑依次构建各模块：
 
-1.  **逻辑连通性 (The Hello Call)**：
-    访问 `/health`。如果返回 200，说明 Hono 核心已拉起。
-2.  **全链路 Trace 验证 (The First Search)**：
-    发起一次搜索，然后立即运行 `npx wrangler tail lens`。
-    - **观察点**：是否出现了 `[SEARCH-xxxx]` 标记的日志流？如果没有，说明 `logger.ts` 的注入出现了偏移。
-3.  **财务审计闭环 (The Pulse Check)**：
-    观察日志中是否出现 `Auditing daily system spend`。
-    - **关键点**：如果出现 401 错误，说明 `CLOUDFLARE_API_TOKEN` 权限范围不足。
+### 2.1 阶段一：编译共享契约库
+
+```bash
+# 生成 packages/shared/dist/*.d.ts 与编译产物
+pnpm --filter=@lens/shared run build
+```
+
+### 2.2 阶段二：打包前端客户端
+
+```bash
+# 生成 apps/client/dist
+pnpm --filter=@lens/client run build
+```
+
+### 2.3 阶段三：同步静态资产至后端
+
+```bash
+# 将前端静态产物植入 engine public 资产目录
+mkdir -p apps/engine/public
+rm -rf apps/engine/public/*
+cp -r apps/client/dist/* apps/engine/public/
+```
+
+### 2.4 阶段四：验证与部署 Worker
+
+```bash
+# 预检 Dry-Run
+pnpm --filter=@lens/engine exec wrangler deploy --dry-run
+
+# 执行正式部署
+pnpm --filter=@lens/engine exec wrangler deploy
+```
 
 ---
 
-## 5. 系统灾备与快速回滚
+## 3. 基础设施资源初始化 (Infra Provisioning)
 
-由于采用了 **Workflows 状态机** 架构，即使你在部署过程中因为 Bug 导致了数据解析异常：
+在新环境或初始部署时，需通过 Wrangler CLI 完成异构云资源的开辟与绑定配置：
 
-- **操作**：利用 GitHub Actions 的历史 Artifacts 重新发布。
-- **韧性**：正在队列中排队的图片任务不会丢失，它们会等待新版本的代码部署后，利用自动重试机制重新尝试入库。
+### 3.1 关系型数据库 (Cloudflare D1)
+
+```bash
+# 1. 创建 D1 数据库实例
+npx wrangler d1 create lens-d1
+
+# 2. 将返回的 database_id 填入 apps/engine/wrangler.toml 中的 [[d1_databases]]
+
+# 3. 应用全量数据库迁移 (按 0000 -> 0001 -> 0002 顺序)
+pnpm --filter=@lens/engine run migrate:remote
+```
+
+### 3.2 向量索引 (Cloudflare Vectorize)
+
+```bash
+# 创建 1024 维余弦距离向量索引
+npx wrangler vectorize create lens-vectorize --dimensions=1024 --metric=cosine
+```
+
+### 3.3 对象存储 (Cloudflare R2)
+
+```bash
+# 创建图像文件持久化存储桶
+npx wrangler r2 bucket create lens-r2
+```
+
+### 3.4 键值存储 (Workers KV)
+
+```bash
+# 创建系统配置与缓存命名空间
+npx wrangler kv:namespace create SETTINGS
+# 将返回的 id 填入 wrangler.toml
+```
+
+### 3.5 消息队列 (Cloudflare Queues)
+
+```bash
+# 创建异步摄取队列
+npx wrangler queues create lens-queue
+```
+
+---
+
+## 4. 环境变量与凭证安全管理 (Secrets)
+
+系统严禁将敏感凭证硬编码或提交至版本控制系统中，所有机密均通过 Cloudflare Secrets 安全注入：
+
+| 变量名                  | 作用与权限要求                                      | 配置命令                                        |
+| :---------------------- | :-------------------------------------------------- | :---------------------------------------------- |
+| `UNSPLASH_API_KEY`      | Unsplash 开发者平台 Access Key，用于定时摄取图片    | `npx wrangler secret put UNSPLASH_API_KEY`      |
+| `CLOUDFLARE_API_TOKEN`  | 具备 Cloudflare D1/AI/Analytics 读取权限的 API 令牌 | `npx wrangler secret put CLOUDFLARE_API_TOKEN`  |
+| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare 账户 ID，用于标识资源物理归属            | `npx wrangler secret put CLOUDFLARE_ACCOUNT_ID` |
+
+---
+
+## 5. 持续集成与持续交付 (CI/CD Pipeline)
+
+项目使用 GitHub Actions（`.github/workflows/ci.yml`）自动化全流程交付。
+
+### 5.1 门禁校验流水线 (Pull Request & Push)
+
+- **setup**：拉取代码、锁定 Node.js 24 与 pnpm、安装依赖并编译 `@lens/shared`，缓存 `node_modules`。
+- **lint**：执行 ESLint 静态代码分析与 Prettier 风格格式校验。
+- **test**：在沙箱环境中执行 Vitest 全量单元测试（含 Mocked Cloudflare Workers 绑定），并要求覆盖率门禁通过。
+- **typecheck**：对各子包执行 `tsc --noEmit` 进行全量 TypeScript 严格类型检查。
+
+### 5.2 生产环境自动发布 (Deploy Job)
+
+当且仅当推送至 `main` 分支且上述校验全部通过时，触发自动化部署作业：
+
+- 重新构建 `@lens/client` 并复制至 `apps/engine/public/`。
+- 通过 `cloudflare/wrangler-action@v3` 使用注入的 GitHub Actions Secrets 完成生产环境原子发布。
+
+---
+
+## 6. 部署后验证与运维巡检 (Post-Deployment Verification)
+
+每次发布后，执行以下标准验证清单：
+
+1. **基础健康检查**：
+   ```bash
+   curl -i https://lens.53.workers.dev/health
+   # 预期: HTTP 200, {"status":"healthy","name":"lens"}
+   ```
+2. **检索网关校验**：
+   ```bash
+   curl -i "https://lens.53.workers.dev/api/search?q=cyberpunk"
+   # 预期: HTTP 200, 返回包含 results 数组与 telemetry 统计的 JSON
+   ```
+3. **实时日志跟踪**：
+   ```bash
+   pnpm --filter=@lens/engine exec wrangler tail
+   # 观察实时请求 TraceID、耗时与无未捕获异常抛出
+   ```
+
+---
+
+## 7. 容灾重试与版本回滚策略
+
+- **即时回滚**：若新版本 Worker 发生非预期异常，可通过 Cloudflare 控制台或 Wrangler 快速切回上一个稳定部署版本：
+  ```bash
+  pnpm --filter=@lens/engine exec wrangler rollback
+  ```
+- **数据与队列幂等**：
+  - 队列消费任务基于 `IngestionTask` 驱动，失败自动退回重试（`max_retries: 3`），超限后隔离至死信队列。
+  - Workflows 执行各步骤均为幂等操作（`INSERT ... ON CONFLICT DO UPDATE`），重试不会导致重复创建或脏数据。

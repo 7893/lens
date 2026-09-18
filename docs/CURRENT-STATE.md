@@ -11,46 +11,52 @@
 ## 1. 现行架构拓扑
 
 ```text
-客户端 (Vue 3 + Vite) -> Cloudflare Edge -> @lens/engine (单 Worker 全栈闭环)
-                                             ├── GET /api/search (混合检索: D1 FTS5 + Vectorize + RRF)
-                                             ├── GET /api/stats (系统健康与图片统计)
-                                             ├── GET /api/trace/:id (分布式调用追踪查询)
-                                             ├── Cron 触发器 (每小时线性抓取与对撞探测)
-                                             └── Workflow 状态机 (图片下载、AI 分析、向量入库)
+客户端 (React 19 + Vite + TailwindCSS) -> Cloudflare Edge -> @lens/engine (单 Worker 全栈闭环)
+                                                              ├── GET /api/search (混合检索: D1 FTS5 + Vectorize + RRF)
+                                                              ├── GET /api/stats (系统指标与互动埋点)
+                                                              ├── GET /api/images/:id (图片详情与 EXIF)
+                                                              ├── GET /image/display/:filename (R2 边缘强缓存代理)
+                                                              ├── Cron 触发器 (每小时定时拉取与存量审计)
+                                                              ├── Queue 消费者 (lens-queue 削峰缓冲)
+                                                              └── Workflow 状态机 (lens-workflow 幂等摄取与推理)
 ```
 
-- **单 Worker 全栈集成**：API 服务、定时抓取调度（Cron）、异步队列消费者和 Workflow 状态机完全收敛于 `@lens/engine`，避免跨 Worker RPC 的延迟损耗与配额开销；
-- **混合检索模型**：L1 HTTP 缓存 -> L2 KV 语义缓存 -> D1 FTS5 关键词匹配 + Vectorize (BGE-M3) 向量相似度双路召回 -> RRF (Reciprocal Rank Fusion) 智能融合重排；
+- **单 Worker 全栈集成**：前端静态资源通过 Workers Static Assets 托管，与基于 Hono 的后端网关、定时调度（Cron）、异步队列消费者和 Workflow 状态机完全收敛于 `@lens/engine`，避免跨 Worker RPC 的延迟损耗与跨域协商开销；
+- **混合检索模型**：L1 HTTP 边缘缓存 -> L2 KV 语义缓存 -> D1 FTS5 关键词匹配 + Vectorize (BGE-M3, 1024 维) 向量相似度双路召回 -> 断崖检测动态截断 -> BGE-Reranker-Base 精排；
 - **生产发布环境**：`https://lens.53.workers.dev`。
 
 ---
 
 ## 2. 资源绑定（Cloudflare Bindings 事实）
 
-| 绑定名称          | 类型         | 用途                         | 关键策略                                                            |
-| :---------------- | :----------- | :--------------------------- | :------------------------------------------------------------------ |
-| `DB`              | D1 Database  | 关系型主库与 FTS5 全文索引   | 生产禁止 DDL 物理删除与批量截断；写操作必须通过版本化迁移           |
-| `VECTORIZE_INDEX` | Vectorize    | 768维 BGE-M3 密集向量索引库  | 余弦相似度召回，TopK=100 结合断崖检测算法                           |
-| `CACHE`           | KV Namespace | L2 查询缓存与语义联想字典    | 动态 TTL 缓存，规避重复 AI 扩展调用                                 |
-| `BUCKET`          | R2 Storage   | 原图及 WebP 变焦图持久化存储 | 抓取后双画质转码压缩存储，防止外部图床防盗链失效                    |
-| `AI`              | Workers AI   | 文本向量化与视觉理解推理     | 向量化使用 `@cf/baai/bge-m3`；查询意图扩展与图片理解使用 Llama 系列 |
-| `INGEST_WORKFLOW` | Workflows    | 分布式可重试采集状态机       | 保证图片生命周期原子化流转，支持步骤级重试与故障隔离                |
+| 绑定名称         | 类型             | 物理标识                   | 用途与关键策略                                                                |
+| :--------------- | :--------------- | :------------------------- | :---------------------------------------------------------------------------- |
+| `DB`             | D1 Database      | `lens-d1` (`af9a1e43-...`) | 关系型主库与 FTS5 全文索引；写操作必须通过版本化迁移（0000~0002）             |
+| `VECTORIZE`      | Vectorize        | `lens-vectorize`           | 1024 维 BGE-M3 密集向量索引库；余弦相似度召回，结合断崖检测动态截断           |
+| `SETTINGS`       | KV Namespace     | `22886c458d...`            | L2 查询缓存、前缀搜索建议、统计缓存与动态摄取配置                             |
+| `R2`             | R2 Bucket        | `lens-r2`                  | 持久化存储 Web 优化尺寸图片（`display/` 规格）；原图不落盘 (ADR-0003)         |
+| `AI`             | Workers AI       | Gateway: `lens-gateway`    | 文本向量化 (`@cf/baai/bge-m3`)、视觉理解与精排 (`@cf/baai/bge-reranker-base`) |
+| `PHOTO_WORKFLOW` | Workflows        | `lens-workflow`            | 分布式可重试摄取状态机；保障图片生命周期原子化流转与步骤重试                  |
+| `PHOTO_QUEUE`    | Queues           | `lens-queue`               | 异步削峰消息队列，平滑驱动后台推理流水线                                      |
+| `TELEMETRY`      | Analytics Engine | `lens-ae`                  | 边缘轻量链路追踪与指标遥测数据集                                              |
+| `RATE_LIMITER`   | Rate Limiting    | Namespace: `1001`          | 搜索网关滑动窗口限流（60 次/分钟）                                            |
 
 ---
 
 ## 3. 全链路可观测性基线（Tracing Baseline）
 
-- **追踪协议**：遵循 W3C `traceparent` 标准，支持跨边界上下文传递；
-- **追踪粒度**：覆盖用户搜索请求（`SEARCH-xxxx`）、定时采集批次（`CRON-xxxx`）与工作流实例（`WF-xxxx`）；
-- **集成形式**：采用轻量级自定义 OpenTelemetry 兼容 Harness（见 [ADR-0001](decisions/0001-custom-agent-tracing.md)），微秒级开销，无额外外部依赖。
+- **追踪协议**：遵循自研轻量级追踪协议，支持跨边界上下文传递（见 [ADR-0001](decisions/0001-custom-agent-tracing.md)）；
+- **追踪粒度**：覆盖用户搜索请求（`SEARCH-xxxx`）、定时采集批次（`CRON-xxxx`）、异步入库任务（`WORKFLOW-xxxx`）与用户互动埋点（`TRACK-xxxx`）；
+- **集成形式**：零外部重型依赖，结合 Cloudflare Analytics Engine 异步批处理上报，无冷启动性能拖累。
 
 ---
 
 ## 4. 质量与测试基准（已验证事实）
 
-- **单元与集成测试**：62 个 Vitest 测试用例全部通过（涵盖搜索服务、采集服务、对撞模型、RRF 排序、API 路由、Tracing 上下文等）；
+- **单元与集成测试**：62 个 Vitest 测试用例全部通过（涵盖搜索服务、采集服务、断崖检测、RRF 排序、API 路由、Tracing 上下文等）；
 - **类型系统**：TypeScript 严格模式全仓通过（`pnpm -r run typecheck` 0 错误）；
 - **代码规范**：ESLint + Prettier 格式化检查全部通过；
+- **安全审计**：`pnpm audit` 0 已知安全漏洞，Dependabot PR 全部解决；
 - **本地工程化图谱**：
   - **CodeGraph**：AST 符号索引已建库（`.codegraph/codegraph.db`），支持符号拓扑跳转；
   - **Graphify**：系统依赖知识图谱已提取（`graphify-out/`），支持架构语义问答；
