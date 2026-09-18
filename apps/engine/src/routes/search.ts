@@ -47,12 +47,16 @@ search.get('/', async (c) => {
   if (isStream) {
     return streamSSE(c, async (stream) => {
       try {
-        const finalResult = await searchService.searchStream(q, async (event, data) => {
-          await stream.writeSSE({
-            event,
-            data: JSON.stringify(data),
-          });
-        });
+        const finalResult = await searchService.searchStream(
+          q,
+          async (event, data) => {
+            await stream.writeSSE({
+              event,
+              data: JSON.stringify(data),
+            });
+          },
+          trace.traceId,
+        );
 
         // Cache completed result in edge cache
         const fullResponse = new Response(JSON.stringify(finalResult), {
@@ -89,7 +93,7 @@ search.get('/', async (c) => {
 
   // 3. Standard JSON Response (Fallback / Direct)
   try {
-    const result = await searchService.search(q);
+    const result = await searchService.search(q, trace.traceId);
 
     const response = new Response(JSON.stringify(result), {
       headers: {

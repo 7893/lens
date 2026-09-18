@@ -1,6 +1,13 @@
 import { defineConfig } from 'vitest/config';
+import path from 'node:path';
 
 export default defineConfig({
+  resolve: {
+    alias: {
+      'cloudflare:workers': path.resolve(__dirname, './apps/engine/tests/mocks/cloudflare-workers.ts'),
+    },
+  },
+
   test: {
     coverage: {
       provider: 'v8',
