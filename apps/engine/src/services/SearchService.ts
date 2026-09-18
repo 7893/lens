@@ -1,4 +1,12 @@
-import { ApiBindings, DBImage, SearchResponse, AI_MODELS, AI_GATEWAY, ImageResult } from '@lens/shared';
+import {
+  ApiBindings,
+  DBImage,
+  SearchResponse,
+  AI_MODELS,
+  AI_GATEWAY,
+  ImageResult,
+  SearchRankingPolicy,
+} from '@lens/shared';
 import { toImageResult } from '../utils/transform';
 import { Logger } from '@lens/shared';
 import { tracing } from 'cloudflare:workers';
@@ -133,33 +141,14 @@ export class SearchService {
     convId?: string,
   ): Promise<SearchResponse> {
     // 2. Hybrid Ranking & Deduplication using Reciprocal Rank Fusion (RRF)
-    const k = 60;
-    const rrfMap = new Map<string, { ftsRank?: number; vecRank?: number }>();
-
-    ftsResults.forEach((res, idx) => {
-      rrfMap.set(res.id, { ftsRank: idx + 1 });
-    });
-
-    vectorResults.forEach((match, idx) => {
-      const existing = rrfMap.get(match.id) || {};
-      existing.vecRank = idx + 1;
-      rrfMap.set(match.id, existing);
-    });
-
-    const hybridIds = Array.from(rrfMap.entries())
-      .map(([id, info]) => {
-        const ftsScore = info.ftsRank !== undefined ? 1 / (k + info.ftsRank) : 0;
-        const vecScore = info.vecRank !== undefined ? 1 / (k + info.vecRank) : 0;
-        return { id, score: ftsScore + vecScore };
-      })
-      .sort((a, b) => b.score - a.score);
+    const hybridIds = SearchRankingPolicy.calculateRRF(ftsResults, vectorResults);
 
     if (hybridIds.length === 0) {
       return { results: [], total: 0, took: Date.now() - start };
     }
 
     // 3. Dynamic Cutoff
-    const cutoffIdx = this.calculateDynamicCutoff(hybridIds);
+    const cutoffIdx = SearchRankingPolicy.calculateDynamicCutoff(hybridIds);
     const selectedIds = hybridIds.slice(0, cutoffIdx);
 
     // 4. Hydrate Metadata from D1 (excluding unused ai_embedding column)
@@ -209,30 +198,10 @@ export class SearchService {
 
   /**
    * Dynamic cutoff based on RRF score distribution.
-   * Filters out low-confidence trailing results while preserving top hits.
+   * Delegates to SearchRankingPolicy domain model.
    */
   private calculateDynamicCutoff(results: { score: number }[]): number {
-    const MAX_RESULTS = 60;
-    const ABSOLUTE_FLOOR = 0.005;
-    const RATIO_CLIFF = 0.65;
-
-    if (results.length === 0) return 0;
-    const maxScore = results[0].score;
-
-    for (let i = 1; i < results.length && i < MAX_RESULTS; i++) {
-      const score = results[i].score;
-      const prevScore = results[i - 1].score;
-
-      // Absolute floor check: discard items scoring less than 15% of top result
-      if (score < maxScore * 0.15 || score < ABSOLUTE_FLOOR) return i;
-
-      // Relative cliff check (only apply after preserving at least top 5 results)
-      if (i >= 5 && prevScore > 0 && score / prevScore < RATIO_CLIFF) {
-        return i;
-      }
-    }
-
-    return Math.min(results.length, MAX_RESULTS);
+    return SearchRankingPolicy.calculateDynamicCutoff(results.map((r, i) => ({ id: String(i), score: r.score })));
   }
 
   /**
