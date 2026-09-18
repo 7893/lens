@@ -16,13 +16,15 @@
       "references": [{ "path": "docs/ARCHITECTURE.md" }]
     },
     "docs": {
-      "prefixes": ["docs/", "README.md", "CHANGELOG.md", "AGENTS.md", "LICENSE"],
+      "prefixes": ["docs/", "README.md", "CHANGELOG.md", "AGENTS.md", "GEMINI.md", "LICENSE"],
       "references": [{ "path": "docs/INDEX.md" }, { "path": "docs/CURRENT-STATE.md" }]
     },
     "tooling": {
       "prefixes": [
         ".pi/",
         ".agents/",
+        ".githooks/",
+        ".gitattributes",
         "scripts/",
         ".github/",
         ".gitignore",
