@@ -34,7 +34,8 @@ run_rebuild.sh
 HANDOVER.md
 coverage/
 
-# CodeGraph & Graphify (local AI knowledge indices)
+# Agent skills & local knowledge indices
+.agents/
 .codegraph/
 graphify-out/
 .graphify*
