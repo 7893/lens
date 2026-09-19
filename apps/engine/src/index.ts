@@ -1,36 +1,9 @@
-import { Hono } from 'hono';
-import { cors } from 'hono/cors';
 import { ApiBindings, IngestionTask } from '@lens/shared';
-import search from './routes/search';
-import images from './routes/images';
-import stats from './routes/stats';
-import suggest from './routes/suggest';
-import admin from './routes/admin';
-import { handleScheduled } from './handlers/scheduled';
-import { handleQueue } from './handlers/queue';
+import { app } from './entrypoints/http';
+import { handleScheduled } from './entrypoints/scheduled';
+import { handleQueue } from './entrypoints/queue';
 
-export { LensIngestWorkflow } from './handlers/workflow';
-
-const app = new Hono<{ Bindings: ApiBindings }>();
-
-// Middleware
-app.use(
-  '/*',
-  cors({ origin: ['https://lens.53.workers.dev', 'http://localhost:5173'], allowMethods: ['GET', 'POST'] }),
-);
-
-// Health check
-app.get('/health', (c) => c.json({ status: 'healthy', name: 'lens' }));
-
-// Routes
-app.route('/api/search', search);
-app.route('/api/stats', stats);
-app.route('/api/images', images);
-app.route('/api/suggest', suggest);
-app.route('/api/admin', admin);
-
-// Direct Image Alias
-app.route('/image', images);
+export { LensIngestWorkflow } from './entrypoints/workflow';
 
 export default {
   fetch: app.fetch,
