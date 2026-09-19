@@ -41,17 +41,17 @@
 
 ## 2. 资源绑定（Cloudflare Bindings 事实）
 
-| 绑定名称         | 类型             | 物理标识                   | 用途与关键策略                                                                    |
-| :--------------- | :--------------- | :------------------------- | :-------------------------------------------------------------------------------- |
-| `DB`             | D1 Database      | `lens-d1` (`af9a1e43-...`) | 权威主库、Outbox/Inbox、版本化投影、运行时配置与审计；写操作严格受控于版本化迁移   |
+| 绑定名称         | 类型             | 物理标识                   | 用途与关键策略                                                                   |
+| :--------------- | :--------------- | :------------------------- | :------------------------------------------------------------------------------- |
+| `DB`             | D1 Database      | `lens-d1` (`af9a1e43-...`) | 权威主库、Outbox/Inbox、版本化投影、运行时配置与审计；写操作严格受控于版本化迁移 |
 | `VECTORIZE`      | Vectorize        | `lens-vectorize`           | 1024 维密集向量索引库；版本化 Vector ID，返回候选必须回 D1 做活动版本过滤与水合  |
-| `SETTINGS`       | KV Namespace     | `22886c458d...`            | 查询语义缓存、前缀搜索建议与运行时配置只读快照                                    |
-| `R2`             | R2 Bucket        | `lens-r2`                  | 规范 Master 长期归档与 Web 展示切片；流式尺寸守卫与内容寻址 SHA-256 幂等去重      |
-| `AI`             | Workers AI       | Gateway: `lens-gateway`    | 文本向量化 (`@cf/baai/bge-m3`)、视觉理解与场景扩展                                |
-| `PHOTO_WORKFLOW` | Workflows        | `lens-workflow`            | 单资产长流程步骤持久化与恢复；确定性实例 ID 与幂等可重试步骤                      |
-| `PHOTO_QUEUE`    | Queues           | `lens-queue`               | 异步削峰消息队列与事务 Outbox 中继背压边界                                        |
-| `TELEMETRY`      | Analytics Engine | `lens-ae`                  | 边缘轻量链路追踪与指标遥测数据集                                                  |
-| `RATE_LIMITER`   | Rate Limiting    | Namespace: `1001`          | 公共搜索网关滑动窗口限流（60 次/分钟）                                            |
+| `SETTINGS`       | KV Namespace     | `22886c458d...`            | 查询语义缓存、前缀搜索建议与运行时配置只读快照                                   |
+| `R2`             | R2 Bucket        | `lens-r2`                  | 规范 Master 长期归档与 Web 展示切片；流式尺寸守卫与内容寻址 SHA-256 幂等去重     |
+| `AI`             | Workers AI       | Gateway: `lens-gateway`    | 文本向量化 (`@cf/baai/bge-m3`)、视觉理解与场景扩展                               |
+| `PHOTO_WORKFLOW` | Workflows        | `lens-workflow`            | 单资产长流程步骤持久化与恢复；确定性实例 ID 与幂等可重试步骤                     |
+| `PHOTO_QUEUE`    | Queues           | `lens-queue`               | 异步削峰消息队列与事务 Outbox 中继背压边界                                       |
+| `TELEMETRY`      | Analytics Engine | `lens-ae`                  | 边缘轻量链路追踪与指标遥测数据集                                                 |
+| `RATE_LIMITER`   | Rate Limiting    | Namespace: `1001`          | 公共搜索网关滑动窗口限流（60 次/分钟）                                           |
 
 ---
 
