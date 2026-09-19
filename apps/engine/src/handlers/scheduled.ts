@@ -1,6 +1,6 @@
 import { ProcessorBindings, IngestionSettings, createTrace, Logger } from '@lens/shared';
-import { IngestionService } from '../services/IngestionService';
-import { EvolutionService } from '../services/EvolutionService';
+import { IngestionService } from '../modules/ingestion';
+import { EvolutionService } from '../modules/operations';
 
 /**
  * Main Cron Entry Point
