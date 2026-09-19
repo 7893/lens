@@ -6,6 +6,7 @@ import images from '../routes/images';
 import stats from '../routes/stats';
 import suggest from '../routes/suggest';
 import admin from '../routes/admin';
+import internal from '../routes/internal';
 
 export const app = new Hono<{ Bindings: ApiBindings }>();
 
@@ -18,12 +19,15 @@ app.use(
 // Health check
 app.get('/health', (c) => c.json({ status: 'healthy', name: 'lens' }));
 
-// Routes
+// Public API Routes
 app.route('/api/search', search);
 app.route('/api/stats', stats);
 app.route('/api/images', images);
 app.route('/api/suggest', suggest);
 app.route('/api/admin', admin);
+
+// Internal Operations & Governance (Cloudflare Access protected)
+app.route('/internal', internal);
 
 // Direct Image Alias
 app.route('/image', images);

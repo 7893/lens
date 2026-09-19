@@ -152,6 +152,7 @@ export class VectorCandidateSource implements CandidateSource {
       toolSpan.setAttribute('gen_ai.operation.name', 'execute_tool');
       toolSpan.setAttribute('gen_ai.tool.name', 'vectorize_query');
       toolSpan.setAttribute('gen_ai.tool.call.arguments', JSON.stringify({ topK: 100 }));
+      if (convId) toolSpan.setAttribute('gen_ai.conversation.id', convId);
 
       const res = await this.vectorize.query(vector, { topK: 100 });
       this.logger.info(`Vectorized Recall: ${res.matches.length}`);
