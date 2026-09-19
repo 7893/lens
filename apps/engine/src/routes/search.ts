@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { streamSSE } from 'hono/streaming';
 import { ApiBindings, createTrace, Logger } from '@lens/shared';
 import { rateLimit } from '../middleware/rateLimit';
-import { SearchService } from '../services/SearchService';
+import { SearchService } from '../modules/retrieval';
 import { recordSuggestion } from './suggest';
 
 const search = new Hono<{ Bindings: ApiBindings }>();

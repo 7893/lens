@@ -1,6 +1,6 @@
 import { WorkflowEntrypoint, WorkflowStep, WorkflowEvent } from 'cloudflare:workers';
 import { IngestionTask, ProcessorBindings, createTrace, Logger } from '@lens/shared';
-import { WorkflowProcessor } from '../services/WorkflowProcessor';
+import { WorkflowProcessor } from '../modules/representation';
 
 const RETRY_CONFIG = {
   retries: { limit: 10, delay: '30 seconds' as const, backoff: 'constant' as const },
