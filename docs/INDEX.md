@@ -36,7 +36,8 @@
 - [ADR-0002 引入 CodeGraph、Graphify 与 Pi 本地知识体系](decisions/0002-codegraph-graphify-pi-tooling.md)：增强代码导航，本地衍生数据隔离于 Git 之外。
 - [ADR-0003 生产 D1 数据库只读保护与安全防线](decisions/0003-d1-readonly-protection.md)：防止不可逆的批处理或 DDL 删除对远端数据库造成破坏。
 - [ADR-0004 全面确立 AI 驱动与人机协同研发范式总纲](decisions/0004-ai-driven-engineering-framework.md)：确立双层图谱导航、Harness 领域边界与自动化闸门四大工程支柱。
-- [ADR-0005 Lens 2.0 次世代架构演进与重构蓝图](decisions/0005-lens-v2-architecture-blueprint.md)：规划原生多模态联合表征、Workers RPC 双核解耦、事务发件箱与多源适配演进路径。
+- [ADR-0005 Lens 2.0 次世代架构演进与重构蓝图](decisions/0005-lens-v2-architecture-blueprint.md)：规划原生多模态联合表征、Workers RPC 双核解耦、事务发件箱与多源适配演进路径。（已由 ADR-0006 取代）
+- [ADR-0006 Lens 长期架构基线——单 Worker、Cloudflare 原生模块化单体](decisions/0006-single-worker-cloudflare-native-refactor.md)：确立每环境单 Worker 部署与模块化单体，定义 D1 单一事实源、R2 规范 Master 长期归档、发件箱最终一致性与版本化搜索投影。
 
 ---
 
