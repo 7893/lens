@@ -49,16 +49,22 @@ Lens 采用 **“每环境单计算进程，按职责严格分层”** 的单 Wo
 
 ### 1.1 内核化检索管道 (Retrieval Kernel Pipeline)
 
-检索管道遵循稳定、无副作用的管道设计：
+检索管道遵循稳定、无副作用的纯策略设计：
 
-```text
-HTTP Query -> Normalize SearchSpec -> Query Understanding (带超时缓存)
-  ├── FtsCandidateSource (D1 FTS5 倒排召回) ──┐
-  └── VectorCandidateSource (Vectorize 召回) ─┴─> Pure RRF Fusion (k=60)
-                                              ──> Dynamic Cliff Cutoff (断崖截断)
-                                              ──> Pure Diversity Policy (画幅/色彩/作者聚类过滤)
-                                              ──> D1 Active-Version Hydration Gate (活动版本水合)
-                                              ──> JSON + Opaque Cursor (稳定游标分页)
+```mermaid
+flowchart TD
+    Client["客户端搜索请求 (q, limit, cursor, filters)"] --> Gateway["HTTP 网关 (/api/search)"]
+    Gateway --> SearchService["SearchService 领域编排"]
+    SearchService --> Q["Query 理解与多模态意图扩展"]
+    Q --> FTS["FtsCandidateSource (SQLite FTS5 倒排召回)"]
+    Q --> VEC["VectorCandidateSource (Vectorize 1024d ANN 召回)"]
+    FTS -- 关键词倒排候选集 --> RRF["纯策略 RRF 融合 (k=60)"]
+    VEC -- 密集语义向量候选集 --> RRF
+    RRF --> Cutoff["动态断崖截断 (Cliff Cutoff)"]
+    Cutoff --> Diversity["纯策略多样性打散与色调过滤"]
+    Diversity --> Hydration["D1 活动版本水合闸门 (Active Version Gate)"]
+    Hydration --> Cursor["不透明游标打包与分页 (nextCursor)"]
+    Cursor --> Response["返回强类型响应 (JSON / SSE)"]
 ```
 
 1. **CandidateSource 双路隔离**：SQLite FTS5 与 Vectorize (BGE-M3, 1024 维) 封装为标准候选源，任一路超时或限流均自动静默降级，绝不阻断检索；
@@ -68,6 +74,19 @@ HTTP Query -> Normalize SearchSpec -> Query Understanding (带超时缓存)
 5. **稳定游标分页 (`cursor`)**：基于查询指纹与偏移量生成 URL 安全的不透明游标，杜绝传统裸 offset 的数据漂移。
 
 ### 1.2 异步摄取与发件箱边界 (Asynchronous Pipeline & Outbox)
+
+系统通过事务发件箱与收件箱保障全链路异步最终一致性：
+
+```mermaid
+flowchart LR
+    Ingest["外部图源发现 / 采集"] --> D1Tx["D1 事务原子写入<br/>(业务状态 + outbox_events)"]
+    D1Tx --> Relay["Outbox 中继派发<br/>(Scheduled / 手动 Relay)"]
+    Relay --> Queue["Cloudflare Queue<br/>(异步削峰背压)"]
+    Queue --> Inbox["Consumer 幂等收件箱<br/>(consumed_events 日志)"]
+    Inbox --> Workflow["单资产长流程 Workflow<br/>(流式母本 + 视觉推理 + Embedding)"]
+    Workflow --> Projection["写入 search_documents<br/>(待激活 pending 投影)"]
+    Projection --> Activation["对账覆盖率达标后<br/>D1 原子切换活跃代际"]
+```
 
 - **事务性发件箱 (Transactional Outbox)**：业务变更与领域事件必须在 D1 同一事务批次内提交，由 Queue Consumer 异步中继；
 - **消费者幂等凭据 (Consumer Inbox)**：通过 `consumed_events` 表持久化消费凭据，吸收队列重试与乱序投递；
