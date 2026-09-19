@@ -19,11 +19,23 @@ search.get('/', async (c) => {
   if (!q) return c.json({ error: 'Missing query param "q"' }, 400);
 
   const isStream = c.req.query('stream') === 'true' || c.req.header('accept')?.includes('text/event-stream');
+  const cursor = c.req.query('cursor');
+  const color = c.req.query('color');
+  const orientation = c.req.query('orientation') as 'landscape' | 'portrait' | 'square' | undefined;
+  const tag = c.req.query('tag');
+
   const trace = createTrace('SEARCH');
   const logger = new Logger(trace, c.env.TELEMETRY);
 
-  // 1. Edge Cache Layer (L1)
-  const cacheKey = new Request(`https://lens-cache/search?q=${encodeURIComponent(q.toLowerCase().trim())}`);
+  // 1. Edge Cache Layer (L1) with normalized query and filters
+  const cacheUrl = new URL('https://lens-cache/search');
+  cacheUrl.searchParams.set('q', q.toLowerCase().trim());
+  if (cursor) cacheUrl.searchParams.set('cursor', cursor);
+  if (color) cacheUrl.searchParams.set('color', color);
+  if (orientation) cacheUrl.searchParams.set('orientation', orientation);
+  if (tag) cacheUrl.searchParams.set('tag', tag);
+  const cacheKey = new Request(cacheUrl.toString());
+
   const cache = caches.default;
   const cachedResponse = await cache.match(cacheKey);
   if (cachedResponse) {
@@ -42,13 +54,22 @@ search.get('/', async (c) => {
   }
 
   const searchService = new SearchService(c.env, logger);
+  const searchSpec = {
+    query: q,
+    cursor,
+    filters: {
+      color,
+      orientation,
+      tag,
+    },
+  };
 
   // 2. Stream Response via Server-Sent Events (SSE)
   if (isStream) {
     return streamSSE(c, async (stream) => {
       try {
         const finalResult = await searchService.searchStream(
-          q,
+          searchSpec,
           async (event, data) => {
             await stream.writeSSE({
               event,
@@ -93,7 +114,7 @@ search.get('/', async (c) => {
 
   // 3. Standard JSON Response (Fallback / Direct)
   try {
-    const result = await searchService.search(q, trace.traceId);
+    const result = await searchService.search(searchSpec, trace.traceId);
 
     const response = new Response(JSON.stringify(result), {
       headers: {

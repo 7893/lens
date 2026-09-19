@@ -135,6 +135,7 @@ export interface SearchResponse {
   results: ImageResult[];
   total: number;
   page?: number;
+  nextCursor?: string;
   took: number;
   telemetry?: {
     resultsBeforeCliff: number;
