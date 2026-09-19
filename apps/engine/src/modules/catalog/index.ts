@@ -3,6 +3,8 @@
  * Owns Asset, AssetSource, permissions, visibility, and lifecycle.
  */
 
+export * from './models';
+
 export interface CatalogAsset {
   id: string;
   sourceProvider: string;
