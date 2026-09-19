@@ -30,13 +30,20 @@ lens/
 - `packages/shared` 为纯 TypeScript 库，不得依赖任何应用层代码或平台专有非标准全局变量。
 - 严禁模块间出现循环引用。
 
-### 1.2 `apps/engine` 内部目录职责
+### 1.2 `apps/engine` 内部目录职责（模块化单体架构 - ADR-0006）
 
-- **`src/routes/`**：Hono 路由定义，处理 HTTP 请求参数校验与响应组装，不包含核心业务编排。
-- **`src/services/`**：业务领域服务实现，包括 `SearchService`、`WorkflowProcessor` 与 `ai.ts` 模型调度。
-- **`src/handlers/`**：平台事件适配层，承接 `scheduled` (Cron)、`queue` (Queue Consumer) 与 `workflow` (Workflows Entry)。
-- **`src/middleware/`**：网关级切面逻辑，包含速率限制与统一错误拦截。
-- **`src/utils/`**：数据转换与通用辅助函数。
+- **`src/entrypoints/`**：Cloudflare Workers 原生触发器入口绑定（`http.ts`, `queue.ts`, `scheduled.ts`, `workflow.ts`）。
+- **`src/kernel/`**：系统通用核心原语与基础设施抽象（`ids/`, `errors/`, `events/` [发件箱与收件箱], `observability/` [链路追踪与 Logger]）。
+- **`src/modules/`**：核心业务自治模块（限界上下文）：
+  - `catalog/`：规范资产 (`assets`) 与不可变媒体变体聚合根生命周期。
+  - `ingestion/`：外部数据源适配器契约与标准化规范摄取服务。
+  - `representation/`：多模态视觉属性理解、特征描述与向量生成状态机。
+  - `indexing/`：版本化搜索文档投影 (`search_documents`) 与代际状态管理。
+  - `retrieval/`：候选召回检索内核（`contracts`, `sources/`, `policies/`, `hydration`, `cursor`, `SearchService`）。
+  - `operations/`：模型进化调度、算力成本审计与运行时配置治理。
+- **`src/platform/`**：底层平台硬件适配层（`r2/` 规范母本流式写入器与内存守卫，`d1/`, `vectorize/`, `ai/`）。
+- **`src/routes/`**：Hono HTTP 网关控制器，负责参数校验、限流与模块委派（含 `/api/*`, `/image/*`, `/internal/*`）。
+- **`src/handlers/`**：平台事件转发适配器。
 
 ---
 
@@ -138,19 +145,22 @@ Cloudflare Workers 运行时具备极高的水平伸缩能力，但对单一实�
 
 ### 5.2 本地测试命令集
 
-在提交代码前，必须确保本地全量校验通过：
+在提交代码前，必须确保本地全量校验通过（124 个单元与集成测试用例 100% 绿灯）：
 
 ```bash
-# 1. 语法检查与代码风格修复
+# 1. 语法分析与代码风格检查
 pnpm run lint
 
 # 2. 文档合规性检查（元数据、失效链接与目录索引）
 pnpm run check:docs
 
-# 3. 执行全量单元测试与覆盖率统计
+# 3. 执行全量单元测试与覆盖率统计 (15 个套件，124 个用例)
 pnpm test
 
-# 4. 执行后端 Worker 预编译演练
+# 4. 全仓 TypeScript 严格类型检查
+pnpm -r run typecheck
+
+# 5. 执行后端 Worker 预编译演练
 pnpm --filter engine exec wrangler deploy --dry-run
 ```
 

@@ -46,9 +46,9 @@ pnpm --filter=@lens/engine exec wrangler tail --search "SEARCH-"
 - **审计范围聚焦**：系统调用 Cloudflare AI Gateway GraphQL 接口对账时，针对后台图像批处理所消耗的高算力模型（`@cf/meta/llama-4-scout-17b-16e-instruct`）执行定向聚合。
 - **公共服务隔离**：终端用户在线搜索所触发的轻量 Reranker 与 Fast-Text 模型不占用后台存量刷新的每日预算配额。
 
-### 2.2 KV 动态调节配置 (`config:ingestion`)
+### 2.2 权威运行时配置治理 (`runtime_config` & `/internal/config`)
 
-系统支持通过修改 Workers KV 中的 `config:ingestion` 实时控制后台任务行为，无需重新部署代码：
+系统支持基于 D1 `runtime_config` 表持久化权威配置，并通过 Workers KV 同步低延迟镜像。变更配置无需重新部署 Worker，且强制留存操作审计记录：
 
 ```json
 {
@@ -65,6 +65,26 @@ pnpm --filter=@lens/engine exec wrangler tail --search "SEARCH-"
 | `backfill_max_pages`        | `number`  | `1`       | 单次拉取的最大分页深度                              |
 | `daily_evolution_limit_usd` | `number`  | `1.0`     | 存量模型升级的单日预算上限（美元），置 0 则挂起刷新 |
 | `evolution_trigger_utc`     | `string`  | `"23:00"` | 存量审计与任务派发的每日触发时隙（UTC 时间）        |
+
+#### 配置查询与受控修改指令：
+
+```bash
+# 1. 查询权威运行时配置
+curl -H "cf-access-authenticated-user-email: admin@lens.internal" \
+  https://lens.53.workers.dev/internal/config/ingestion_policy
+
+# 2. 提交带审计原因的配置变更
+curl -X POST https://lens.53.workers.dev/internal/config \
+  -H "cf-access-authenticated-user-email: admin@lens.internal" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "key": "ingestion_policy",
+    "version": "v1.3",
+    "value": { "backfill_enabled": false, "backfill_max_pages": 2, "daily_evolution_limit_usd": 1.5 },
+    "description": "Adjusted evolution limit for model upgrade",
+    "reason": "OPS-2048: Increase evolution budget for weekend run"
+  }'
+```
 
 ---
 
@@ -108,33 +128,62 @@ pnpm --filter=@lens/engine exec wrangler tail --search "SEARCH-"
     -d '{"photoIds": ["<stuck_id_1>", "<stuck_id_2>"]}'
   ```
 
+### 3.4 故障场景 D：事务发件箱事件堆积 (Outbox Relay Backlog)
+
+- **现象**：`outbox_events` 表中未派发事件大量积压，导致下游搜索投影未能实时更新。
+- **诊断**：调用内部对账接口获取积压量与最长等待时延：
+  ```bash
+  curl -H "cf-access-authenticated-user-email: admin@lens.internal" \
+    https://lens.53.workers.dev/internal/reconciliation
+  ```
+- **修复与应急中继**：调用中继接口强制触发批次派发至 Queue：
+  ```bash
+  curl -X POST https://lens.53.workers.dev/internal/outbox/relay \
+    -H "cf-access-authenticated-user-email: admin@lens.internal"
+  ```
+
 ---
 
 ## 4. 成本核算与容量基准 (Cost & Capacity Model)
 
 基于生产环境运行基准数据统计的单图处理与存储开销模型：
 
-| 资源单元                    | 单次操作消耗                                    | 成本预估                       |
-| :-------------------------- | :---------------------------------------------- | :----------------------------- |
-| **Llama-4 Scout 视觉推理**  | 1 次推理 (~1k input tokens, ~150 output tokens) | ~ $0.00020 / 张                |
-| **BGE-M3 向量嵌入**         | 1 次文本 Embedding (1024 维)                    | ~ $0.00002 / 张                |
-| **D1 写入事务**             | 1 次写入 + 1 次 FTS5 触发器同步                 | 计入基础 Workers D1 配额       |
-| **R2 存储 (display/ 规格)** | ~300 KB / 张                                    | $0.015 / GB-月（无出站流量费） |
-| **综合单图处理成本**        | 全流程入库                                      | **~ $0.00025 / 张**            |
+| 资源单元                   | 单次操作消耗                                    | 成本预估                       |
+| :------------------------- | :---------------------------------------------- | :----------------------------- |
+| **Llama-4 Scout 视觉推理** | 1 次推理 (~1k input tokens, ~150 output tokens) | ~ $0.00020 / 张                |
+| **BGE-M3 向量嵌入**        | 1 次文本 Embedding (1024 维)                    | ~ $0.00002 / 张                |
+| **D1 写入事务**            | 1 次写入 + 1 次 FTS5 触发器同步                 | 计入基础 Workers D1 配额       |
+| **R2 存储 (规范 Master)**  | 规范母本 (~2MB) + Web 展示切片 (~300KB)         | $0.015 / GB-月（无出站流量费） |
+| **综合单图处理成本**       | 全流程入库                                      | **~ $0.00030 / 张**            |
 
-> **容量换算参考**：$1.00 美元预算可支撑约 3,800 ~ 4,000 张图片的完整视觉解析与高维向量入库。
+> **容量换算参考**：$1.00 美元预算可支撑约 3,300 ~ 3,500 张图片的完整母本归档、视觉解析与高维向量入库。
 
 ---
 
-## 5. 存量模型升级与全量重索引指南 (Re-indexing Runbook)
+## 5. 存量模型升级与版本化重索引指南 (Re-indexing Runbook)
 
-当系统引入更强大的新版视觉或嵌入模型时，遵循以下无停机维护流程：
+当系统引入更强大的新版视觉或嵌入模型时，依托 ADR-0006 的版本化搜索投影机制，遵循以下无停机维护流程：
 
-1. **更新模型配置**：在 `packages/shared/src/config.ts` 中声明新的模型标识常量。
-2. **渐进式重刷**：
-   无需停机或手动删除数据库，只需将待升级记录的 `ai_model` 标记为 `legacy`：
+1. **开辟新代际空间**：
+   在 `projection_state` 中注册新的索引代际（如 `gen-002`），初始状态为 `building`：
+
    ```bash
-   npx wrangler d1 execute lens-d1 --remote --command="UPDATE images SET ai_model = 'legacy' WHERE ai_model != 'new-model-id';"
+   npx wrangler d1 execute lens-d1 --remote --command="INSERT INTO projection_state (projection_type, index_generation, status, document_count, coverage_ratio, created_at) VALUES ('vectorize', 'gen-002', 'building', 0, 0.0, unixepoch()*1000);"
    ```
-3. **后台平滑消费**：
-   系统定时审计任务检测到 `ai_model = 'legacy'` 后，会结合每日设定的 `daily_evolution_limit_usd` 预算，在受控速率下通过队列平滑完成重分析与向量覆盖，保障线上检索服务不受影响。
+
+2. **从规范 Master 渐进式重算**：
+   利用 R2 归档的规范母本（`media/{contentHash}/master.{ext}`），无需重新请求外部外部源，直接调度 Workers 进行新模型推理，将生成的投影写入 `search_documents`（标记 `status = 'pending'`, `index_generation = 'gen-002'`）。
+
+3. **对账与覆盖率验证**：
+   调用对账接口确认新代际覆盖率达到 100%：
+
+   ```bash
+   curl -X POST https://lens.53.workers.dev/internal/reconciliation/run \
+     -H "cf-access-authenticated-user-email: admin@lens.internal"
+   ```
+
+4. **原子代际切换 (Zero-Downtime Cutover)**：
+   在 D1 中原子更新活跃代际指针，瞬间完成全局检索切换，旧代际标记为 `retired` 备查：
+   ```bash
+   npx wrangler d1 execute lens-d1 --remote --command="UPDATE projection_state SET status = 'retired' WHERE projection_type = 'vectorize' AND status = 'active'; UPDATE projection_state SET status = 'active', activated_at = unixepoch()*1000 WHERE projection_type = 'vectorize' AND index_generation = 'gen-002';"
+   ```

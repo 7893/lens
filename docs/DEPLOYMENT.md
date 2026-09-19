@@ -85,7 +85,7 @@ npx wrangler d1 create lens-d1
 
 # 2. 将返回的 database_id 填入 apps/engine/wrangler.toml 中的 [[d1_databases]]
 
-# 3. 应用全量数据库迁移 (按 0000 -> 0001 -> 0002 顺序)
+# 3. 应用全量数据库迁移 (按 0000 -> 0005 顺序，覆盖初始表、FTS5、性能索引、规范模型、搜索投影与治理审计)
 pnpm --filter=@lens/engine run migrate:remote
 ```
 
@@ -166,7 +166,12 @@ npx wrangler queues create lens-queue
    curl -i "https://lens.53.workers.dev/api/search?q=cyberpunk"
    # 预期: HTTP 200, 返回包含 results 数组与 telemetry 统计的 JSON
    ```
-3. **实时日志跟踪**：
+3. **内部依赖与代际诊断**：
+   ```bash
+   curl -i https://lens.53.workers.dev/internal/health
+   # 预期: HTTP 200, status="healthy", dependencies={d1: "healthy", r2: "healthy", kv: "healthy"}
+   ```
+4. **实时日志跟踪**：
    ```bash
    pnpm --filter=@lens/engine exec wrangler tail
    # 观察实时请求 TraceID、耗时与无未捕获异常抛出

@@ -40,10 +40,15 @@ Lens API 网关基于 Hono 框架构建，运行于 Cloudflare Workers 边缘运
 #### 2.1.1 请求定义
 
 - **Query 参数**：
-  | 参数名   | 类型     | 必填 | 默认值    | 说明                                  |
-  | :------- | :------- | :--- | :-------- | :------------------------------------ |
-  | `q`      | `string` | 是   | 无        | 搜索关键词或自然语言描述（非空）      |
-  | `stream` | `string` | 否   | `"false"` | 传 `"true"` 时启用 SSE 流式分阶段响应 |
+  | 参数名        | 类型     | 必填 | 默认值    | 说明                                                    |
+  | :------------ | :------- | :--- | :-------- | :------------------------------------------------------ |
+  | `q`           | `string` | 是   | 无        | 搜索关键词或自然语言描述（非空）                        |
+  | `stream`      | `string` | 否   | `"false"` | 传 `"true"` 时启用 SSE 流式分阶段响应                   |
+  | `limit`       | `number` | 否   | `30`      | 结果返回数量上限（默认 30，最大 100）                   |
+  | `cursor`      | `string` | 否   | 无        | 深度分页游标（Base64 编码不透明 Token）                 |
+  | `color`       | `string` | 否   | 无        | 主色调过滤（如 `"teal"`, `"yellow"`, 或 Hex 代码）      |
+  | `orientation` | `string` | 否   | 无        | 画幅朝向过滤（`"landscape"`, `"portrait"`, `"square"`） |
+  | `tag`         | `string` | 否   | 无        | 指定标签精准过滤                                        |
 - **Headers 参数**：
   - `Accept: text/event-stream`（可选，等效于 `?stream=true`）
 
@@ -60,6 +65,7 @@ interface SearchResponse {
   expandedQuery?: string;
   latencyMs: number;
   totalHits: number;
+  nextCursor?: string | null;
   telemetry?: {
     resultsBeforeCliff: number;
     resultsAfterCliff: number;
@@ -262,7 +268,7 @@ interface TrackPayload {
 
 ---
 
-### 2.8 健康检查：`GET /health`
+### 2.8 基础健康检查：`GET /health`
 
 - **HTTP 状态码**：`200 OK`
 - **响应体**：
@@ -271,6 +277,129 @@ interface TrackPayload {
 {
   "status": "healthy",
   "name": "lens"
+}
+```
+
+---
+
+### 2.9 内部管理与治理面接口：`/internal/*`
+
+内部接口专供集群治理、运维巡检与故障恢复使用，**受 Cloudflare Access 或内部授权标头强制防护**。
+
+#### 2.9.1 鉴权规范
+
+请求必须携带以下任一凭据：
+
+- `cf-access-authenticated-user-email`: Cloudflare Access 身份验证邮箱；
+- `Authorization: Bearer <internal_token>`: 内部服务令牌。
+
+在开发模式 (`ENVIRONMENT=development`) 下放行调试。
+
+#### 2.9.2 系统依赖深层诊断：`GET /internal/health`
+
+- **说明**：对 D1、R2、KV 以及活跃索引代际 (`activeGeneration`) 执行深层诊断探针。
+- **响应体 Schema**：
+
+```json
+{
+  "status": "healthy",
+  "environment": "production",
+  "activeGeneration": "gen-001",
+  "dependencies": {
+    "d1": "healthy",
+    "r2": "healthy",
+    "kv": "healthy"
+  },
+  "latencyMs": 12,
+  "timestamp": "2026-09-19T13:00:00.000Z"
+}
+```
+
+#### 2.9.3 对账与延迟报告：`GET /internal/reconciliation`
+
+- **说明**：审计事务发件箱（Outbox）待派发积压量、各投影（Vectorize / FTS5）文档覆盖率与代际健康度。
+- **响应体 Schema**：
+
+```json
+{
+  "outbox": {
+    "pendingCount": 0,
+    "oldestPendingAgeSeconds": 0
+  },
+  "projections": {
+    "vectorize": {
+      "activeGeneration": "gen-001",
+      "coverageRatio": 1.0,
+      "documentCount": 5240
+    },
+    "fts": {
+      "activeGeneration": "gen-001",
+      "coverageRatio": 1.0,
+      "documentCount": 5240
+    }
+  },
+  "status": "healthy",
+  "checkedAt": "2026-09-19T13:00:00.000Z"
+}
+```
+
+#### 2.9.4 触发审计对账：`POST /internal/reconciliation/run`
+
+- **说明**：强制触发即时对账检查，并将执行结果作为不可变记录持久化至 `operation_audit`。
+- **响应体**：`{ "correlationId": "uuid", "report": { ... } }`
+
+#### 2.9.5 读取权威配置：`GET /internal/config/:key`
+
+- **说明**：从 D1 `runtime_config` 表读取权威运行时配置及版本元数据。
+- **响应体**：
+
+```json
+{
+  "key": "ingestion_policy",
+  "version": "v1.2",
+  "value": {
+    "batchSize": 5,
+    "maxPages": 3
+  },
+  "description": "Unsplash batch ingestion config",
+  "updatedBy": "admin@lens.internal",
+  "updatedAt": 1773571200000
+}
+```
+
+#### 2.9.6 更新权威配置：`POST /internal/config`
+
+- **说明**：更新运行时配置，强制要求携带变更原因（`reason`），自动记录 `operation_audit` 审计日志。
+- **请求体**：
+
+```json
+{
+  "key": "ingestion_policy",
+  "version": "v1.3",
+  "value": {
+    "batchSize": 5,
+    "maxPages": 5
+  },
+  "description": "Increased maxPages for weekend ingest",
+  "reason": "OPS-1024: scheduled catch-up"
+}
+```
+
+- **响应体**：`{ "status": "updated", "key": "...", "version": "...", "correlationId": "..." }`
+
+#### 2.9.7 手动触发发件箱中继：`POST /internal/outbox/relay`
+
+- **说明**：手动扫描并批量将待派发 (`dispatched_at IS NULL`) 的 Outbox 事件投递至 Cloudflare Queue，写入操作审计。
+- **响应体**：
+
+```json
+{
+  "correlationId": "uuid",
+  "result": {
+    "polled": 15,
+    "relayed": 15,
+    "errors": []
+  }
 }
 ```
 
