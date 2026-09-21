@@ -1,6 +1,6 @@
 # Lens 当前系统状态
 
-更新日期：2026-09-19
+更新日期：2026-09-21
 状态：现行事实入口
 适用范围：当前运行拓扑、资源绑定、数据状态、测试基线与质量事实
 
@@ -25,7 +25,8 @@
                                                               │   ├── GET /internal/reconciliation (Outbox 延迟与投影覆盖率审计)
                                                               │   ├── POST /internal/reconciliation/run (强制对账并写审计日志)
                                                               │   ├── GET/POST /internal/config (权威运行时配置与不可变审计)
-                                                              │   └── POST /internal/outbox/relay (手动触发 Outbox 派发)
+                                                              │   ├── POST /internal/outbox/relay (手动触发 Outbox 派发)
+                                                              │   └── GET/POST /internal/backfill (存量旧数据规范模型回填与进度)
                                                               ├── Cron 调度入口 (每小时定时拉取、对账与存量审计)
                                                               ├── Queue 异步消费者 (削峰消费与 Outbox 投递)
                                                               └── Workflow 状态机 (单资产长流程幂等执行与恢复)
@@ -65,7 +66,7 @@
 
 ## 4. 质量与测试基准（已验证事实）
 
-- **单元与集成测试**：**124 个 Vitest 测试用例全部通过（15 个测试套件 100% 绿灯，核心模块覆盖率达 85%~100%）**；
+- **单元与集成测试**：**134 个 Vitest 测试用例全部通过（17 个测试套件 100% 绿灯，核心模块覆盖率达 85%~100%）**；
 - **类型系统**：TypeScript 严格模式全仓通过（`pnpm -r run typecheck` 0 错误）；
 - **代码规范**：ESLint + Prettier 格式化检查全部通过（0 错误，0 警告）；
 - **安全审计**：`pnpm audit` 0 已知安全漏洞；
