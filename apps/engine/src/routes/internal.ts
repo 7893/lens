@@ -259,16 +259,20 @@ internal.post('/storage/reorganize', async (c) => {
   const service = new StorageReorganizationService(c.env.DB, c.env.R2, logger);
   const result = await service.runBatch({ limit, deleteOld });
 
-  await recordOperationAudit(c.env.DB, {
-    operator,
-    action: 'run_storage_reorganization_batch',
-    target_type: 'storage',
-    target_id: 'monthly_archive',
-    reason: `Storage reorganization batch processed limit=${limit} deleteOld=${deleteOld}`,
-    correlation_id: correlationId,
-    status: 'success',
-    details_json: JSON.stringify(result),
-  });
+  try {
+    await recordOperationAudit(c.env.DB, {
+      operator,
+      action: 'run_storage_reorganization_batch',
+      target_type: 'storage',
+      target_id: 'monthly_archive',
+      reason: `Storage reorganization batch processed limit=${limit} deleteOld=${deleteOld}`,
+      correlation_id: correlationId,
+      status: 'success',
+      details_json: JSON.stringify(result),
+    });
+  } catch {
+    // optional audit logging in case migration 0005 is not yet applied
+  }
 
   return c.json({ correlationId, result });
 });
