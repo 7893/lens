@@ -103,78 +103,84 @@ export class StorageReorganizationService {
     const errors: string[] = [];
     const updateStatements: D1PreparedStatement[] = [];
     const keysToDelete: string[] = [];
+    const CHUNK_SIZE = 6;
 
-    for (const row of rows) {
-      try {
-        let photoCreatedAt: string | undefined;
-        try {
-          const meta = JSON.parse(row.meta_json || '{}');
-          photoCreatedAt = meta.created_at;
-        } catch {
-          // ignore parse error
-        }
-
-        const yearMonth = formatYearMonth(photoCreatedAt || row.created_at);
-        const targetDisplayKey = `display/${yearMonth}/${row.id}.jpg`;
-        const targetRawKey = `${yearMonth}/${row.id}.jpg`;
-
-        // Check if display object already exists in new target
-        let displayExists = false;
-        try {
-          const head = await this.r2.head(targetDisplayKey);
-          if (head) displayExists = true;
-        } catch {
-          // not found
-        }
-
-        if (!displayExists) {
-          // Read from old display_key
-          const oldDisplayObj = await this.r2.get(row.display_key);
-          if (oldDisplayObj) {
-            await this.r2.put(targetDisplayKey, oldDisplayObj.body, {
-              httpMetadata: oldDisplayObj.httpMetadata,
-              customMetadata: oldDisplayObj.customMetadata,
-            });
-            if (deleteOld && row.display_key !== targetDisplayKey) {
-              keysToDelete.push(row.display_key);
-            }
-          }
-        } else {
-          skipped++;
-        }
-
-        // Check if raw object exists at old raw_key
-        if (row.raw_key && row.raw_key !== targetRawKey) {
+    for (let i = 0; i < rows.length; i += CHUNK_SIZE) {
+      const chunk = rows.slice(i, i + CHUNK_SIZE);
+      await Promise.all(
+        chunk.map(async (row) => {
           try {
-            const oldRawObj = await this.r2.get(row.raw_key);
-            if (oldRawObj) {
-              await this.r2.put(targetRawKey, oldRawObj.body, {
-                httpMetadata: oldRawObj.httpMetadata,
-                customMetadata: oldRawObj.customMetadata,
-              });
-              if (deleteOld) {
-                keysToDelete.push(row.raw_key);
+            let photoCreatedAt: string | undefined;
+            try {
+              const meta = JSON.parse(row.meta_json || '{}');
+              photoCreatedAt = meta.created_at;
+            } catch {
+              // ignore parse error
+            }
+
+            const yearMonth = formatYearMonth(photoCreatedAt || row.created_at);
+            const targetDisplayKey = `display/${yearMonth}/${row.id}.jpg`;
+            const targetRawKey = `${yearMonth}/${row.id}.jpg`;
+
+            // Check if display object already exists in new target
+            let displayExists = false;
+            try {
+              const head = await this.r2.head(targetDisplayKey);
+              if (head) displayExists = true;
+            } catch {
+              // not found
+            }
+
+            if (!displayExists) {
+              // Read from old display_key
+              const oldDisplayObj = await this.r2.get(row.display_key);
+              if (oldDisplayObj) {
+                await this.r2.put(targetDisplayKey, oldDisplayObj.body, {
+                  httpMetadata: oldDisplayObj.httpMetadata,
+                  customMetadata: oldDisplayObj.customMetadata,
+                });
+                if (deleteOld && row.display_key !== targetDisplayKey) {
+                  keysToDelete.push(row.display_key);
+                }
+              }
+            } else {
+              skipped++;
+            }
+
+            // Check if raw object exists at old raw_key
+            if (row.raw_key && row.raw_key !== targetRawKey) {
+              try {
+                const oldRawObj = await this.r2.get(row.raw_key);
+                if (oldRawObj) {
+                  await this.r2.put(targetRawKey, oldRawObj.body, {
+                    httpMetadata: oldRawObj.httpMetadata,
+                    customMetadata: oldRawObj.customMetadata,
+                  });
+                  if (deleteOld) {
+                    keysToDelete.push(row.raw_key);
+                  }
+                }
+              } catch {
+                // raw object might not exist
               }
             }
-          } catch {
-            // raw object might not exist for historical rows
+
+            // Prepare D1 update statement
+            updateStatements.push(
+              this.db
+                .prepare('UPDATE images SET display_key = ?, raw_key = ? WHERE id = ?')
+                .bind(targetDisplayKey, targetRawKey, row.id),
+            );
+
+            migrated++;
+          } catch (err) {
+            failed++;
+            const msg = `Failed reorganizing image ${row.id}: ${err instanceof Error ? err.message : String(err)}`;
+            errors.push(msg);
+            this.logger?.error('Storage reorganization image failed', { photoId: row.id, error: String(err) });
           }
-        }
-
-        // Prepare D1 update statement
-        updateStatements.push(
-          this.db
-            .prepare('UPDATE images SET display_key = ?, raw_key = ? WHERE id = ?')
-            .bind(targetDisplayKey, targetRawKey, row.id),
-        );
-
-        migrated++;
-      } catch (err) {
-        failed++;
-        const msg = `Failed reorganizing image ${row.id}: ${err instanceof Error ? err.message : String(err)}`;
-        errors.push(msg);
-        this.logger?.error('Storage reorganization image failed', { photoId: row.id, error: String(err) });
-      }
+        }),
+      );
     }
 
     // Execute batch update in D1
