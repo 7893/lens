@@ -36,10 +36,15 @@ export async function handleScheduled(env: ProcessorBindings) {
   const backfillPage = parseInt(state.backfill_next_page || '1', 10);
 
   // --- TASK A: Ingestion Pipeline ---
+  let ingestionRateLimited = false;
   try {
     const ingestion = new IngestionService(env, logger);
-    const count = await ingestion.run(lastSeenId, backfillPage, settings);
-    logger.metric('cron_ingested', [Date.now() - trace.startTime, count]);
+    const result = await ingestion.run(lastSeenId, backfillPage, settings);
+    ingestionRateLimited = result.rateLimited;
+    logger.metric('cron_ingested', [Date.now() - trace.startTime, result.totalAdded]);
+    if (result.rateLimited) {
+      logger.metric('cron_ingestion_rate_limited', [result.resetTimeMs ? result.resetTimeMs - Date.now() : 0]);
+    }
   } catch (error) {
     logger.metric('cron_error', [], ['ingestion', String(error).slice(0, 80)]);
     logger.error('Ingestion Pipeline Failure', error);
@@ -48,7 +53,10 @@ export async function handleScheduled(env: ProcessorBindings) {
   // --- TASK B: Evolution Pipeline ---
   try {
     const evolution = new EvolutionService(env, logger);
-    const evolved = await evolution.pulse(settings);
+    // If external ingestion was rate limited, dynamically trigger fallback evolution to repurpose capacity (KI-001)
+    const evolved = ingestionRateLimited
+      ? await evolution.triggerFallbackEvolution(settings)
+      : await evolution.pulse(settings);
     if (evolved > 0) {
       logger.metric('cron_evolution_dispatched', [evolved]);
     }

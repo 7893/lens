@@ -2,17 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
-## [2026-09-21] - Known Issues Resolution (KI-002, KI-005, KI-007)
+## [2026-09-21] - Full Known Issues Resolution (KI-001, KI-002, KI-005, KI-006, KI-007)
 
 ### Fixed
 
+- **Unsplash API 额度熔断与动态回退自愈 (KI-001)** - 在 `utils/unsplash.ts` 与 `IngestionService` 引入基于 KV 的 Circuit Breaker 熔断器机制，捕获 429/403 并解析 `X-Ratelimit-Reset` 自动打开熔断窗口；在 `scheduled.ts` 中无缝接管算力触发 `EvolutionService.triggerFallbackEvolution` 对存量资产执行进化分析。
 - **前端弱网主题切换白屏闪烁 (KI-002)** - 在 `apps/client/index.html` 的 `<head>` 注入自执行主题初始化脚本，读取 `localStorage` 或系统媒体查询，在首屏 DOM 绘制前为 `<html>` 注入 `.dark` class；Tailwind 显式开启 `darkMode: 'class'`。
 - **定时对账与发件箱自愈 Cron (KI-007)** - 在 `apps/engine/src/handlers/scheduled.ts` 中增设 TASK D 定时巡检任务（`*/15 * * * *`），自动执行 `runReconciliationCheck` 监控 Outbox 滞留与索引代际覆盖，并调用 `relayOutboxEvents` 触发自愈补偿重发。
 
 ### Added
 
 - **规范资产与投影数据幂等回填服务 (KI-005)** - 引入 `BackfillService`，以原子化批处理（`INSERT OR IGNORE`）将旧 `images` 记录平滑迁移映射至 `assets`、`asset_sources`、`representations` 与 `search_documents`；并在内部管理端点新增 `GET /internal/backfill` 与带操作审计的 `POST /internal/backfill`。
-- **自动化测试套件扩充** - 新增 `scheduled.test.ts` 与 `backfill.test.ts`，测试集扩展至 **17 个测试文件、134 个单元与集成测试用例 100% 绿灯通过**。
+- **检索质量离线金标评测集与自动化 Harness (KI-006)** - 构建 60 条涵盖六大维度的典型 Query 金标评测集（`dataset.ts` / `dataset.json`），实现标准 IR 指标计算引擎（nDCG@5/10、Recall@10、Precision@10、MRR、零结果率），并提供 CLI 工具 `pnpm run eval:retrieval` 与质量门禁验证。
+- **自动化测试套件扩充** - 新增 `scheduled.test.ts`、`backfill.test.ts`、`ingestion-circuit-breaker.test.ts` 与 `retrieval-benchmark.test.ts`，测试集扩展至 **19 个测试文件、151 个单元与集成测试用例 100% 绿灯通过**。
 
 ---
 

@@ -15,12 +15,12 @@ export class EvolutionService {
    * Evaluates if a burst of evolution should occur.
    * Returns number of tasks dispatched.
    */
-  async pulse(settings: IngestionSettings): Promise<number> {
+  async pulse(settings: IngestionSettings, force = false): Promise<number> {
     const now = new Date();
     const [triggerHour, triggerMinute] = (settings.evolution_trigger_utc ?? '23:00').split(':').map(Number);
 
-    // Check if we are at the designated UTC hour/minute
-    if (now.getUTCHours() !== triggerHour || now.getUTCMinutes() !== triggerMinute) {
+    // Check if we are at the designated UTC hour/minute unless forced
+    if (!force && (now.getUTCHours() !== triggerHour || now.getUTCMinutes() !== triggerMinute)) {
       return 0;
     }
 
@@ -55,6 +55,21 @@ export class EvolutionService {
       this.logger.error('Evolution Pulse Failed', error);
       throw error;
     }
+  }
+
+  /**
+   * Fallback evolution trigger when external ingestion is rate limited or circuit is open (KI-001).
+   * Seamlessly repurposes worker capacity for stock asset enhancement.
+   */
+  async triggerFallbackEvolution(settings: IngestionSettings): Promise<number> {
+    this.logger.info('🔄 Triggering Fallback Evolution due to Ingestion circuit open/rate-limit');
+    return this.pulse(
+      {
+        ...settings,
+        daily_evolution_limit_usd: settings.daily_evolution_limit_usd ?? 0.11,
+      },
+      true,
+    );
   }
 
   private async dispatch(ids: string[]): Promise<void> {

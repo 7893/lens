@@ -7,3 +7,4 @@ export * from './sources/fts';
 export * from './sources/vector';
 export * from './hydration';
 export * from './SearchService';
+export * from './benchmark';

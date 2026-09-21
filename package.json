@@ -19,7 +19,8 @@
     "build": "pnpm -r run build",
     "lint": "eslint . && prettier --check .",
     "check:docs": "node scripts/check_docs.mjs",
-    "typecheck": "pnpm -r run typecheck"
+    "typecheck": "pnpm -r run typecheck",
+    "eval:retrieval": "node scripts/eval_retrieval.mjs"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260730.1",
