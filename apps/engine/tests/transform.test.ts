@@ -125,11 +125,24 @@ describe('toImageDetail', () => {
     const detail = toImageDetail(dbImage);
 
     expect(detail.id).toBe('test-photo-123');
-    expect(detail.urls.raw).toBe('/image/display/test-photo-123.jpg');
+    expect(detail.urls.raw).toBe('/image/raw/test-photo-123.jpg');
     expect(detail.urls.display).toBe('/image/display/test-photo-123.jpg');
     expect(detail.width).toBe(1920);
     expect(detail.height).toBe(1080);
     expect(detail.color).toBe('#ff5733');
+  });
+
+  it('transforms DBImage with monthly partitioned storage keys', () => {
+    const dbImage = createMockDBImage({
+      raw_key: '202609/monthly-photo.jpg',
+      display_key: 'display/202609/monthly-photo.jpg',
+    });
+    const result = toImageResult(dbImage);
+    expect(result.url).toBe('/image/display/202609/monthly-photo.jpg');
+
+    const detail = toImageDetail(dbImage);
+    expect(detail.urls.raw).toBe('/image/202609/monthly-photo.jpg');
+    expect(detail.urls.display).toBe('/image/display/202609/monthly-photo.jpg');
     expect(detail.blurHash).toBe('LEHV6nWB2yk8pyo0adR*.7kCMdnj');
     expect(detail.description).toBe('A beautiful landscape');
     expect(detail.altDescription).toBe('Mountain view at sunset');

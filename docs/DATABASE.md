@@ -238,16 +238,16 @@ Cloudflare R2 负责承载静态图像持久化存储，具备无出站流量费
 
 为确保持续 5~10 年的视觉模型演进不受外部第三方服务限制，系统实施规范母本归档：
 
-- **存储规约**：`media/{contentHash}/master.{ext}`；
+- **存储规约**：根目录按月归档 `{YYYYMM}/${photoId}.jpg`（例如 `202609/abc.jpg`）；
+- **永久留存战略**：取消历史清理策略（移除 `cleanup-raw` 步骤），母本原图在 R2 中长期永久留存，支撑多模态与高维向量离线复算演进；
 - **流式 SHA-256 计算**：通过 Web Crypto API 执行单遍流式哈希计算，零内存全量缓冲；
-- **40MB 内存防爆守卫**：检测超出 40MB 的超大文件并立即熔断中断，保护 128MB Workers 边缘运行时；
-- **内容寻址去重**：同一哈希母本天然去重，避免重复存储与多余计费。
+- **40MB 内存防爆守卫**：检测超出 40MB 的超大文件并立即熔断中断，保护 128MB Workers 边缘运行时。
 
 ### 2.2 Web 展示切片 (Display Variant)
 
-- **存储规约**：`display/{photoId}.jpg`；
+- **存储规约**：`display/{YYYYMM}/${photoId}.jpg`（历史兼容 `display/{photoId}.jpg`）；
 - **资产规格**：Web 优化格式（约 200KB ~ 400KB）；
-- **边缘缓存**：通过 `/image/display/:filename` 代理，返回 `Cache-Control: public, max-age=31536000, immutable` 与不可变 ETag。
+- **边缘缓存**：通过 `/image/display/:yearmonth/:filename` 与 `/image/display/:filename` 代理，返回 `Cache-Control: public, max-age=31536000, immutable` 与不可变 ETag；存量历史链接透明回查 D1 索引并自动边缘缓存。
 
 ---
 

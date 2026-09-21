@@ -19,14 +19,17 @@
                                                               │   ├── GET /api/suggest (前缀联想词)
                                                               │   └── POST /api/admin/compensate (数据补偿)
                                                               ├── 媒体直读代理 (/image/*)
-                                                              │   └── GET /image/display/:filename (R2 边缘强缓存代理)
+                                                              │   ├── GET /image/:yearmonth/:filename (R2 原始图片按月归档直读)
+                                                              │   ├── GET /image/display/:yearmonth/:filename (R2 展示图按月归档代理)
+                                                              │   └── GET /image/display/:filename (存量展示图兼容代理与自动回退)
                                                               ├── 内部管理与治理面 (/internal/* - Cloudflare Access 保护)
                                                               │   ├── GET /internal/health (全依赖深层诊断与版本状态)
                                                               │   ├── GET /internal/reconciliation (Outbox 延迟与投影覆盖率审计)
                                                               │   ├── POST /internal/reconciliation/run (强制对账并写审计日志)
                                                               │   ├── GET/POST /internal/config (权威运行时配置与不可变审计)
                                                               │   ├── POST /internal/outbox/relay (手动触发 Outbox 派发)
-                                                              │   └── GET/POST /internal/backfill (存量旧数据规范模型回填与进度)
+                                                              │   ├── GET/POST /internal/backfill (存量旧数据规范模型回填与进度)
+                                                              │   └── GET/POST /internal/storage/reorganize (R2 与 D1 存储按月组织迁移与进度)
                                                               ├── Cron 调度入口 (每小时定时拉取、对账与存量审计)
                                                               ├── Queue 异步消费者 (削峰消费与 Outbox 投递)
                                                               └── Workflow 状态机 (单资产长流程幂等执行与恢复)
@@ -66,7 +69,7 @@
 
 ## 4. 质量与测试基准（已验证事实）
 
-- **单元与集成测试**：**151 个 Vitest 测试用例全部通过（19 个测试套件 100% 绿灯，核心模块覆盖率达 85%~100%）**；
+- **单元与集成测试**：**167 个 Vitest 测试用例全部通过（20 个测试套件 100% 绿灯，核心模块覆盖率达 85%~100%）**；
 - **检索质量金标基线 (KI-006)**：60 条覆盖六大维度的金标查询在混合内核下达到 **nDCG@10 99.91%、Recall@10 100%、MRR 1.000、零结果率 0.00%**；
 - **类型系统**：TypeScript 严格模式全仓通过（`pnpm -r run typecheck` 0 错误）；
 - **代码规范**：ESLint + Prettier 格式化检查全部通过（0 错误，0 警告）；

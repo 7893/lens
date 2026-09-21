@@ -254,5 +254,122 @@ describe('Images API Route', () => {
       expect(res.status).toBe(404);
       expect(mockR2.get).toHaveBeenCalledWith('display/valid_photo-123.jpg');
     });
+
+    it('serves monthly display image when requested', async () => {
+      const mockBody = new ReadableStream();
+      const mockR2Object = {
+        body: mockBody,
+        httpEtag: '"month-etag-1"',
+        writeHttpMetadata: vi.fn(),
+      };
+      mockR2.get.mockResolvedValue(mockR2Object);
+
+      const executionCtx = { waitUntil: vi.fn() };
+      const res = await images.request(
+        '/display/202609/photo123.jpg',
+        {},
+        env,
+        executionCtx as unknown as ExecutionContext,
+      );
+
+      expect(res.status).toBe(200);
+      expect(mockR2.get).toHaveBeenCalledWith('display/202609/photo123.jpg');
+    });
+
+    it('falls back to flat display path if monthly display image is not yet reorganized', async () => {
+      const mockBody = new ReadableStream();
+      const mockR2Object = {
+        body: mockBody,
+        httpEtag: '"fallback-etag-1"',
+        writeHttpMetadata: vi.fn(),
+      };
+      mockR2.get.mockImplementation(async (key: string) => {
+        if (key === 'display/202609/photo123.jpg') return null;
+        if (key === 'display/photo123.jpg') return mockR2Object;
+        return null;
+      });
+
+      const executionCtx = { waitUntil: vi.fn() };
+      const res = await images.request(
+        '/display/202609/photo123.jpg',
+        {},
+        env,
+        executionCtx as unknown as ExecutionContext,
+      );
+
+      expect(res.status).toBe(200);
+      expect(mockR2.get).toHaveBeenCalledWith('display/202609/photo123.jpg');
+      expect(mockR2.get).toHaveBeenCalledWith('display/photo123.jpg');
+    });
+
+    it('serves root monthly raw image', async () => {
+      const mockBody = new ReadableStream();
+      const mockR2Object = {
+        body: mockBody,
+        httpEtag: '"raw-etag-1"',
+        writeHttpMetadata: vi.fn(),
+      };
+      mockR2.get.mockResolvedValue(mockR2Object);
+
+      const executionCtx = { waitUntil: vi.fn() };
+      const res = await images.request('/202609/rawphoto.jpg', {}, env, executionCtx as unknown as ExecutionContext);
+
+      expect(res.status).toBe(200);
+      expect(mockR2.get).toHaveBeenCalledWith('202609/rawphoto.jpg');
+    });
+
+    it('falls back to D1 lookup when legacy flat display link was reorganized into monthly path', async () => {
+      const mockBody = new ReadableStream();
+      const mockR2Object = {
+        body: mockBody,
+        httpEtag: '"migrated-etag-1"',
+        writeHttpMetadata: vi.fn(),
+      };
+
+      mockR2.get.mockImplementation(async (key: string) => {
+        if (key === 'display/migrated-photo.jpg') return null;
+        if (key === 'display/202512/migrated-photo.jpg') return mockR2Object;
+        return null;
+      });
+
+      mockDb.prepare.mockReturnValue({
+        bind: () => ({
+          first: async () => ({ display_key: 'display/202512/migrated-photo.jpg' }),
+        }),
+      });
+
+      const executionCtx = { waitUntil: vi.fn() };
+      const res = await images.request(
+        '/display/migrated-photo.jpg',
+        {},
+        env,
+        executionCtx as unknown as ExecutionContext,
+      );
+
+      expect(res.status).toBe(200);
+      expect(mockR2.get).toHaveBeenCalledWith('display/migrated-photo.jpg');
+      expect(mockR2.get).toHaveBeenCalledWith('display/202512/migrated-photo.jpg');
+    });
+
+    it('returns 400 for invalid prefix in 3-segment route', async () => {
+      const executionCtx = { waitUntil: vi.fn() };
+      const res = await images.request(
+        '/invalid/202609/photo.jpg',
+        {},
+        env,
+        executionCtx as unknown as ExecutionContext,
+      );
+
+      expect(res.status).toBe(400);
+      expect(await res.text()).toBe('Invalid asset type');
+    });
+
+    it('returns 400 for invalid yearmonth format in 3-segment route', async () => {
+      const executionCtx = { waitUntil: vi.fn() };
+      const res = await images.request('/display/2026/photo.jpg', {}, env, executionCtx as unknown as ExecutionContext);
+
+      expect(res.status).toBe(400);
+      expect(await res.text()).toBe('Invalid yearmonth');
+    });
   });
 });

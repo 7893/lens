@@ -65,7 +65,22 @@ export class ImageEntity {
    * Edge proxy URL for the display asset.
    */
   get displayUrl(): string {
+    if (this.displayKey) {
+      const cleanKey = this.displayKey.startsWith('/') ? this.displayKey.slice(1) : this.displayKey;
+      return `/image/${cleanKey}`;
+    }
     return `/image/display/${this.id}.jpg`;
+  }
+
+  /**
+   * Edge proxy URL for the raw asset.
+   */
+  get rawUrl(): string {
+    if (this.rawKey) {
+      const cleanKey = this.rawKey.startsWith('/') ? this.rawKey.slice(1) : this.rawKey;
+      return `/image/${cleanKey}`;
+    }
+    return `/image/${this.id}.jpg`;
   }
 
   /**
@@ -127,7 +142,7 @@ export class ImageEntity {
     return {
       id: this.id,
       urls: {
-        raw: this.displayUrl,
+        raw: this.rawUrl,
         display: this.displayUrl,
       },
       width: this.width,

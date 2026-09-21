@@ -190,16 +190,22 @@ interface ImageDetail extends ImageResult {
 
 ---
 
-### 2.5 图片资产边缘代理：`GET /image/:type/:filename`
+### 2.5 图片资产边缘代理：`GET /image/*`
 
 直接从 Cloudflare R2 对象存储流式代理图片数据，结合 Cloudflare 边缘节点提供就近缓存与 MD5 ETag 协商。
 
-#### 2.5.1 请求定义
+#### 2.5.1 请求定义与路由规则
 
-- **路径参数**：
-  - `type`：资产规格，仅允许 `display`
-  - `filename`：文件名，正则约束 `^[a-zA-Z0-9_-]+\.jpg$`
-- **别名路由**：`/api/images/:type/:filename` 与 `/image/:type/:filename` 等效
+- **按月归档原始图片直读**：`GET /image/:yearmonth/:filename`（例如 `/image/202609/abc.jpg`）
+  - `:yearmonth`：6 位数字月份目录（正则：`^\d{6}$`，如 `202609`）；
+  - `:filename`：正则约束 `^[a-zA-Z0-9_-]+\.jpg$`；
+  - 映射 R2 路径：`${yearmonth}/${filename}`（若未命中自动回退历史 `raw/${filename}`）。
+- **按月归档 Web 展示缩略图**：`GET /image/display/:yearmonth/:filename`（例如 `/image/display/202609/abc.jpg`）
+  - 映射 R2 路径：`display/${yearmonth}/${filename}`（若未命中自动回退 `display/${filename}`）。
+- **存量平铺缩略图兼容代理**：`GET /image/display/:filename`（例如 `/image/display/abc.jpg`）
+  - 优先读取 `display/${filename}`；
+  - 若历史图片已被整理迁移至按月文件夹，自动回查 D1 `display_key` 并透明重定向/流式读取对应按月对象，写入 Edge 缓存，保证历史全量 URL 100% 长期可用。
+- **别名路由**：`/api/images/*` 与 `/image/*` 完全等效。
 
 #### 2.5.2 响应头与缓存控制
 
@@ -399,6 +405,47 @@ interface TrackPayload {
     "polled": 15,
     "relayed": 15,
     "errors": []
+  }
+}
+```
+
+#### 2.9.8 查看存储归档重组进度：`GET /internal/storage/reorganize`
+
+- **说明**：获取 R2 与 D1 历史图片按月目录重组进度与待处理统计。
+- **响应体**：
+
+```json
+{
+  "total": 25319,
+  "reorganized": 24819,
+  "pending": 500,
+  "percentage": 98.03
+}
+```
+
+#### 2.9.9 触发批量存储归档重组：`POST /internal/storage/reorganize`
+
+- **说明**：批量将存量平铺图片安全复制迁移至按月文件夹（`{YYYYMM}/${id}.jpg` 与 `display/{YYYYMM}/${id}.jpg`），同步更新 D1 索引与操作审计。
+- **请求体**：
+
+```json
+{
+  "limit": 50,
+  "deleteOld": false
+}
+```
+
+- **响应体**：
+
+```json
+{
+  "correlationId": "uuid",
+  "result": {
+    "processed": 50,
+    "migrated": 50,
+    "skipped": 0,
+    "failed": 0,
+    "remaining": 450
   }
 }
 ```

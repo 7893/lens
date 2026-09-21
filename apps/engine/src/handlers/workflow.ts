@@ -32,13 +32,13 @@ export class LensIngestWorkflow extends WorkflowEntrypoint<ProcessorBindings, In
         if (exists) return;
 
         // 2. Resource Storage (R2)
-        await step.do('download-and-store', RETRY_CONFIG, async () => {
-          await processor.downloadAndStore(photoId, downloadUrl, displayUrl, meta);
+        const storageKeys = await step.do('download-and-store', RETRY_CONFIG, async () => {
+          return await processor.downloadAndStore(photoId, downloadUrl, displayUrl, meta);
         });
 
         // 3. AI Vision Analysis (Llama 4)
         const analysis = await step.do('analyze-vision-contract', RETRY_CONFIG, async () => {
-          return await processor.analyzeVision(photoId);
+          return await processor.analyzeVision(photoId, storageKeys?.displayKey);
         });
 
         // 4. Vector Generation (BGE-M3)
@@ -48,17 +48,12 @@ export class LensIngestWorkflow extends WorkflowEntrypoint<ProcessorBindings, In
 
         // 5. Database Persistance (D1)
         await step.do('persist-d1-flagship', RETRY_CONFIG, async () => {
-          await processor.persistToD1(photoId, analysis, vector, meta);
+          await processor.persistToD1(photoId, analysis, vector, meta, storageKeys);
         });
 
         // 6. Index Synchronization (Vectorize)
         await step.do('sync-vectorize', RETRY_CONFIG, async () => {
-          await processor.syncToVectorize(photoId, vector, analysis.caption);
-        });
-
-        // 7. Housekeeping
-        await step.do('cleanup-raw', async () => {
-          await this.env.R2.delete(`raw/${photoId}.jpg`);
+          await processor.syncToVectorize(photoId, vector, analysis.caption, storageKeys?.displayKey);
         });
 
         logger.metric('ingest_complete', [Date.now() - trace.startTime], [photoId]);

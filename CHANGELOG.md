@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2026-09-21] - Monthly Storage Reorganization & Raw Image Preservation (方案一)
+
+### Added
+
+- **原始图片按月长期归档** - R2 根目录按月组织存储原始高清母本：`{YYYYMM}/${photoId}.jpg`（例如 `202609/abc.jpg`），永久保留母本资产，移除 Workflow 历史 `cleanup-raw` 清理步骤。
+- **Web 缩略图按月镜像归档** - R2 `display/` 目录下同步按月组织存储 Web 优化切片：`display/{YYYYMM}/${photoId}.jpg`。
+- **双向无缝兼容边缘路由** - 更新 `routes/images.ts`：
+  - 支持 3 段路由 `/image/display/:yearmonth/:filename`（自动回退至存量 flat 路径）；
+  - 支持 2 段路由 `/image/:yearmonth/:filename`（直读根目录按月原始图片）；
+  - 存量平铺链接 `/image/display/:filename` 保持 100% 长期可用，未命中平铺时透明回查 D1 `display_key` 索引并填充 Edge Cache。
+- **存量历史图片重组服务 (StorageReorganizationService)** - 提供存量 25,319 张平铺图片幂等安全批处理迁移（`runBatch`）与进度统计（`getStatus`），并挂载管理端点 `GET/POST /internal/storage/reorganize`。
+- **充血领域模型动态解析** - 更新 `@lens/shared` 中 `ImageEntity`，使 `displayUrl` 与 `rawUrl` 基于 `display_key` 与 `raw_key` 动态投影。
+- **自动化测试套件扩展** - 新增 `storage-reorganization.test.ts` 并扩充 `images.test.ts` 与 `transform.test.ts`，测试集扩展至 **20 个测试文件、167 个单元与集成测试用例 100% 绿灯通过**。
+
+---
+
 ## [2026-09-21] - Full Known Issues Resolution (KI-001, KI-002, KI-005, KI-006, KI-007)
 
 ### Fixed

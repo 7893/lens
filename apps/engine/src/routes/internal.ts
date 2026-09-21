@@ -5,6 +5,7 @@ import {
   setRuntimeConfig,
   runReconciliationCheck,
   recordOperationAudit,
+  StorageReorganizationService,
 } from '../modules/operations';
 import { relayOutboxEvents } from '../kernel/events';
 import { getActiveIndexGeneration } from '../modules/indexing';
@@ -212,6 +213,58 @@ internal.post('/backfill', async (c) => {
     target_type: 'catalog',
     target_id: 'legacy_images',
     reason: `Legacy images backfill batch processed limit=${limit}`,
+    correlation_id: correlationId,
+    status: 'success',
+    details_json: JSON.stringify(result),
+  });
+
+  return c.json({ correlationId, result });
+});
+
+/**
+ * GET /internal/storage/reorganize
+ * Returns status report for monthly directory reorganization of R2 and D1 image keys.
+ */
+internal.get('/storage/reorganize', async (c) => {
+  const service = new StorageReorganizationService(c.env.DB, c.env.R2);
+  const status = await service.getStatus();
+  return c.json(status);
+});
+
+/**
+ * POST /internal/storage/reorganize
+ * Executes a batch reorganization of legacy flat images into monthly directories.
+ */
+internal.post('/storage/reorganize', async (c) => {
+  const operator = c.req.header('cf-access-authenticated-user-email') || 'system-admin';
+  const correlationId = crypto.randomUUID();
+  const logger = new Logger(createTrace('STORAGE_REORG_BATCH'), c.env.TELEMETRY);
+
+  let limit = 50;
+  let deleteOld = false;
+  try {
+    const body = await c.req.json<{ limit?: number; deleteOld?: boolean }>();
+    if (body) {
+      if (typeof body.limit === 'number' && body.limit > 0) {
+        limit = Math.min(body.limit, 500);
+      }
+      if (typeof body.deleteOld === 'boolean') {
+        deleteOld = body.deleteOld;
+      }
+    }
+  } catch {
+    // optional body
+  }
+
+  const service = new StorageReorganizationService(c.env.DB, c.env.R2, logger);
+  const result = await service.runBatch({ limit, deleteOld });
+
+  await recordOperationAudit(c.env.DB, {
+    operator,
+    action: 'run_storage_reorganization_batch',
+    target_type: 'storage',
+    target_id: 'monthly_archive',
+    reason: `Storage reorganization batch processed limit=${limit} deleteOld=${deleteOld}`,
     correlation_id: correlationId,
     status: 'success',
     details_json: JSON.stringify(result),
