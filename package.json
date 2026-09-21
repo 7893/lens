@@ -21,7 +21,8 @@
     "check:docs": "node scripts/check_docs.mjs",
     "typecheck": "pnpm -r run typecheck",
     "eval:retrieval": "node scripts/eval_retrieval.mjs",
-    "storage:migrate": "node scripts/migrate_storage.mjs"
+    "storage:migrate": "node scripts/migrate_storage.mjs",
+    "storage:clean-legacy": "node scripts/cleanup_legacy_display.mjs"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260730.1",
