@@ -8,6 +8,7 @@ import {
 } from '../modules/operations';
 import { relayOutboxEvents } from '../kernel/events';
 import { getActiveIndexGeneration } from '../modules/indexing';
+import { BackfillService } from '../modules/catalog';
 
 const internal = new Hono<{ Bindings: ApiBindings }>();
 
@@ -165,6 +166,52 @@ internal.post('/outbox/relay', async (c) => {
     target_type: 'outbox',
     target_id: 'pending_batch',
     reason: 'Manual outbox relay triggered from internal endpoint',
+    correlation_id: correlationId,
+    status: 'success',
+    details_json: JSON.stringify(result),
+  });
+
+  return c.json({ correlationId, result });
+});
+
+/**
+ * GET /internal/backfill
+ * Returns backfill status report for migrating legacy images to canonical tables (KI-005).
+ */
+internal.get('/backfill', async (c) => {
+  const backfillService = new BackfillService(c.env.DB);
+  const status = await backfillService.getStatus();
+  return c.json(status);
+});
+
+/**
+ * POST /internal/backfill
+ * Executes a batch migration of legacy images to canonical assets with audit logging (KI-005).
+ */
+internal.post('/backfill', async (c) => {
+  const operator = c.req.header('cf-access-authenticated-user-email') || 'system-admin';
+  const correlationId = crypto.randomUUID();
+  const logger = new Logger(createTrace('BACKFILL_BATCH'), c.env.TELEMETRY);
+
+  let limit = 50;
+  try {
+    const body = await c.req.json<{ limit?: number }>();
+    if (body && typeof body.limit === 'number' && body.limit > 0) {
+      limit = Math.min(body.limit, 500);
+    }
+  } catch {
+    // optional body, fallback to default 50
+  }
+
+  const backfillService = new BackfillService(c.env.DB, logger);
+  const result = await backfillService.runBatch(limit);
+
+  await recordOperationAudit(c.env.DB, {
+    operator,
+    action: 'run_legacy_backfill_batch',
+    target_type: 'catalog',
+    target_id: 'legacy_images',
+    reason: `Legacy images backfill batch processed limit=${limit}`,
     correlation_id: correlationId,
     status: 'success',
     details_json: JSON.stringify(result),

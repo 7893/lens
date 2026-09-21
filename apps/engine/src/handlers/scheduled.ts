@@ -1,6 +1,7 @@
 import { ProcessorBindings, IngestionSettings, createTrace, Logger } from '@lens/shared';
 import { IngestionService } from '../modules/ingestion';
-import { EvolutionService } from '../modules/operations';
+import { EvolutionService, runReconciliationCheck } from '../modules/operations';
+import { relayOutboxEvents } from '../kernel/events';
 
 /**
  * Main Cron Entry Point
@@ -63,6 +64,24 @@ export async function handleScheduled(env: ProcessorBindings) {
     await Promise.all(keys.map((k) => env.SETTINGS.delete(k.name)));
   } catch (e) {
     logger.warn('Cache purge failed', e);
+  }
+
+  // --- TASK D: Reconciliation & Outbox Relay Self-Healing (KI-007) ---
+  try {
+    const report = await runReconciliationCheck(env.DB);
+    logger.info('Cron Reconciliation Audit', {
+      healthy: report.healthy,
+      pendingEvents: report.outbox.pendingEvents,
+      staleEvents: report.outbox.staleEvents,
+    });
+
+    if (report.outbox.pendingEvents > 0 && env.PHOTO_QUEUE) {
+      const relayResult = await relayOutboxEvents(env.DB, env.PHOTO_QUEUE, logger, 50);
+      logger.metric('cron_outbox_relayed', [relayResult.dispatched, relayResult.failed]);
+    }
+  } catch (error) {
+    logger.metric('cron_error', [], ['reconciliation', String(error).slice(0, 80)]);
+    logger.error('Cron Reconciliation Failure', error);
   }
 
   logger.info('Pulse Completed', { duration: Date.now() - trace.startTime });

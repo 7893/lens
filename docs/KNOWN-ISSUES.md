@@ -1,6 +1,6 @@
 # Lens 已知问题与技术债务登记册
 
-更新日期：2026-09-19
+更新日期：2026-09-21
 状态：现行
 适用范围：已发现但尚未完全关闭的业务、算法、可观测性与工程优化问题
 
@@ -11,20 +11,20 @@
 
 ## 活跃问题（OPEN / IN-PROGRESS）
 
-| 编号   | 标题                                   | 状态 | 优先级 | 影响范围               | 简要说明                                                                            |
-| :----- | :------------------------------------- | :--- | :----- | :--------------------- | :---------------------------------------------------------------------------------- |
-| KI-001 | Unsplash API 额度熔断与动态回退自愈    | OPEN | P2     | IngestionService       | 当触发 50次/小时 API 限制时，增加更智能的指数退避与存量进化无缝接管机制             |
-| KI-002 | 前端主题切换在弱网下的极瞬闪烁         | OPEN | P3     | Client App             | 客户端在极慢网络下首次加载时，暗黑模式背景可能出现轻微闪烁，需增加内联初始化脚本    |
-| KI-005 | 存量历史数据向规范资产与投影回填迁移   | OPEN | P1     | Catalog / Indexing     | 处于 Expand/Contract 的过渡期，需编写幂等迁移任务将旧 `images` 数据回填为规范表数据 |
-| KI-006 | 检索质量离线金标评测集与自动化 Harness | OPEN | P2     | Retrieval Module       | 需建立 50~100 个典型 query 金标集，输出 Recall@K、nDCG@K 与零结果率客观评测报告     |
-| KI-007 | 自动化对账与发件箱自愈巡检 Cron 任务   | OPEN | P2     | Operations / Scheduled | 定期扫描 Outbox 滞留与索引代际覆盖率，自动触发补偿派发与遥测上报                    |
+| 编号   | 标题                                   | 状态 | 优先级 | 影响范围         | 简要说明                                                                        |
+| :----- | :------------------------------------- | :--- | :----- | :--------------- | :------------------------------------------------------------------------------ |
+| KI-001 | Unsplash API 额度熔断与动态回退自愈    | OPEN | P2     | IngestionService | 当触发 50次/小时 API 限制时，增加更智能的指数退避与存量进化无缝接管机制         |
+| KI-006 | 检索质量离线金标评测集与自动化 Harness | OPEN | P2     | Retrieval Module | 需建立 50~100 个典型 query 金标集，输出 Recall@K、nDCG@K 与零结果率客观评测报告 |
 
 ---
 
 ## 已关闭问题（DONE）
 
-| 编号   | 标题                                     | 状态 | 优先级 | 影响范围              | 归档说明                                                                                                                                                        |
-| :----- | :--------------------------------------- | :--- | :----- | :-------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| KI-000 | 建立项目本地 AI 知识图谱与 Harness 契约  | DONE | P1     | Project Root          | 完成 CodeGraph、Graphify 与 Pi 本地工程化接入，见 [ADR-0002](decisions/0002-codegraph-graphify-pi-tooling.md)                                                   |
-| KI-003 | 引入自动化文档治理门禁与死链校验         | DONE | P2     | Tooling / Docs        | 编写 `scripts/check_docs.mjs` 校验链接有效性、INDEX 覆盖率并集成至 CI/Harness                                                                                   |
-| KI-004 | 消除多 Worker RPC 通信与状态分散架构债务 | DONE | P0     | Architecture / Engine | 废弃多 Worker RPC 解耦（ADR-0005），落地单 Worker 模块化单体 [ADR-0006](decisions/0006-single-worker-cloudflare-native-refactor.md)，六阶段完成，124 项测试通过 |
+| 编号   | 标题                                     | 状态 | 优先级 | 影响范围               | 归档说明                                                                                                                                                                                                                                                    |
+| :----- | :--------------------------------------- | :--- | :----- | :--------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| KI-000 | 建立项目本地 AI 知识图谱与 Harness 契约  | DONE | P1     | Project Root           | 完成 CodeGraph、Graphify 与 Pi 本地工程化接入，见 [ADR-0002](decisions/0002-codegraph-graphify-pi-tooling.md)                                                                                                                                               |
+| KI-002 | 前端主题切换在弱网下的极瞬闪烁           | DONE | P3     | Client App             | 在 `apps/client/index.html` 的 `<head>` 中注入内联阻塞式主题探测脚本，优先读取 `localStorage('theme')` 与系统 `prefers-color-scheme`，在 DOM 渲染前直接为 `<html>` 添加 `.dark` class；Tailwind 显式启用 `darkMode: 'class'`，彻底消除 FOUC 闪烁。          |
+| KI-003 | 引入自动化文档治理门禁与死链校验         | DONE | P2     | Tooling / Docs         | 编写 `scripts/check_docs.mjs` 校验链接有效性、INDEX 覆盖率并集成至 CI/Harness                                                                                                                                                                               |
+| KI-004 | 消除多 Worker RPC 通信与状态分散架构债务 | DONE | P0     | Architecture / Engine  | 废弃多 Worker RPC 解耦（ADR-0005），落地单 Worker 模块化单体 [ADR-0006](decisions/0006-single-worker-cloudflare-native-refactor.md)，六阶段完成，全部测试通过                                                                                               |
+| KI-005 | 存量历史数据向规范资产与投影回填迁移     | DONE | P1     | Catalog / Indexing     | 实现 `BackfillService`，提供原子化幂等批处理（`INSERT OR IGNORE` 写入 `assets`、`asset_sources`、`representations`、`search_documents`），并在 `routes/internal.ts` 暴露 `GET /internal/backfill` 与带操作审计的 `POST /internal/backfill`，100% 覆盖测试。 |
+| KI-007 | 自动化对账与发件箱自愈巡检 Cron 任务     | DONE | P2     | Operations / Scheduled | 在 `handlers/scheduled.ts` 中实现 TASK D 定时任务（`*/15 * * * *`），调用 `runReconciliationCheck` 巡检滞留与代际健康度，并通过 `relayOutboxEvents` 自动重试补发未投递与超期发件箱事件，新增集成测试验证。                                                  |

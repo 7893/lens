@@ -4,6 +4,7 @@
  */
 
 export * from './models';
+export * from './BackfillService';
 
 export interface CatalogAsset {
   id: string;
