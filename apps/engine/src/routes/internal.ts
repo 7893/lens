@@ -242,8 +242,9 @@ internal.post('/storage/reorganize', async (c) => {
 
   let limit = 50;
   let deleteOld = false;
+  let order: 'asc' | 'desc' = 'desc';
   try {
-    const body = await c.req.json<{ limit?: number; deleteOld?: boolean }>();
+    const body = await c.req.json<{ limit?: number; deleteOld?: boolean; order?: 'asc' | 'desc' }>();
     if (body) {
       if (typeof body.limit === 'number' && body.limit > 0) {
         limit = Math.min(body.limit, 500);
@@ -251,13 +252,16 @@ internal.post('/storage/reorganize', async (c) => {
       if (typeof body.deleteOld === 'boolean') {
         deleteOld = body.deleteOld;
       }
+      if (body.order === 'asc' || body.order === 'desc') {
+        order = body.order;
+      }
     }
   } catch {
     // optional body
   }
 
   const service = new StorageReorganizationService(c.env.DB, c.env.R2, logger);
-  const result = await service.runBatch({ limit, deleteOld });
+  const result = await service.runBatch({ limit, deleteOld, order });
 
   try {
     await recordOperationAudit(c.env.DB, {

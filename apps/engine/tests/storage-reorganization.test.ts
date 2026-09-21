@@ -302,6 +302,28 @@ describe('StorageReorganizationService', () => {
       expect(mockR2.put).not.toHaveBeenCalled();
       expect(mockDb.batch).toHaveBeenCalledTimes(1);
     });
+
+    it('supports ascending order for dual-worker migration', async () => {
+      const executedQueries: string[] = [];
+      mockDb.prepare.mockImplementation((query: string) => {
+        executedQueries.push(query);
+        if (query.includes('LIMIT ?')) {
+          return {
+            bind: () => ({
+              all: async () => ({ results: [] }),
+            }),
+          };
+        }
+        return {
+          first: async () => ({ count: 10 }),
+        };
+      });
+
+      const service = new StorageReorganizationService(mockDb as unknown as D1Database, mockR2 as unknown as R2Bucket);
+      await service.runBatch({ limit: 5, order: 'asc' });
+
+      expect(executedQueries.some((q) => q.includes('ORDER BY created_at ASC'))).toBe(true);
+    });
   });
 
   describe('Internal HTTP Endpoints', () => {

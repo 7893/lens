@@ -19,6 +19,7 @@ export interface StorageReorganizationBatchResult {
 export interface StorageReorganizationOptions {
   limit?: number;
   deleteOld?: boolean;
+  order?: 'asc' | 'desc';
 }
 
 interface ImageStorageRow {
@@ -74,13 +75,14 @@ export class StorageReorganizationService {
   async runBatch(options: StorageReorganizationOptions = {}): Promise<StorageReorganizationBatchResult> {
     const limit = Math.max(1, Math.min(options.limit ?? 50, 500));
     const deleteOld = options.deleteOld ?? false;
+    const orderDirection = options.order === 'asc' ? 'ASC' : 'DESC';
 
     const { results: rows } = await this.db
       .prepare(
         `SELECT id, raw_key, display_key, meta_json, created_at
          FROM images
          WHERE display_key NOT LIKE 'display/%/%'
-         ORDER BY created_at DESC
+         ORDER BY created_at ${orderDirection}
          LIMIT ?`,
       )
       .bind(limit)
@@ -103,7 +105,7 @@ export class StorageReorganizationService {
     const errors: string[] = [];
     const updateStatements: D1PreparedStatement[] = [];
     const keysToDelete: string[] = [];
-    const CHUNK_SIZE = 6;
+    const CHUNK_SIZE = 12;
 
     for (let i = 0; i < rows.length; i += CHUNK_SIZE) {
       const chunk = rows.slice(i, i + CHUNK_SIZE);
