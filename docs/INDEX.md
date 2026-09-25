@@ -48,3 +48,6 @@
 1. **活文档（Living）**：描述“当前状态”，随代码提交必须原子同步更新；
 2. **死文档（Frozen）**：记录“当时事实”（如 ADR），写完即冻结，只增不改，改动时以新增记录取代；
 3. **防掉队闸门**：所有现行文档必须在本索引中登记，并通过 `pnpm run check:docs` 自动化校验，防止死链与孤立文档。
+
+- [ADR-0007: Administrative authentication](decisions/0007-administrative-authentication.md)
+- [Third-party image rights](ASSET-RIGHTS.md)

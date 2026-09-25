@@ -115,11 +115,11 @@ lens/
 
 ### 1. 环境准备
 
-确保本地安装 Node.js >= 24 以及 pnpm >= 11：
+确保本地安装 Node.js 26.10.0 以及 pnpm 12.6.0：
 
 ```bash
-node -v   # v24+
-pnpm -v   # v11+
+node -v   # v26.10.0
+pnpm -v   # v12.6.0
 ```
 
 ### 2. 依赖安装

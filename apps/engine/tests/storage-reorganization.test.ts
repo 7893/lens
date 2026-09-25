@@ -341,9 +341,15 @@ describe('StorageReorganizationService', () => {
         DB: mockDb,
         R2: mockR2,
         ENVIRONMENT: 'development',
+        INTERNAL_API_SECRET: 'test-only-administrative-secret-32-characters',
+        ADMIN_RATE_LIMITER: { limit: async () => ({ success: true }) },
       } as unknown as ApiBindings;
 
-      const res = await internal.request('/storage/reorganize', { method: 'GET' }, env);
+      const res = await internal.request(
+        '/storage/reorganize',
+        { method: 'GET', headers: { authorization: 'Bearer test-only-administrative-secret-32-characters' } },
+        env,
+      );
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.total).toBe(25319);
@@ -375,13 +381,18 @@ describe('StorageReorganizationService', () => {
         DB: mockDb,
         R2: mockR2,
         ENVIRONMENT: 'development',
+        INTERNAL_API_SECRET: 'test-only-administrative-secret-32-characters',
+        ADMIN_RATE_LIMITER: { limit: async () => ({ success: true }) },
       } as unknown as ApiBindings;
 
       const res = await internal.request(
         '/storage/reorganize',
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            authorization: 'Bearer test-only-administrative-secret-32-characters',
+          },
           body: JSON.stringify({ limit: 25, deleteOld: false }),
         },
         env,

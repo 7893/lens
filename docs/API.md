@@ -290,16 +290,16 @@ interface TrackPayload {
 
 ### 2.9 内部管理与治理面接口：`/internal/*`
 
-内部接口专供集群治理、运维巡检与故障恢复使用，**受 Cloudflare Access 或内部授权标头强制防护**。
+内部接口专供集群治理、运维巡检与故障恢复使用。`/internal/*` 与 `/api/admin/*`
+均要求经验证的 `Authorization: Bearer <internal_token>`。
 
 #### 2.9.1 鉴权规范
 
-请求必须携带以下任一凭据：
-
-- `cf-access-authenticated-user-email`: Cloudflare Access 身份验证邮箱；
-- `Authorization: Bearer <internal_token>`: 内部服务令牌。
-
-在开发模式 (`ENVIRONMENT=development`) 下放行调试。
+通过 Wrangler secret 配置至少 32 字符的随机 `INTERNAL_API_SECRET`，开发环境同样要求。
+缺少配置返回 503，无效令牌返回 401；Access 身份邮箱头本身不构成凭据。
+`ADMIN_RATE_LIMITER` 为管理请求提供每个 Cloudflare 位置每分钟 10 次的共享预算，
+缺少绑定或限流服务故障返回 503，超额返回 429。这不是跨位置的全局费用上限。
+补偿接口每次最多接受 20 个合法图片 ID，请求体上限为 8 KiB。
 
 #### 2.9.2 系统依赖深层诊断：`GET /internal/health`
 

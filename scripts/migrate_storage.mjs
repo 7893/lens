@@ -28,6 +28,11 @@ const { values } = parseArgs({ options, allowPositionals: true });
 const batchSize = Math.max(1, Math.min(parseInt(values['batch-size'], 10) || 80, 200));
 const maxBatches = parseInt(values['max-batches'], 10) || 0;
 const endpoint = values.endpoint.replace(/\/+$/, '');
+const internalToken = process.env.INTERNAL_API_SECRET;
+if (!internalToken || internalToken.length < 32) {
+  throw new Error('Set INTERNAL_API_SECRET before running administrative operations');
+}
+const authHeaders = { Authorization: `Bearer ${internalToken}` };
 const deleteOld = values['delete-old'] || false;
 const workerCount = Math.max(1, Math.min(parseInt(values.workers, 10) || 1, 2));
 const defaultOrder = values.order === 'asc' ? 'asc' : 'desc';
@@ -44,7 +49,7 @@ console.log(`Delete Old:  ${deleteOld}`);
 console.log('----------------------------------------------------');
 
 async function getStatus() {
-  const res = await fetch(`${endpoint}/internal/storage/reorganize`);
+  const res = await fetch(`${endpoint}/internal/storage/reorganize`, { headers: authHeaders });
   if (!res.ok) throw new Error(`Status check failed: ${res.status} ${await res.text()}`);
   return await res.json();
 }
@@ -52,7 +57,7 @@ async function getStatus() {
 async function runBatch(size, delOld, order) {
   const res = await fetch(`${endpoint}/internal/storage/reorganize`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { ...authHeaders, 'Content-Type': 'application/json' },
     body: JSON.stringify({ limit: size, deleteOld: delOld, order }),
   });
   if (!res.ok) throw new Error(`Batch execution failed: ${res.status} ${await res.text()}`);

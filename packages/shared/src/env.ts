@@ -17,6 +17,8 @@ export interface RateLimit {
 // Unified bindings (merged api + processor)
 export interface ApiBindings extends BaseBindings {
   ENVIRONMENT?: string;
+  INTERNAL_API_SECRET?: string;
+  ADMIN_RATE_LIMITER?: RateLimit;
   RATE_LIMITER: RateLimit;
   PHOTO_QUEUE: Queue<IngestionTask>;
   PHOTO_WORKFLOW: Workflow;

@@ -205,6 +205,8 @@ describe('Legacy Images Backfill Service (ADR-0006 / KI-005)', () => {
   describe('Internal Backfill Endpoints', () => {
     const mockEnv = {
       ENVIRONMENT: 'production',
+      INTERNAL_API_SECRET: 'test-only-administrative-secret-32-characters',
+      ADMIN_RATE_LIMITER: { limit: async () => ({ success: true }) },
       DB: {
         prepare: vi.fn().mockImplementation((_sql: string) => {
           return {
@@ -232,7 +234,7 @@ describe('Legacy Images Backfill Service (ADR-0006 / KI-005)', () => {
         {
           method: 'GET',
           headers: {
-            'cf-access-authenticated-user-email': 'sre@lens.internal',
+            authorization: 'Bearer test-only-administrative-secret-32-characters',
           },
         },
         mockEnv,
@@ -251,7 +253,7 @@ describe('Legacy Images Backfill Service (ADR-0006 / KI-005)', () => {
         {
           method: 'POST',
           headers: {
-            'cf-access-authenticated-user-email': 'sre@lens.internal',
+            authorization: 'Bearer test-only-administrative-secret-32-characters',
             'content-type': 'application/json',
           },
           body: JSON.stringify({ limit: 25 }),

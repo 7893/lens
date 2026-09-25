@@ -14,11 +14,11 @@ jobs:
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v5
         with:
-          node-version: 24
+          node-version: '26.10.0'
           cache: pnpm
 
       - name: Install dependencies
-        run: pnpm install --ignore-scripts --no-frozen-lockfile
+        run: pnpm install --ignore-scripts --frozen-lockfile
 
       - name: Build shared package
         run: pnpm --filter=@lens/shared run build
@@ -41,7 +41,7 @@ jobs:
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v5
         with:
-          node-version: 24
+          node-version: '26.10.0'
 
       - name: Restore dependencies
         uses: actions/cache/restore@v4
@@ -63,7 +63,7 @@ jobs:
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v5
         with:
-          node-version: 24
+          node-version: '26.10.0'
 
       - name: Restore dependencies
         uses: actions/cache/restore@v4
@@ -86,7 +86,7 @@ jobs:
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v5
         with:
-          node-version: 24
+          node-version: '26.10.0'
 
       - name: Restore dependencies
         uses: actions/cache/restore@v4
@@ -109,7 +109,7 @@ jobs:
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v5
         with:
-          node-version: 24
+          node-version: '26.10.0'
 
       - name: Restore dependencies
         uses: actions/cache/restore@v4

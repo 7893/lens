@@ -1,3 +1,4 @@
+import { adminAuth } from '../middleware/adminAuth';
 import { Hono } from 'hono';
 import { ApiBindings, Logger, createTrace } from '@lens/shared';
 import {
@@ -13,22 +14,7 @@ import { BackfillService } from '../modules/catalog';
 
 const internal = new Hono<{ Bindings: ApiBindings }>();
 
-/**
- * Access Control Middleware for /internal/* endpoints.
- * Requires Cloudflare Access identity header or internal authorization header.
- */
-internal.use('*', async (c, next) => {
-  const cfAccessEmail = c.req.header('cf-access-authenticated-user-email');
-  const authHeader = c.req.header('authorization');
-
-  // Allow in development or when verified by Cloudflare Access or internal service bearer
-  const isDev = !c.env.ENVIRONMENT || c.env.ENVIRONMENT === 'development';
-  if (!cfAccessEmail && !authHeader && !isDev) {
-    return c.json({ error: 'Unauthorized: Cloudflare Access or Internal Bearer Token required' }, 401);
-  }
-
-  await next();
-});
+internal.use('*', adminAuth);
 
 /**
  * GET /internal/health
@@ -88,7 +74,7 @@ internal.get('/reconciliation', async (c) => {
  * Forces an explicit reconciliation audit and records the operator event.
  */
 internal.post('/reconciliation/run', async (c) => {
-  const operator = c.req.header('cf-access-authenticated-user-email') || 'system-admin';
+  const operator = 'internal-service';
   const correlationId = crypto.randomUUID();
 
   const report = await runReconciliationCheck(c.env.DB);
@@ -122,7 +108,7 @@ internal.get('/config/:key', async (c) => {
  * Sets runtime config with full audit trail.
  */
 internal.post('/config', async (c) => {
-  const operator = c.req.header('cf-access-authenticated-user-email') || 'system-admin';
+  const operator = 'internal-service';
   const correlationId = crypto.randomUUID();
 
   const body = await c.req.json<{
@@ -155,7 +141,7 @@ internal.post('/config', async (c) => {
  * Triggers immediate outbox event dispatch cycle.
  */
 internal.post('/outbox/relay', async (c) => {
-  const operator = c.req.header('cf-access-authenticated-user-email') || 'system-admin';
+  const operator = 'internal-service';
   const correlationId = crypto.randomUUID();
   const logger = new Logger(createTrace('OUTBOX_RELAY'), c.env.TELEMETRY);
 
@@ -190,7 +176,7 @@ internal.get('/backfill', async (c) => {
  * Executes a batch migration of legacy images to canonical assets with audit logging (KI-005).
  */
 internal.post('/backfill', async (c) => {
-  const operator = c.req.header('cf-access-authenticated-user-email') || 'system-admin';
+  const operator = 'internal-service';
   const correlationId = crypto.randomUUID();
   const logger = new Logger(createTrace('BACKFILL_BATCH'), c.env.TELEMETRY);
 
@@ -236,7 +222,7 @@ internal.get('/storage/reorganize', async (c) => {
  * Executes a batch reorganization of legacy flat images into monthly directories.
  */
 internal.post('/storage/reorganize', async (c) => {
-  const operator = c.req.header('cf-access-authenticated-user-email') || 'system-admin';
+  const operator = 'internal-service';
   const correlationId = crypto.randomUUID();
   const logger = new Logger(createTrace('STORAGE_REORG_BATCH'), c.env.TELEMETRY);
 

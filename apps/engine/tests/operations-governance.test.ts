@@ -123,6 +123,8 @@ describe('Operations Governance & Audit (Phase 6)', () => {
   describe('Internal Management HTTP Route', () => {
     const mockEnv = {
       ENVIRONMENT: 'production',
+      INTERNAL_API_SECRET: 'test-only-administrative-secret-32-characters',
+      ADMIN_RATE_LIMITER: { limit: async () => ({ success: true }) },
       DB: {
         prepare: vi.fn().mockReturnValue({
           bind: vi.fn().mockReturnValue({
@@ -151,13 +153,13 @@ describe('Operations Governance & Audit (Phase 6)', () => {
       expect(data.error).toContain('Unauthorized');
     });
 
-    it('allows access with Cloudflare Access header and returns diagnostic health', async () => {
+    it('allows access with a verified bearer token and returns diagnostic health', async () => {
       const res = await internal.request(
         '/health',
         {
           method: 'GET',
           headers: {
-            'cf-access-authenticated-user-email': 'admin@lens.internal',
+            authorization: 'Bearer test-only-administrative-secret-32-characters',
           },
         },
         mockEnv,
