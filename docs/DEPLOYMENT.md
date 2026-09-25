@@ -144,12 +144,11 @@ npx wrangler queues create lens-queue
 - **test**：在沙箱环境中执行 Vitest 全量单元测试（含 Mocked Cloudflare Workers 绑定），并要求覆盖率门禁通过。
 - **typecheck**：对各子包执行 `tsc --noEmit` 进行全量 TypeScript 严格类型检查。
 
-### 5.2 显式选择生产发布 (Deploy Job)
+### 5.2 主分支自动发布 (Deploy Job)
 
-push 和 Pull Request 只运行公共检查，部署作业保持跳过。需要部署时，在 Actions 中
-手动运行 `CI`，选择 `main` 并显式勾选 `deploy`；上述检查全部通过后才进入部署作业。
-先在 `production` environment 配置自己的 Cloudflare 凭据和所需审批规则；没有凭据时
-显式部署会报告配置错误。普通贡献者无需获得维护者的云凭据。
+恢复原有 workflow：Pull Request 只运行检查；推送 `main` 后，上述检查全部通过才进入部署作业。
+在仓库 Actions Secrets 配置 `CLOUDFLARE_API_TOKEN` 和 `CLOUDFLARE_ACCOUNT_ID`。
+Fork 部署应使用自己的 Cloudflare 凭据与资源配置。
 
 - 重新构建 `@lens/client` 并复制至 `apps/engine/public/`。
 - 通过 `cloudflare/wrangler-action@v3` 使用注入的 GitHub Actions Secrets 完成生产环境原子发布。
