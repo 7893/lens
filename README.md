@@ -128,6 +128,21 @@ pnpm -v   # v12.6.0
 pnpm install
 ```
 
+从仓库根目录配置本地环境；根目录 `.env.example` 是配置变量的权威模板：
+
+```bash
+cp .env.example apps/engine/.dev.vars
+# 用 openssl rand -hex 32 生成自己的值，填入 .dev.vars 的 INTERNAL_API_SECRET。
+pnpm --filter=@lens/shared run build
+pnpm run setup:local-db
+```
+
+只启用需要的图源和云功能，并填写自己的凭据。D1 本地迁移不会连接生产数据库；
+AI、Vectorize 等云能力不代表完全离线运行。自建资源与绑定步骤见
+[部署指南](docs/DEPLOYMENT.md)，图片使用边界见 [资产权限说明](docs/ASSET-RIGHTS.md)。
+`.dev.vars` 不得提交。Fork 后的 push/PR 只运行检查，不会自动部署；部署必须在 Actions
+中手动运行 CI 并显式选中 `deploy`，使用部署者自己的 Cloudflare 账号。
+
 ### 3. 执行自动化验证门禁
 
 ```bash

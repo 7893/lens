@@ -1,6 +1,6 @@
 # 构建编排、持续交付与云原生部署指南
 
-更新日期：2026-09-19
+更新日期：2026-09-26
 状态：现行
 适用范围：Monorepo 构建流程、D1 迁移管线、Cloudflare 边缘部署与 CI/CD 规范
 
@@ -129,6 +129,7 @@ npx wrangler queues create lens-queue
 | `UNSPLASH_API_KEY`      | Unsplash 开发者平台 Access Key，用于定时摄取图片    | `npx wrangler secret put UNSPLASH_API_KEY`      |
 | `CLOUDFLARE_API_TOKEN`  | 具备 Cloudflare D1/AI/Analytics 读取权限的 API 令牌 | `npx wrangler secret put CLOUDFLARE_API_TOKEN`  |
 | `CLOUDFLARE_ACCOUNT_ID` | Cloudflare 账户 ID，用于标识资源物理归属            | `npx wrangler secret put CLOUDFLARE_ACCOUNT_ID` |
+| `INTERNAL_API_SECRET`   | 管理接口密钥，本地与线上均需配置，使用自生成随机值  | `npx wrangler secret put INTERNAL_API_SECRET`   |
 
 ---
 
@@ -138,14 +139,17 @@ npx wrangler queues create lens-queue
 
 ### 5.1 门禁校验流水线 (Pull Request & Push)
 
-- **setup**：拉取代码、锁定 Node.js 24 与 pnpm、安装依赖并编译 `@lens/shared`，缓存 `node_modules`。
+- **setup**：拉取代码，按 `.tool-versions` 与包清单约定使用 Node.js 26.10.0、pnpm 12.6.0，安装依赖并编译 `@lens/shared`，缓存 `node_modules`。
 - **lint**：执行 ESLint 静态代码分析与 Prettier 风格格式校验。
 - **test**：在沙箱环境中执行 Vitest 全量单元测试（含 Mocked Cloudflare Workers 绑定），并要求覆盖率门禁通过。
 - **typecheck**：对各子包执行 `tsc --noEmit` 进行全量 TypeScript 严格类型检查。
 
-### 5.2 生产环境自动发布 (Deploy Job)
+### 5.2 显式选择生产发布 (Deploy Job)
 
-当且仅当推送至 `main` 分支且上述校验全部通过时，触发自动化部署作业：
+push 和 Pull Request 只运行公共检查，部署作业保持跳过。需要部署时，在 Actions 中
+手动运行 `CI`，选择 `main` 并显式勾选 `deploy`；上述检查全部通过后才进入部署作业。
+先在 `production` environment 配置自己的 Cloudflare 凭据和所需审批规则；没有凭据时
+显式部署会报告配置错误。普通贡献者无需获得维护者的云凭据。
 
 - 重新构建 `@lens/client` 并复制至 `apps/engine/public/`。
 - 通过 `cloudflare/wrangler-action@v3` 使用注入的 GitHub Actions Secrets 完成生产环境原子发布。
