@@ -139,7 +139,7 @@ npx wrangler queues create lens-queue
 
 ### 5.1 门禁校验流水线 (Pull Request & Push)
 
-- **setup**：拉取代码，按 `.tool-versions` 与包清单约定使用 Node.js 26.10.0、pnpm 12.6.0，安装依赖并编译 `@lens/shared`，缓存 `node_modules`。
+- **setup**：拉取代码，按 `.tool-versions` 与包清单约定使用 Node.js 26.10.0、pnpm 12.8.1，安装依赖并编译 `@lens/shared`，缓存 `node_modules`。
 - **lint**：执行 ESLint 静态代码分析与 Prettier 风格格式校验。
 - **test**：在沙箱环境中执行 Vitest 全量单元测试（含 Mocked Cloudflare Workers 绑定），并要求覆盖率门禁通过。
 - **typecheck**：对各子包执行 `tsc --noEmit` 进行全量 TypeScript 严格类型检查。

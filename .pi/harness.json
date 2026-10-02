@@ -36,10 +36,12 @@
         "pnpm-workspace.yaml",
         "vitest.config.ts",
         "eslint.config.mjs"
-      ]
+      ],
+      "references": []
     },
     "infra": {
-      "prefixes": ["terraform/", "apps/engine/wrangler.toml"]
+      "prefixes": ["terraform/", "apps/engine/wrangler.toml"],
+      "references": []
     }
   },
   "checks": [
