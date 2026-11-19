@@ -14,7 +14,7 @@
   },
   "dependencies": {
     "@lens/shared": "workspace:*",
-    "hono": "^4.13.5",
+    "hono": "^4.13.16",
     "mysql2": "^3.24.6"
   },
   "devDependencies": {
