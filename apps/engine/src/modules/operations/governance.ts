@@ -1,5 +1,6 @@
 import { RuntimeConfigRecord, OperationAuditRecord, ReconciliationReport } from './models';
 import { safeJsonParse } from '@lens/shared';
+import { isMysqlDatabase } from '../../platform/cloudflare';
 
 /**
  * Records an immutable audit log entry for high-risk operations.
@@ -121,17 +122,28 @@ export async function setRuntimeConfig<T>(
 export async function runReconciliationCheck(db: D1Database): Promise<ReconciliationReport> {
   const now = Date.now();
   const fiveMinutesAgo = now - 5 * 60 * 1000;
+  const useMysql = isMysqlDatabase(db);
 
   try {
     const [outboxPending, outboxStale, activeGenRow, projActive, projPending] = await Promise.all([
       db.prepare('SELECT count(*) as count FROM outbox_events WHERE dispatched_at IS NULL').first<{ count: number }>(),
       db
-        .prepare('SELECT count(*) as count FROM outbox_events WHERE dispatched_at IS NULL AND created_at < ?')
+        .prepare(
+          useMysql
+            ? 'SELECT count(*) as count FROM outbox_events WHERE dispatched_at IS NULL AND occurred_at < ?'
+            : 'SELECT count(*) as count FROM outbox_events WHERE dispatched_at IS NULL AND created_at < ?',
+        )
         .bind(fiveMinutesAgo)
         .first<{ count: number }>(),
-      db.prepare('SELECT index_generation FROM projection_state WHERE is_active = 1').first<{
-        index_generation: string;
-      }>(),
+      db
+        .prepare(
+          useMysql
+            ? "SELECT index_generation FROM projection_state WHERE projection_type = 'vectorize' AND status = 'active' LIMIT 1"
+            : 'SELECT index_generation FROM projection_state WHERE is_active = 1',
+        )
+        .first<{
+          index_generation: string;
+        }>(),
       db.prepare("SELECT count(*) as count FROM search_documents WHERE status = 'active'").first<{ count: number }>(),
       db.prepare("SELECT count(*) as count FROM search_documents WHERE status = 'pending'").first<{ count: number }>(),
     ]);

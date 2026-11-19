@@ -106,7 +106,7 @@ export async function getActiveIndexGeneration(
   projectionType: 'vectorize' | 'fts',
 ): Promise<string | null> {
   const row = await db
-    .prepare('SELECT index_generation FROM projection_state WHERE projection_type = ? AND status = "active" LIMIT 1')
+    .prepare("SELECT index_generation FROM projection_state WHERE projection_type = ? AND status = 'active' LIMIT 1")
     .bind(projectionType)
     .first<{ index_generation: string }>();
 

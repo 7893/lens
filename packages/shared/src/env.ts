@@ -3,6 +3,7 @@ import { IngestionTask } from './types';
 // Base bindings shared across all workers
 export interface BaseBindings {
   DB: D1Database;
+  HYPERDRIVE?: Hyperdrive;
   R2: R2Bucket;
   VECTORIZE: VectorizeIndex;
   AI: Ai;

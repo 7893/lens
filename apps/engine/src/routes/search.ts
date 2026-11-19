@@ -79,14 +79,16 @@ search.get('/', async (c) => {
           trace.traceId,
         );
 
-        // Cache completed result in edge cache
-        const fullResponse = new Response(JSON.stringify(finalResult), {
-          headers: {
-            'Content-Type': 'application/json',
-            'Cache-Control': 'public, max-age=600',
-          },
-        });
-        c.executionCtx.waitUntil(cache.put(cacheKey, fullResponse));
+        // Cache non-empty completed result in edge cache
+        if (finalResult.results.length > 0) {
+          const fullResponse = new Response(JSON.stringify(finalResult), {
+            headers: {
+              'Content-Type': 'application/json',
+              'Cache-Control': 'public, max-age=600',
+            },
+          });
+          c.executionCtx.waitUntil(cache.put(cacheKey, fullResponse));
+        }
         c.executionCtx.waitUntil(recordSuggestion(c.env.SETTINGS, q));
 
         if (finalResult.telemetry) {
@@ -116,15 +118,18 @@ search.get('/', async (c) => {
   try {
     const result = await searchService.search(searchSpec, trace.traceId);
 
+    const hasResults = result.results.length > 0;
     const response = new Response(JSON.stringify(result), {
       headers: {
         'Content-Type': 'application/json',
-        'Cache-Control': 'public, max-age=600', // 10 min cache
+        'Cache-Control': hasResults ? 'public, max-age=600' : 'no-store',
       },
     });
 
     // Post-processing (Async)
-    c.executionCtx.waitUntil(cache.put(cacheKey, response.clone()));
+    if (hasResults) {
+      c.executionCtx.waitUntil(cache.put(cacheKey, response.clone()));
+    }
     c.executionCtx.waitUntil(recordSuggestion(c.env.SETTINGS, q));
 
     if (result.telemetry) {

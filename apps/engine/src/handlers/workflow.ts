@@ -1,6 +1,7 @@
 import { WorkflowEntrypoint, WorkflowStep, WorkflowEvent } from 'cloudflare:workers';
 import { IngestionTask, ProcessorBindings, createTrace, Logger } from '@lens/shared';
 import { WorkflowProcessor } from '../modules/representation';
+import { withDatabase } from '../platform/cloudflare';
 
 const RETRY_CONFIG = {
   retries: { limit: 10, delay: '30 seconds' as const, backoff: 'constant' as const },
@@ -15,9 +16,10 @@ export class LensIngestWorkflow extends WorkflowEntrypoint<ProcessorBindings, In
     const task = event.payload;
     const { photoId } = task;
 
+    const env = withDatabase(this.env);
     const trace = createTrace(`WF-${photoId}`);
-    const logger = new Logger(trace, this.env.TELEMETRY);
-    const processor = new WorkflowProcessor(this.env, logger);
+    const logger = new Logger(trace, env.TELEMETRY);
+    const processor = new WorkflowProcessor(env, logger);
 
     try {
       // --- BRANCH A: NEW IMAGE INGESTION ---
@@ -26,7 +28,7 @@ export class LensIngestWorkflow extends WorkflowEntrypoint<ProcessorBindings, In
 
         // 1. Existence Check
         const exists = await step.do('check-exists', async () => {
-          const row = await this.env.DB.prepare('SELECT id FROM images WHERE id = ?').bind(photoId).first();
+          const row = await env.DB.prepare('SELECT id FROM images WHERE id = ?').bind(photoId).first();
           return !!row;
         });
         if (exists) return;
@@ -46,7 +48,7 @@ export class LensIngestWorkflow extends WorkflowEntrypoint<ProcessorBindings, In
           return await processor.generateVector(analysis, meta);
         });
 
-        // 5. Database Persistance (D1)
+        // 5. Database Persistance (MySQL via Hyperdrive / D1 fallback)
         await step.do('persist-d1-flagship', RETRY_CONFIG, async () => {
           await processor.persistToD1(photoId, analysis, vector, meta, storageKeys);
         });
@@ -68,7 +70,7 @@ export class LensIngestWorkflow extends WorkflowEntrypoint<ProcessorBindings, In
 
         // 2. Metadata Context Hydration
         const dbRecord = await step.do('get-meta', async () => {
-          return await this.env.DB.prepare('SELECT meta_json FROM images WHERE id = ?')
+          return await env.DB.prepare('SELECT meta_json FROM images WHERE id = ?')
             .bind(photoId)
             .first<{ meta_json: string }>();
         });

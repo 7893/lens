@@ -92,12 +92,13 @@ export class WorkflowProcessor {
   }
 
   /**
-   * Persists flagship image metadata to D1.
+   * Persists flagship image metadata to primary relational database.
+   * Vector embeddings are stored exclusively in Vectorize (`ai_embedding` is kept NULL to save ~19KB/row).
    */
   async persistToD1(
     photoId: string,
     analysis: VisionResponse,
-    vector: number[],
+    _vector: number[],
     meta?: UnsplashPhoto,
     keys?: { rawKey?: string; displayKey?: string },
   ) {
@@ -111,10 +112,11 @@ export class WorkflowProcessor {
         id, width, height, color, raw_key, display_key, meta_json, 
         ai_tags, ai_caption, ai_embedding, ai_model, ai_quality_score, 
         entities_json, created_at, vectorize_synced
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, 0)
       ON CONFLICT(id) DO UPDATE SET 
+        ai_tags=excluded.ai_tags,
         ai_caption=excluded.ai_caption, 
-        ai_embedding=excluded.ai_embedding, 
+        ai_embedding=NULL, 
         ai_model=excluded.ai_model, 
         ai_quality_score=excluded.ai_quality_score, 
         entities_json=excluded.entities_json, 
@@ -132,7 +134,6 @@ export class WorkflowProcessor {
         JSON.stringify(meta ?? {}),
         JSON.stringify(analysis.tags),
         analysis.caption,
-        JSON.stringify(vector),
         'llama-4-scout',
         analysis.quality,
         JSON.stringify(analysis.entities),

@@ -1,9 +1,86 @@
-import { AI_MODELS, AI_GATEWAY, VisionResponse, VisionResponseSchema } from '@lens/shared';
-import { Logger } from '@lens/shared';
+import { AI_MODELS, AI_GATEWAY, VisionResponse, VisionResponseSchema, Logger } from '@lens/shared';
 import { tracing } from 'cloudflare:workers';
 
 const VISION_AGENT_NAME = 'lens-vision-agent';
 const VISION_AGENT_ID = 'lens-vision-agent-prod';
+
+const VISION_PROMPT = `Act as a world-class gallery curator and senior photographer.
+Analyze this image for deep-index retrieval.
+
+TASKS:
+1. CAPTION: Write a 2-3 sentence narrative. Focus on the core subject, emotional resonance, specific photographic style, and light/shadow.
+2. QUALITY: Rate the image quality/aesthetics from 0.0 to 10.0.
+3. ENTITIES: Identify specific landmarks, notable brands, biological species, or unique objects.
+4. TAGS: Provide up to 8 precise, descriptive lowercase tags.
+
+OUTPUT FORMAT (JSON STRICT):
+{
+  "caption": "...",
+  "quality": 8.5,
+  "entities": ["item1", "item2"],
+  "tags": ["tag1", "tag2"]
+}`;
+
+interface LlamaVisionRawResponse {
+  response?: string | Record<string, unknown>;
+  choices?: { message?: { content?: string } }[];
+  usage?: { prompt_tokens?: number; completion_tokens?: number };
+}
+
+function detectImageMimeType(bytes: Uint8Array): string {
+  if (bytes.length >= 4 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) {
+    return 'image/png';
+  }
+  if (
+    bytes.length >= 12 &&
+    bytes[0] === 0x52 &&
+    bytes[1] === 0x49 &&
+    bytes[2] === 0x46 &&
+    bytes[3] === 0x46 &&
+    bytes[8] === 0x57 &&
+    bytes[9] === 0x45 &&
+    bytes[10] === 0x42 &&
+    bytes[11] === 0x50
+  ) {
+    return 'image/webp';
+  }
+  return 'image/jpeg';
+}
+
+export function encodeImageToDataUri(bytes: Uint8Array): string {
+  const mimeType = detectImageMimeType(bytes);
+  const chunkSize = 0x8000;
+  const chunks: string[] = [];
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const slice = bytes.subarray(i, i + chunkSize);
+    let segment = '';
+    for (let j = 0; j < slice.length; j++) {
+      segment += String.fromCharCode(slice[j]);
+    }
+    chunks.push(segment);
+  }
+  return `data:${mimeType};base64,${btoa(chunks.join(''))}`;
+}
+
+function extractRawVisionPayload(res: LlamaVisionRawResponse): {
+  text: string;
+  parsedObject?: Record<string, unknown>;
+} {
+  if (res.response && typeof res.response === 'object') {
+    return {
+      text: JSON.stringify(res.response),
+      parsedObject: res.response,
+    };
+  }
+  if (typeof res.response === 'string') {
+    return { text: res.response };
+  }
+  const choiceContent = res.choices?.[0]?.message?.content;
+  if (typeof choiceContent === 'string') {
+    return { text: choiceContent };
+  }
+  return { text: '' };
+}
 
 export async function analyzeImage(
   ai: Ai,
@@ -31,6 +108,7 @@ export async function analyzeImage(
     );
 
     const imageData = new Uint8Array(await new Response(imageStream).arrayBuffer());
+    const imageDataUri = encodeImageToDataUri(imageData);
     const model = AI_MODELS.TEXT;
 
     const response = await tracing.enterSpan('chat', async (chatSpan) => {
@@ -46,34 +124,31 @@ export async function analyzeImage(
       );
 
       const res = (await ai.run(
-        // @ts-expect-error - model not yet in workers-types
-        model, // Llama 4 Scout
+        model,
         {
-          image: [...imageData],
-          prompt: `Act as a world-class gallery curator and senior photographer. 
-Analyze this image for deep-index retrieval.
-
-TASKS:
-1. CAPTION: Write a 2-3 sentence narrative. Focus on the core subject, emotional resonance, specific photographic style, and light/shadow.
-2. QUALITY: Rate the image quality/aesthetics from 0.0 to 10.0.
-3. ENTITIES: Identify specific landmarks, notable brands, biological species, or unique objects.
-4. TAGS: Provide up to 8 precise, descriptive lowercase tags.
-
-OUTPUT FORMAT (JSON STRICT):
-{
-  "caption": "...",
-  "quality": 8.5,
-  "entities": ["item1", "item2"],
-  "tags": ["tag1", "tag2"]
-}`,
+          messages: [
+            {
+              role: 'user',
+              content: [
+                {
+                  type: 'image_url',
+                  image_url: { url: imageDataUri },
+                },
+                {
+                  type: 'text',
+                  text: VISION_PROMPT,
+                },
+              ],
+            },
+          ],
+          response_format: { type: 'json_object' },
+          max_tokens: 512,
         },
         AI_GATEWAY,
-      )) as { response?: string; usage?: { prompt_tokens?: number; completion_tokens?: number } };
+      )) as unknown as LlamaVisionRawResponse;
 
-      chatSpan.setAttribute(
-        'gen_ai.output.messages',
-        JSON.stringify([{ role: 'assistant', content: res.response || '' }]),
-      );
+      const preview = typeof res.response === 'string' ? res.response : JSON.stringify(res.response ?? '');
+      chatSpan.setAttribute('gen_ai.output.messages', JSON.stringify([{ role: 'assistant', content: preview }]));
       if (res.usage?.prompt_tokens) chatSpan.setAttribute('gen_ai.usage.input_tokens', res.usage.prompt_tokens);
       if (res.usage?.completion_tokens)
         chatSpan.setAttribute('gen_ai.usage.output_tokens', res.usage.completion_tokens);
@@ -81,7 +156,7 @@ OUTPUT FORMAT (JSON STRICT):
       return res;
     });
 
-    const text = response.response || '';
+    const { text, parsedObject } = extractRawVisionPayload(response);
     logger.info('AI Raw Response received', { length: text.length });
 
     let parseRetries = 0;
@@ -89,17 +164,20 @@ OUTPUT FORMAT (JSON STRICT):
     let result: VisionResponse;
 
     try {
-      // Attempt to extract JSON from the response (in case AI adds prose around it)
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
-      let jsonStr = jsonMatch ? jsonMatch[0] : text;
+      let rawData: unknown = parsedObject;
+      if (!rawData) {
+        // Attempt to extract JSON from the response (in case AI adds prose around it)
+        const jsonMatch = text.match(/\{[\s\S]*\}/);
+        let jsonStr = jsonMatch ? jsonMatch[0] : text;
 
-      if (jsonStr.match(/,\s*([\]}])/)) {
-        parseRetries += 1;
+        if (jsonStr.match(/,\s*([\]}])/)) {
+          parseRetries += 1;
+        }
+        // Sanitize trailing commas (common AI hallucination) before parsing
+        jsonStr = jsonStr.replace(/,\s*([\]}])/g, '$1');
+
+        rawData = JSON.parse(jsonStr);
       }
-      // Sanitize trailing commas (common AI hallucination) before parsing
-      jsonStr = jsonStr.replace(/,\s*([\]}])/g, '$1');
-
-      const rawData = JSON.parse(jsonStr);
 
       // GOD-LEVEL VALIDATION: Zod forces the contract
       result = VisionResponseSchema.parse(rawData);
