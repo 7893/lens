@@ -14,12 +14,6 @@ not_found_handling = "single-page-application"
 binding = "HYPERDRIVE"
 id = "d5809125664b4ac28f6af068caae89e3"
 
-# Legacy D1 Database (Retained as cold standby backup)
-[[d1_databases]]
-binding = "DB"
-database_name = "lens-d1"
-database_id = "af9a1e43-7c7b-47da-add7-ed16d6de5ee5"
-
 # Vectorize Index (Semantic Search)
 [[vectorize]]
 binding = "VECTORIZE"
