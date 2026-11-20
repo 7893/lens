@@ -88,7 +88,7 @@ export class WorkflowProcessor {
    */
   async generateVector(analysis: VisionResponse, meta?: UnsplashPhoto) {
     const text = buildEmbeddingText(analysis.caption, analysis.tags, meta);
-    return await generateEmbedding(this.env.AI, text);
+    return await generateEmbedding(this.env.AI, text, this.logger);
   }
 
   /**

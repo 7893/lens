@@ -1,6 +1,7 @@
 import { CandidateMatch, CandidateSource, NormalizedSearchSpec } from '../contracts';
-import { AI_MODELS, AI_GATEWAY, Logger } from '@lens/shared';
+import { AI_MODELS, Logger } from '@lens/shared';
 import { tracing } from 'cloudflare:workers';
+import { runAiWithQuotaFallback } from '../../../platform/cloudflare';
 
 type AiTextResponse = { response?: string };
 type AiEmbeddingResponse = { data: number[][] };
@@ -102,7 +103,12 @@ export class VectorCandidateSource implements CandidateSource {
         chatSpan.setAttribute('gen_ai.system', 'cloudflare-workers-ai');
         chatSpan.setAttribute('gen_ai.input.messages', JSON.stringify([{ role: 'user', content: prompt }]));
 
-        const res = (await this.ai.run(AI_MODELS.TEXT_FAST, { prompt, max_tokens: 40 }, AI_GATEWAY)) as AiTextResponse;
+        const { result: res } = await runAiWithQuotaFallback<AiTextResponse>(
+          this.ai,
+          AI_MODELS.TEXT_FAST,
+          { prompt, max_tokens: 40 },
+          this.logger,
+        );
 
         chatSpan.setAttribute(
           'gen_ai.output.messages',
@@ -134,7 +140,12 @@ export class VectorCandidateSource implements CandidateSource {
       chatSpan.setAttribute('gen_ai.system', 'cloudflare-workers-ai');
       chatSpan.setAttribute('gen_ai.input.messages', JSON.stringify({ text: [text] }));
 
-      const res = (await this.ai.run(AI_MODELS.EMBED, { text: [text] }, AI_GATEWAY)) as AiEmbeddingResponse;
+      const { result: res } = await runAiWithQuotaFallback<AiEmbeddingResponse>(
+        this.ai,
+        AI_MODELS.EMBED,
+        { text: [text] },
+        this.logger,
+      );
 
       chatSpan.setAttribute('gen_ai.output.messages', JSON.stringify({ dimensions: res.data?.[0]?.length || 0 }));
       return res;

@@ -6,5 +6,6 @@ export const AI_MODELS = {
   RERANK: '@cf/baai/bge-reranker-base',
 } as const;
 
-// AI Gateway
+// AI Gateways: primary uses free daily allocation, fallback uses Unified Billing prepaid credits
 export const AI_GATEWAY = { gateway: { id: 'lens-gateway' } };
+export const AI_GATEWAY_PREPAID = { gateway: { id: 'lens-gateway-prepaid' } };

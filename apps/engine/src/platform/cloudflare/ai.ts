@@ -1,8 +1,39 @@
-import { AI_MODELS, AI_GATEWAY, VisionResponse, VisionResponseSchema, Logger } from '@lens/shared';
+import { AI_MODELS, AI_GATEWAY, AI_GATEWAY_PREPAID, VisionResponse, VisionResponseSchema, Logger } from '@lens/shared';
 import { tracing } from 'cloudflare:workers';
 
 const VISION_AGENT_NAME = 'lens-vision-agent';
 const VISION_AGENT_ID = 'lens-vision-agent-prod';
+
+export function isFreeQuotaExhaustedError(error: unknown): boolean {
+  const msg = error instanceof Error ? error.message : String(error);
+  return /\b4006\b/.test(msg) || /daily free allocation|10,000 neurons/i.test(msg);
+}
+
+/**
+ * Runs Workers AI via the primary free-allocation gateway first.
+ * If Cloudflare returns Error 4006 (daily 10,000 free neurons exhausted),
+ * seamlessly falls back to the Unified Billing prepaid gateway.
+ */
+export async function runAiWithQuotaFallback<T = unknown>(
+  ai: Ai,
+  model: keyof AiModels,
+  input: unknown,
+  logger?: Logger,
+): Promise<{ result: T; gateway: 'free' | 'prepaid' }> {
+  try {
+    const result = (await ai.run(model, input as never, AI_GATEWAY)) as unknown as T;
+    return { result, gateway: 'free' };
+  } catch (error) {
+    if (!isFreeQuotaExhaustedError(error)) {
+      throw error;
+    }
+    logger?.warn('Free Workers AI daily quota exhausted (4006); falling back to prepaid Unified Billing gateway', {
+      model,
+    });
+    const result = (await ai.run(model, input as never, AI_GATEWAY_PREPAID)) as unknown as T;
+    return { result, gateway: 'prepaid' };
+  }
+}
 
 const VISION_PROMPT = `Act as a world-class gallery curator and senior photographer.
 Analyze this image for deep-index retrieval.
@@ -123,7 +154,8 @@ export async function analyzeImage(
         JSON.stringify([{ role: 'user', content: 'Analyze this image for deep-index retrieval.' }]),
       );
 
-      const res = (await ai.run(
+      const { result: res } = await runAiWithQuotaFallback<LlamaVisionRawResponse>(
+        ai,
         model,
         {
           messages: [
@@ -144,8 +176,8 @@ export async function analyzeImage(
           response_format: { type: 'json_object' },
           max_tokens: 512,
         },
-        AI_GATEWAY,
-      )) as unknown as LlamaVisionRawResponse;
+        logger,
+      );
 
       const preview = typeof res.response === 'string' ? res.response : JSON.stringify(res.response ?? '');
       chatSpan.setAttribute('gen_ai.output.messages', JSON.stringify([{ role: 'assistant', content: preview }]));
@@ -212,7 +244,7 @@ export async function analyzeImage(
   });
 }
 
-export async function generateEmbedding(ai: Ai, text: string): Promise<number[]> {
+export async function generateEmbedding(ai: Ai, text: string, logger?: Logger): Promise<number[]> {
   const response = await tracing.enterSpan('chat', async (chatSpan) => {
     chatSpan.setAttribute('gen_ai.operation.name', 'chat');
     chatSpan.setAttribute('gen_ai.agent.name', VISION_AGENT_NAME);
@@ -221,7 +253,12 @@ export async function generateEmbedding(ai: Ai, text: string): Promise<number[]>
     chatSpan.setAttribute('gen_ai.system', 'cloudflare-workers-ai');
     chatSpan.setAttribute('gen_ai.input.messages', JSON.stringify({ text: [text] }));
 
-    const res = (await ai.run(AI_MODELS.EMBED, { text: [text] }, AI_GATEWAY)) as { data: number[][] };
+    const { result: res } = await runAiWithQuotaFallback<{ data: number[][] }>(
+      ai,
+      AI_MODELS.EMBED,
+      { text: [text] },
+      logger,
+    );
     chatSpan.setAttribute('gen_ai.output.messages', JSON.stringify({ dimensions: res.data?.[0]?.length || 0 }));
     return res;
   });

@@ -1,6 +1,12 @@
 import { describe, it, expect, vi } from 'vitest';
-import { AI_MODELS, Logger, createTrace } from '@lens/shared';
-import { analyzeImage, encodeImageToDataUri, generateEmbedding } from '../src/platform/cloudflare/ai';
+import { AI_GATEWAY, AI_GATEWAY_PREPAID, AI_MODELS, Logger, createTrace } from '@lens/shared';
+import {
+  analyzeImage,
+  encodeImageToDataUri,
+  generateEmbedding,
+  isFreeQuotaExhaustedError,
+  runAiWithQuotaFallback,
+} from '../src/platform/cloudflare/ai';
 
 function toStream(bytes: Uint8Array): ReadableStream {
   return new Response(bytes).body as ReadableStream;
@@ -100,7 +106,42 @@ describe('Cloudflare Workers AI Vision & Embedding Adapter', () => {
     const mockAi = { run: runMock } as unknown as Ai;
 
     const out = await generateEmbedding(mockAi, 'snowy mountain peak');
-    expect(runMock).toHaveBeenCalledWith(AI_MODELS.EMBED, { text: ['snowy mountain peak'] }, expect.any(Object));
+    expect(runMock).toHaveBeenCalledWith(AI_MODELS.EMBED, { text: ['snowy mountain peak'] }, AI_GATEWAY);
     expect(out).toHaveLength(1024);
+  });
+
+  it('falls back to prepaid Unified Billing gateway on Error 4006 free quota exhaustion', async () => {
+    expect(
+      isFreeQuotaExhaustedError(
+        new Error('AiError: 4006: you have used up your daily free allocation of 10,000 neurons'),
+      ),
+    ).toBe(true);
+    expect(isFreeQuotaExhaustedError(new Error('AiError: 500: internal server error'))).toBe(false);
+
+    const logger = new Logger(createTrace('AI_FALLBACK_TEST'));
+    const runMock = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('AiError: 4006: you have used up your daily free allocation of 10,000 neurons'))
+      .mockResolvedValueOnce({ data: [[0.5, 0.5]] });
+    const mockAi = { run: runMock } as unknown as Ai;
+
+    const { result, gateway } = await runAiWithQuotaFallback<{ data: number[][] }>(
+      mockAi,
+      AI_MODELS.EMBED,
+      { text: ['sunset'] },
+      logger,
+    );
+    expect(gateway).toBe('prepaid');
+    expect(result.data).toEqual([[0.5, 0.5]]);
+    expect(runMock).toHaveBeenNthCalledWith(1, AI_MODELS.EMBED, { text: ['sunset'] }, AI_GATEWAY);
+    expect(runMock).toHaveBeenNthCalledWith(2, AI_MODELS.EMBED, { text: ['sunset'] }, AI_GATEWAY_PREPAID);
+  });
+
+  it('rethrows non-quota errors without hitting prepaid gateway', async () => {
+    const runMock = vi.fn().mockRejectedValue(new Error('AiError: 500: transient upstream failure'));
+    const mockAi = { run: runMock } as unknown as Ai;
+
+    await expect(runAiWithQuotaFallback(mockAi, AI_MODELS.EMBED, { text: ['sunset'] })).rejects.toThrow(/500/);
+    expect(runMock).toHaveBeenCalledTimes(1);
   });
 });
